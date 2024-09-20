@@ -57,3 +57,16 @@ jobs:
         tags: |
           ghcr.io/${{ github.repository }}:latest
           ghcr.io/${{ github.repository }}:${{ steps.generate_version.outputs.VERSION }}
+  purge:
+    runs-on: ubuntu-latest
+    needs: push
+    if: success()
+    permissions:
+      packages: write
+ 
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: ratchet
+          package-type: container
+          num-old-versions-to-delete: 1
