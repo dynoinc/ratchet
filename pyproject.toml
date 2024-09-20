@@ -1,6 +1,6 @@
 [project]
 name = "ratchet"
-version = "0.1.0"
+version = "v20240920"
 description = "AI bot to help reduce operational toil"
 readme = "README.md"
 requires-python = ">=3.12"
