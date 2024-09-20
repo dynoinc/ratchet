@@ -39,13 +39,13 @@ jobs:
     - name: Update pyproject.toml
       run: |
         sed -i 's/^version = .*/version = "${{ steps.generate_version.outputs.VERSION }}"/' pyproject.toml
+        uv lock
     
     - name: Commit version update
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git commit -am "Bump version to ${{ steps.generate_version.outputs.VERSION }}"
-        uv lock
         git tag ${{ steps.generate_version.outputs.VERSION }}
         git push && git push --tags
 
@@ -57,6 +57,10 @@ jobs:
       packages: write
 
     steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
 
