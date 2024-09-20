@@ -3,7 +3,7 @@ name = "ratchet"
 version = "v2024.09.20.9"
 description = "AI bot to help reduce operational toil"
 authors = [
-  {name = "Rajat Goel", email="rajat.goel2010@gmail.com"},
+  {name = "Rajat Goel", email="405844+rajatgoel@users.noreply.github.com"},
 ]
 readme = "README.md"
 license = {file = "LICENSE"}
