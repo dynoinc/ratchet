@@ -17,6 +17,7 @@ jobs:
       contents: write
     outputs:
       VERSION: ${{ steps.generate_version.outputs.VERSION }}
+      COMMIT_HASH: ${{ steps.commit-and-push.outputs.commit_hash }}
     
     steps:
     - uses: actions/checkout@v4
@@ -42,12 +43,14 @@ jobs:
         uv lock
     
     - name: Commit version update
+      id: commit-and-push
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git commit -am "Bump version to ${{ steps.generate_version.outputs.VERSION }}"
         git tag ${{ steps.generate_version.outputs.VERSION }}
         git push && git push --tags
+        echo "commit_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
   push:
     runs-on: ubuntu-latest
@@ -59,7 +62,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        ref: main
+        ref: ${{ needs.bump_version.outputs.COMMIT_HASH }}
         fetch-depth: 0
 
     - name: Set up QEMU
