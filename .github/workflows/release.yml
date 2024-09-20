@@ -26,7 +26,7 @@ jobs:
       id: generate_version
       run: |
         DATE=$(date +'%Y%m%d')
-        COUNT=$(git tag | grep -c "^v$DATE")
+        COUNT=$(git tag | grep -c "^v$DATE" || true)
         if [ "$COUNT" -eq 0 ]; then
           VERSION="v$DATE"
         else
