@@ -2,7 +2,23 @@
 name = "ratchet"
 version = "v2024.09.20.9"
 description = "AI bot to help reduce operational toil"
+authors = [
+  {name = "Rajat Goel", email="rajat.goel2010@gmail.com"},
+]
 readme = "README.md"
+license = {file = "LICENSE"}
+classifiers = [
+  "Development Status :: 3 - Alpha",
+
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: System :: Monitoring",
+  "Topic :: System :: Systems Administration",
+
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+
+  "Programming Language :: Python :: 3.12",
+]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.115.0",
