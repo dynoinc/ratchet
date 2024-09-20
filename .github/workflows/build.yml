@@ -29,7 +29,7 @@ jobs:
       run: uv run ruff check --output-format=github .
 
     - name: Mypy
-      run: uv run mypy --strict
+      run: uv run mypy --strict .
 
     - name: Run tests
       run: uv run pytest tests
