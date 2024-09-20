@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  schedule:
+    - cron: '0 2 * * *' 
+  workflow_dispatch:
+
+jobs:
+  build-version-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Run build action
+      uses: ./.github/workflows/build.yml
+    
+    - name: Generate version
+      id: generate_version
+      run: |
+        DATE=$(date +'%Y%m%d')
+        COUNT=$(git tag | grep -c "^v$DATE")
+        if [ "$COUNT" -eq 0 ]; then
+          VERSION="v$DATE"
+        else
+           VERSION="v$DATE.$COUNT"
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Update pyproject.toml
+      run: |
+        sed -i 's/^version = .*/version = "${{ steps.generate_version.outputs.VERSION }}"/' pyproject.toml
+    
+    - name: Commit version update
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git commit -am "Bump version to ${{ steps.generate_version.outputs.VERSION }}"
+        git tag ${{ steps.generate_version.outputs.VERSION }}
+        git push && git push --tags
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:latest
+          ghcr.io/${{ github.repository }}:${{ steps.generate_version.outputs.VERSION }}
