@@ -57,6 +57,7 @@ jobs:
     needs: bump_version
     if: success()
     permissions:
+      contents: read
       packages: write
 
     steps:
