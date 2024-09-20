@@ -23,4 +23,4 @@ COPY --from=builder /usr/local/lib/python*/site-packages /usr/local/lib/python*/
 WORKDIR /app
 
 # Run the application
-CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--port", "80", "--host", "0.0.0.0"]
+CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--port", "5001", "--host", "127.0.0.1"]
