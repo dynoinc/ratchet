@@ -30,7 +30,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# Import your models here
-from app.models import SlackChannel, SlackMessage, ThreadMessage
