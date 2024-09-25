@@ -27,9 +27,6 @@ jobs:
 
     - name: Ruff linter
       run: uv run ruff check --output-format=github .
-    
-    - name: Install dependencies
-      run: uv run pip install -r requirements.txt
 
     - name: Run tests
       run: uv run python -m pytest tests
