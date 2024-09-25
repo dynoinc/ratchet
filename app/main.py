@@ -6,6 +6,7 @@ from app.slack_ingestion_service import main as slack_main, validate_slack_token
 from contextlib import asynccontextmanager
 import asyncio
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Validate Slack tokens
@@ -23,11 +24,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Error during shutdown: {e}")
 
+
 app = FastAPI(lifespan=lifespan)
 settings = Settings()
 
 # Initialize the database
 engine, SessionLocal = init_db(settings.database_url)
+
 
 @app.get("/")
 async def root(db: Session = Depends(get_db)) -> dict[str, str]:

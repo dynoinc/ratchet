@@ -7,5 +7,6 @@ class Settings(BaseSettings):
     slack_app_token: str
     slack_channels: list[str]
     slack_messages_from_users: list[str]
+
     class Config:
         env_file = ".env"
