@@ -1,16 +1,20 @@
 import asyncio
+import logging
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from app.database import get_db
-from app.models import SlackChannel, SlackMessage, ThreadMessage
+from app.models import Team, Activity, ActivityType, ActivityStatus, create_team, create_activity, get_team_by_slack_channel, update_activity, get_or_create_channel_status, update_channel_status
 from app.config import Settings
 from datetime import datetime
 
 settings = Settings()
 app = AsyncApp(token=settings.slack_bot_token)
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def validate_slack_tokens():
     bot_client = AsyncWebClient(token=settings.slack_bot_token)
@@ -19,77 +23,97 @@ async def validate_slack_tokens():
     try:
         # Validate bot token
         bot_auth = await bot_client.auth_test()
-        print(f"Bot token validated. Connected as: {bot_auth['user']}")
+        logger.info(f"Bot token validated. Connected as: {bot_auth['user']}")
 
         # Validate app token
         app_auth = await app_client.auth_test()
-        print(f"App token validated. Connected as: {app_auth['user']}")
+        logger.info(f"App token validated. Connected as: {app_auth['user']}")
     except SlackApiError as e:
-        print(f"Error validating Slack tokens: {e}")
+        logger.error(f"Error validating Slack tokens: {e}")
         raise ValueError("Invalid Slack tokens. Please check your configuration.")
 
+def should_we_persist_message(msg):
+    return msg.get("bot_id") is not None and msg.get("bot_profile", {}).get("name") in settings.slack_messages_from_users
 
-async def fetch_and_store_messages(
-    client: AsyncWebClient, channel_id: str, db, latest_timestamp=None
+def determine_and_create_activity(db, db_team, msg, parent_activity_id=None):
+    if "alert" in msg.get("text", "").lower():
+        activity_type = ActivityType.ALERT
+        status = ActivityStatus.FIRED
+    elif msg.get("bot_id"):
+        activity_type = ActivityType.BOT_MESSAGE
+        status = ActivityStatus.ONGOING
+    else:
+        activity_type = ActivityType.HUMAN_THREAD
+        status = ActivityStatus.ONGOING
+
+    timestamp = datetime.fromtimestamp(float(msg["ts"]))
+
+    db_activity = create_activity(
+        db,
+        db_team.id,
+        activity_type,
+        status,
+        msg.get("text", ""),
+        timestamp=timestamp,
+        parent_activity_id=parent_activity_id
+    )
+    return db_activity
+
+async def fetch_and_store_activities(
+    client: AsyncWebClient, channel_id: str, db
 ):
     try:
-        print(f"Fetching messages for channel: {channel_id}")
-        # Fetch channel info
+        logger.info(f"Fetching activities for channel: {channel_id}")
         channel_info = await client.conversations_info(channel=channel_id)
-        print(f"Channel info: {channel_info}")
+        logger.debug(f"Channel info: {channel_info}")
         channel_name = channel_info["channel"]["name"]
 
-        # Store or update channel information
-        db_channel = db.query(SlackChannel).filter_by(channel_id=channel_id).first()
-        if not db_channel:
-            db_channel = SlackChannel(name=channel_name, channel_id=channel_id)
-            db.add(db_channel)
-        else:
-            db_channel.name = channel_name
-        db.commit()
+        # Store or update team information
+        db_team = get_team_by_slack_channel(db, channel_id)
+        if not db_team:
+            db_team = create_team(db, channel_name, channel_id)
+
+        # Get the last processed timestamp for this channel
+        channel_status = get_or_create_channel_status(db, channel_id)
+        latest_timestamp = channel_status.last_processed_timestamp
 
         # Fetch messages
         params = {"channel": channel_id}
-        if latest_timestamp:
-            params["oldest"] = latest_timestamp
+        if latest_timestamp > 0:
+            params["oldest"] = str(latest_timestamp)
 
         result = await client.conversations_history(**params)
         messages = result["messages"]
-        print(f"Fetched {len(messages)} messages from channel {channel_name}")
+        logger.info(f"Fetched {len(messages)} messages from channel {channel_name}")
 
+        newest_timestamp = latest_timestamp
         for msg in messages:
-            timestamp = datetime.fromtimestamp(float(msg["ts"]))
-            db_message = SlackMessage(
-                channel_id=db_channel.id,
-                user_id=msg.get("user", ""),
-                content=msg.get("text", ""),
-                timestamp=timestamp,
-                has_thread="thread_ts" in msg or msg.get("reply_count", 0) > 0,
-            )
-            db.add(db_message)
-            db.commit()
+            logger.debug(f"Processing message: {msg}")
+            
+            current_msg_timestamp = float(msg["ts"])
+            newest_timestamp = max(newest_timestamp, current_msg_timestamp)
 
-            if db_message.has_thread:
-                thread_result = await client.conversations_replies(
-                    channel=channel_id, ts=msg["ts"]
-                )
-                thread_messages = thread_result["messages"][
-                    1:
-                ]  # Exclude the parent message
-                for thread_msg in thread_messages:
-                    thread_timestamp = datetime.fromtimestamp(float(thread_msg["ts"]))
-                    db_thread_message = ThreadMessage(
-                        parent_message_id=db_message.id,
-                        user_id=thread_msg.get("user", ""),
-                        content=thread_msg.get("text", ""),
-                        timestamp=thread_timestamp,
+            if should_we_persist_message(msg):
+                db_activity = determine_and_create_activity(db, db_team, msg)
+
+                if "thread_ts" in msg or msg.get("reply_count", 0) > 0:
+                    thread_result = await client.conversations_replies(
+                        channel=channel_id, ts=msg["ts"]
                     )
-                    db.add(db_thread_message)
-                db.commit()
+                    thread_messages = thread_result["messages"][1:]  # Exclude the parent message
+                    for thread_msg in thread_messages:
+                        thread_activity = determine_and_create_activity(db, db_team, thread_msg, db_activity.id)
+                        newest_timestamp = max(newest_timestamp, float(thread_msg["ts"]))
+
+        # Update the last processed timestamp for this channel
+        update_channel_status(db, channel_id, newest_timestamp)
+        logger.info(f"Updated channel {channel_id} last processed timestamp to {newest_timestamp}")
 
     except SlackApiError as e:
-        print(f"Error fetching messages: {e}")
-
+        logger.error(f"Error fetching activities: {e}")
+        if "invalid_ts_oldest" in str(e):
+            logger.warning("Invalid timestamp detected. Resetting channel status.")
+            update_channel_status(db, channel_id, 0)
 
 async def start_slack_ingestion():
     await validate_slack_tokens()
@@ -99,64 +123,50 @@ async def start_slack_ingestion():
         db = next(get_db())
         try:
             for channel in settings.slack_channels:
-                latest_message = (
-                    db.query(SlackMessage)
-                    .join(SlackChannel)
-                    .filter(SlackChannel.channel_id == channel)
-                    .order_by(SlackMessage.timestamp.desc())
-                    .first()
-                )
-                latest_timestamp = (
-                    latest_message.timestamp.timestamp() if latest_message else None
-                )
-
-                await fetch_and_store_messages(client, channel, db, latest_timestamp)
+                logger.info(f"Processing channel: {channel}")
+                try:
+                    await fetch_and_store_activities(client, channel, db)
+                except Exception as e:
+                    logger.error(f"Error processing channel {channel}: {str(e)}")
+                    logger.exception("Traceback:")
+                    # Continue with the next channel
+                    continue
         except Exception as e:
-            print(f"Error in start_slack_ingestion: {e}")
+            logger.error(f"Unexpected error in start_slack_ingestion: {str(e)}")
+            logger.exception("Traceback:")
         finally:
             db.close()
         await asyncio.sleep(60)  # Wait for 60 seconds before the next ingestion cycle
-
 
 @app.event("message")
 async def handle_message_events(body, logger):
     db = next(get_db())
     try:
+        logger.info(f"Handling message event: {body}")
         channel_id = body["event"]["channel"]
-        db_channel = db.query(SlackChannel).filter_by(channel_id=channel_id).first()
-        if not db_channel:
+        db_team = get_team_by_slack_channel(db, channel_id)
+        if not db_team:
             # Fetch channel info if it doesn't exist in our database
             client = AsyncWebClient(token=settings.slack_bot_token)
             channel_info = await client.conversations_info(channel=channel_id)
             channel_name = channel_info["channel"]["name"]
-            db_channel = SlackChannel(name=channel_name, channel_id=channel_id)
-            db.add(db_channel)
-            db.commit()
+            db_team = create_team(db, channel_name, channel_id)
 
         msg = body["event"]
-        timestamp = datetime.fromtimestamp(float(msg["ts"]))
-        db_message = SlackMessage(
-            channel_id=db_channel.id,
-            user_id=msg.get("user", ""),
-            content=msg.get("text", ""),
-            timestamp=timestamp,
-            has_thread="thread_ts" in msg,
-        )
-        db.add(db_message)
-        db.commit()
+        
+        if not should_we_persist_message(msg):
+            return
 
-        logger.info(f"Message added to database: {db_message.id}")
+        db_activity = determine_and_create_activity(db, db_team, msg)
+
+        logger.info(f"Activity added to database: {db_activity.id}")
     except Exception as e:
         logger.error(f"Error handling message event: {e}")
+        logger.exception("Traceback:")
     finally:
         db.close()
-
 
 async def start_socket_mode():
     await validate_slack_tokens()
     handler = AsyncSocketModeHandler(app, settings.slack_app_token)
     await handler.start_async()
-
-
-if __name__ == "__main__":
-    asyncio.run(start_socket_mode())
