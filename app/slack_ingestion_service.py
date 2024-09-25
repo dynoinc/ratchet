@@ -11,15 +11,16 @@ from datetime import datetime
 settings = Settings()
 app = AsyncApp(token=settings.slack_bot_token)
 
+
 async def validate_slack_tokens():
     bot_client = AsyncWebClient(token=settings.slack_bot_token)
     app_client = AsyncWebClient(token=settings.slack_app_token)
-    
+
     try:
         # Validate bot token
         bot_auth = await bot_client.auth_test()
         print(f"Bot token validated. Connected as: {bot_auth['user']}")
-        
+
         # Validate app token
         app_auth = await app_client.auth_test()
         print(f"App token validated. Connected as: {app_auth['user']}")
@@ -27,7 +28,10 @@ async def validate_slack_tokens():
         print(f"Error validating Slack tokens: {e}")
         raise ValueError("Invalid Slack tokens. Please check your configuration.")
 
-async def fetch_and_store_messages(client: AsyncWebClient, channel_id: str, db, latest_timestamp=None):
+
+async def fetch_and_store_messages(
+    client: AsyncWebClient, channel_id: str, db, latest_timestamp=None
+):
     try:
         print(f"Fetching messages for channel: {channel_id}")
         # Fetch channel info
@@ -60,21 +64,25 @@ async def fetch_and_store_messages(client: AsyncWebClient, channel_id: str, db, 
                 user_id=msg.get("user", ""),
                 content=msg.get("text", ""),
                 timestamp=timestamp,
-                has_thread="thread_ts" in msg or msg.get("reply_count", 0) > 0
+                has_thread="thread_ts" in msg or msg.get("reply_count", 0) > 0,
             )
             db.add(db_message)
             db.commit()
 
             if db_message.has_thread:
-                thread_result = await client.conversations_replies(channel=channel_id, ts=msg["ts"])
-                thread_messages = thread_result["messages"][1:]  # Exclude the parent message
+                thread_result = await client.conversations_replies(
+                    channel=channel_id, ts=msg["ts"]
+                )
+                thread_messages = thread_result["messages"][
+                    1:
+                ]  # Exclude the parent message
                 for thread_msg in thread_messages:
                     thread_timestamp = datetime.fromtimestamp(float(thread_msg["ts"]))
                     db_thread_message = ThreadMessage(
                         parent_message_id=db_message.id,
                         user_id=thread_msg.get("user", ""),
                         content=thread_msg.get("text", ""),
-                        timestamp=thread_timestamp
+                        timestamp=thread_timestamp,
                     )
                     db.add(db_thread_message)
                 db.commit()
@@ -82,16 +90,25 @@ async def fetch_and_store_messages(client: AsyncWebClient, channel_id: str, db, 
     except SlackApiError as e:
         print(f"Error fetching messages: {e}")
 
+
 async def start_slack_ingestion():
     await validate_slack_tokens()
     client = AsyncWebClient(token=settings.slack_bot_token)
-    
+
     while True:
         db = next(get_db())
         try:
             for channel in settings.slack_channels:
-                latest_message = db.query(SlackMessage).join(SlackChannel).filter(SlackChannel.channel_id == channel).order_by(SlackMessage.timestamp.desc()).first()
-                latest_timestamp = latest_message.timestamp.timestamp() if latest_message else None
+                latest_message = (
+                    db.query(SlackMessage)
+                    .join(SlackChannel)
+                    .filter(SlackChannel.channel_id == channel)
+                    .order_by(SlackMessage.timestamp.desc())
+                    .first()
+                )
+                latest_timestamp = (
+                    latest_message.timestamp.timestamp() if latest_message else None
+                )
 
                 await fetch_and_store_messages(client, channel, db, latest_timestamp)
         except Exception as e:
@@ -99,6 +116,7 @@ async def start_slack_ingestion():
         finally:
             db.close()
         await asyncio.sleep(60)  # Wait for 60 seconds before the next ingestion cycle
+
 
 @app.event("message")
 async def handle_message_events(body, logger):
@@ -122,7 +140,7 @@ async def handle_message_events(body, logger):
             user_id=msg.get("user", ""),
             content=msg.get("text", ""),
             timestamp=timestamp,
-            has_thread="thread_ts" in msg
+            has_thread="thread_ts" in msg,
         )
         db.add(db_message)
         db.commit()
@@ -133,10 +151,12 @@ async def handle_message_events(body, logger):
     finally:
         db.close()
 
+
 async def start_socket_mode():
     await validate_slack_tokens()
     handler = AsyncSocketModeHandler(app, settings.slack_app_token)
     await handler.start_async()
+
 
 if __name__ == "__main__":
     asyncio.run(start_socket_mode())
