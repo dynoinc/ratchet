@@ -1,6 +1,6 @@
 [project]
 name = "ratchet"
-version = "v2024.09.27.0"
+version = "v2024.09.28.0"
 description = "AI bot to help reduce operational toil"
 authors = [
   { name = "Rajat Goel", email = "405844+rajatgoel@users.noreply.github.com" },
