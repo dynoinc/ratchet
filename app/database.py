@@ -1,16 +1,17 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import ProgrammingError
+from app.config import Settings
 
 Base = declarative_base()
 SessionLocal = None  # Initialize as None
+settings = Settings()
+engine = create_engine(settings.database_url)
 
 
-def init_db(db_url: str):
+def init_db():
     """Initialize the database, creating tables if they don't exist."""
     global SessionLocal  # Declare SessionLocal as global
-    engine = create_engine(db_url)
-
     try:
         Base.metadata.create_all(engine)
         print("Tables created successfully.")
