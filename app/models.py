@@ -1,10 +1,21 @@
 import logging
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Float
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+    ARRAY,
+    Text,
+    Enum,
+    Float,
+)
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 from app.database import Base, SessionLocal
 import enum
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -27,15 +38,30 @@ class ActivityStatus(enum.Enum):
 class Team(Base):
     __tablename__ = "teams"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    slack_channel_id = Column(String(255), unique=True, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    slack_channel_ids = Column(PG_ARRAY(String))  # Changed to PostgreSQL-specific ARRAY
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-
+    channels = relationship("Channel", back_populates="team")
     activities = relationship("Activity", back_populates="team")
+
+
+class Channel(Base):
+    __tablename__ = "channels"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slack_channel_id = Column(String, unique=True, index=True)
+    name = Column(String)
+    team_id = Column(Integer, ForeignKey("teams.id"))
+    monitored_bot_accounts = Column(ARRAY(String))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    team = relationship("Team", back_populates="channels")
 
 
 class Activity(Base):
@@ -71,7 +97,7 @@ class ChannelProcessingStatus(Base):
 
 
 def create_team(db: SessionLocal, name: str, slack_channel_id: str):
-    new_team = Team(name=name, slack_channel_id=slack_channel_id)
+    new_team = Team(name=name, slack_channel_ids=[slack_channel_id])
     db.add(new_team)
     db.commit()
     db.refresh(new_team)
@@ -110,7 +136,7 @@ def get_team(db: SessionLocal, team_id: int):
 
 
 def get_team_by_slack_channel(db: SessionLocal, slack_channel_id: str):
-    return db.query(Team).filter(Team.slack_channel_id == slack_channel_id).first()
+    return db.query(Team).filter(Team.slack_channel_ids.any(slack_channel_id)).first()
 
 
 def update_activity(
