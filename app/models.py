@@ -1,13 +1,47 @@
 import logging
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Float
+import json
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+    Text,
+    Enum,
+    Float,
+    TypeDecorator,
+)
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
-from app.database import Base, SessionLocal
+from app.database import Base, SessionLocal, engine
 import enum
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+
+class ArrayType(TypeDecorator):
+    impl = Text
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return json.dumps(value)
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+
+    def copy(self, **kw):
+        return ArrayType(self.impl.length)
+
+
+# Use this function to determine which array type to use
+def get_array_type():
+    if engine.name == "postgresql":
+        return PG_ARRAY(String)
+    return ArrayType()
 
 
 class ActivityType(enum.Enum):
@@ -27,15 +61,30 @@ class ActivityStatus(enum.Enum):
 class Team(Base):
     __tablename__ = "teams"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    slack_channel_id = Column(String(255), unique=True, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    slack_channel_ids = Column(get_array_type())  # Use the function here
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-
+    channels = relationship("Channel", back_populates="team")
     activities = relationship("Activity", back_populates="team")
+
+
+class Channel(Base):
+    __tablename__ = "channels"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slack_channel_id = Column(String, unique=True, index=True)
+    name = Column(String)
+    team_id = Column(Integer, ForeignKey("teams.id"))
+    monitored_bot_accounts = Column(get_array_type())  # Use the function here
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    team = relationship("Team", back_populates="channels")
 
 
 class Activity(Base):
@@ -71,7 +120,7 @@ class ChannelProcessingStatus(Base):
 
 
 def create_team(db: SessionLocal, name: str, slack_channel_id: str):
-    new_team = Team(name=name, slack_channel_id=slack_channel_id)
+    new_team = Team(name=name, slack_channel_ids=[slack_channel_id])
     db.add(new_team)
     db.commit()
     db.refresh(new_team)
@@ -110,7 +159,17 @@ def get_team(db: SessionLocal, team_id: int):
 
 
 def get_team_by_slack_channel(db: SessionLocal, slack_channel_id: str):
-    return db.query(Team).filter(Team.slack_channel_id == slack_channel_id).first()
+    if engine.name == "postgresql":
+        return (
+            db.query(Team).filter(Team.slack_channel_ids.any(slack_channel_id)).first()
+        )
+    else:
+        # For SQLite, we need to use a different approach
+        return (
+            db.query(Team)
+            .filter(Team.slack_channel_ids.like(f'%"{slack_channel_id}"%'))
+            .first()
+        )
 
 
 def update_activity(
