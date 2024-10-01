@@ -12,6 +12,7 @@ engine = create_engine(settings.database_url)
 def init_db():
     """Initialize the database, creating tables if they don't exist."""
     global SessionLocal  # Declare SessionLocal as global
+
     try:
         Base.metadata.create_all(engine)
         print("Tables created successfully.")
@@ -20,7 +21,7 @@ def init_db():
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    return engine, SessionLocal
+    return SessionLocal
 
 
 def get_db():
