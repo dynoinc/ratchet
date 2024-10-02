@@ -29,7 +29,7 @@ app = FastAPI(lifespan=lifespan)
 settings = Settings()
 
 # Initialize the database
-engine, SessionLocal = init_db()
+_ = init_db()
 
 
 @app.get("/")
