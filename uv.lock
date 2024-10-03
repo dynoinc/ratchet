@@ -667,7 +667,7 @@ wheels = [
 
 [[package]]
 name = "ratchet"
-version = "2024.10.3.1"
+version = "2024.10.3.2"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
