@@ -18,9 +18,10 @@ FROM python:3.12-slim
 COPY --from=builder /bin/uv /bin/uv
 
 # Copy the application and installed packages from the builder stage
-COPY --from=builder /app /app
+COPY --from=builder /app/app /app
+COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /usr/local/lib/python*/site-packages /usr/local/lib/python*/site-packages
-WORKDIR /app
+WORKDIR /
 
 # Run the application
 CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--port", "5001", "--host", "127.0.0.1"]
