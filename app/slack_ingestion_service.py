@@ -222,10 +222,12 @@ async def handle_app_mentions(body, say, client):
         if channel:
             await client.chat_postMessage(
                 channel=channel_id,
-                text="I'm already assisting in this channel. How can I help you?",
+                text="Hey there! 👋 I'm like a toddler right now - full of potential, but still learning to walk and talk. 🚶‍♂️🗣️ I can't be much help at the moment, but I'm growing fast! Soon, I'll be your go-to AI assistant. For now, let's just enjoy this awkward silence together, shall we? 😅",
                 thread_ts=thread_ts,
             )
-            logger.debug(f"Bot already set up in channel {channel_id}")
+            logger.debug(
+                f"Bot already set up in channel {channel_id}, sent friendly message"
+            )
         else:
             onboarding_state[channel_id] = {
                 "step": "waiting_for_assist",
