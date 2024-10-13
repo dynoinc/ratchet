@@ -1,27 +1,29 @@
-# Stage 1: Build the application
-FROM python:3.12-slim AS builder
+# Stage 1: Build the Go application
+FROM golang:1.23-alpine AS builder
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Copy the application into the container
-COPY . /app
+# Set the working directory inside the container
 WORKDIR /app
 
-# Install the application dependencies
-RUN uv sync --frozen --no-cache
+# Copy go.mod and go.sum to the container
+COPY go.mod go.sum ./
 
-# Stage 3: Final stage
-FROM python:3.12-slim
+# Download Go modules
+RUN go mod download
 
-# Copy uv from the builder stage
-COPY --from=builder /bin/uv /bin/uv
+# Copy the rest of the application source code
+COPY . .
 
-# Copy the application and installed packages from the builder stage
-COPY --from=builder /app/app /app
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /usr/local/lib/python*/site-packages /usr/local/lib/python*/site-packages
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ratchet ./cmd/ratchet/main.go
+
+# Stage 2: Create the final image
+FROM alpine:latest
+
+# Set the working directory inside the container
 WORKDIR /
 
-# Run the application
-CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--port", "5001", "--host", "127.0.0.1"]
+# Copy the built binary from the builder stage
+COPY --from=builder /app/ratchet .
+
+# Set the entry point to the application
+ENTRYPOINT ["./ratchet"]
