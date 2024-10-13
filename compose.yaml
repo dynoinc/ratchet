@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5001:5001"
+    environment:
+      - RATCHET_DATABASE_HOST=db
+      - RATCHET_DATABASE_PORT=5432
+      - RATCHET_DATABASE_USER=postgres
+      - RATCHET_DATABASE_PASS=mypass
+      - RATCHET_DATABASE_NAME=postgres
+    env_file: 
+      - path: .env
+        required: false
+    depends_on:
+      - db
+  db:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=mypass
