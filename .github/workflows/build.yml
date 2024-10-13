@@ -2,31 +2,58 @@ name: Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
-  workflow_call:
+    branches: [main]
 
 jobs:
-  build:
+  run:
+    name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install uv
-      uses: astral-sh/setup-uv@v3
-      with:
-          enable-cache: true
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Install the project
-      run: uv sync --all-extras --dev
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
 
-    - name: Ruff formatter
-      run: uv run ruff format . --check --diff
+      - name: Go Format
+        run: gofmt -w . && git diff --exit-code
 
-    - name: Ruff linter
-      run: uv run ruff check --output-format=github .
+      - name: Go Vet
+        run: go vet ./...
 
-    - name: Run tests
-      run: uv run python -m pytest tests
+      - name: Go Tidy
+        run: go mod tidy && git diff --exit-code
+
+      - name: Go Mod
+        run: go mod download
+
+      - name: Go Mod Verify
+        run: go mod verify
+
+      - name: Go Generate
+        run: go generate ./... && git diff --exit-code
+
+      - name: Go Build
+        run: go build ./...
+
+      - name: Go Lint
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint run ./...
+
+      - name: Go Test
+        run: go test -v -count=1 -race -shuffle=on ./...
+
+      - name: Go Benchmark
+        run: go test -v -shuffle=on -run=- -bench=. -benchtime=1x ./...
+
+      - name: Go Vuln Check
+        run: go run golang.org/x/vuln/cmd/govulncheck -test ./...
+
+      - name: Go Deadcode
+        run: if [ -n "`go run golang.org/x/tools/cmd/deadcode ./...`" ]; then exit 1; fi
