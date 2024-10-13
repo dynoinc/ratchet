@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ratchet ./cmd/ratchet/main.go
 
 # Stage 2: Create the final image
-FROM alpine:latest
+FROM bash:latest
 
 # Set the working directory inside the container
 WORKDIR /
