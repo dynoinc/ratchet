@@ -17,7 +17,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ratchet ./cmd/ratchet/main.go
 
 # Stage 2: Create the final image
-FROM bash:latest
+FROM alpine:latest
+
+# Install bash
+RUN apk add --no-cache bash
 
 # Set the working directory inside the container
 WORKDIR /
