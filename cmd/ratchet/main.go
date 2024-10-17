@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -21,6 +22,7 @@ type Config struct {
 	DatabaseName string `split_words:"true"`
 	// Slack configuration
 	SlackBotToken string `split_words:"true" required:"true"`
+	SlackAppToken string `split_words:"true" required:"true"`
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:":5001"`
 }
@@ -31,11 +33,9 @@ func main() {
 		log.Fatalf("error loading configuration: %v", err)
 	}
 
-	// Slack API test
-	if err := internal.TestSlackAPIConnectivity(c.SlackBotToken); err != nil {
-		log.Printf("Slack API test failed: %v", err)
-	} else {
-		log.Println("Slack API test passed")
+	ctx := context.Background()
+	if err := internal.SetupSlack(ctx, c.SlackAppToken, c.SlackBotToken); err != nil {
+		log.Printf("error setting up Slack: %v", err)
 	}
 
 	// Database test

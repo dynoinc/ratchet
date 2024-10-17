@@ -14,16 +14,21 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ratchet ./cmd/ratchet/main.go
+RUN go build -o ratchet ./cmd/ratchet/main.go
 
 # Stage 2: Create the final image
 FROM ubuntu:22.04
+
+RUN apt update
+RUN apt install -y ca-certificates
+RUN update-ca-certificates
 
 # Set the working directory inside the container
 WORKDIR /
 
 # Copy the built binary from the builder stage
 COPY --from=builder /app/ratchet .
+
 
 # Set the entry point to the application
 ENTRYPOINT ["./ratchet"]
