@@ -29,6 +29,5 @@ WORKDIR /
 # Copy the built binary from the builder stage
 COPY --from=builder /app/ratchet .
 
-
 # Set the entry point to the application
 ENTRYPOINT ["./ratchet"]
