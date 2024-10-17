@@ -3,6 +3,14 @@ services:
     build: .
     ports:
       - "5001:5001"
+    develop:
+      watch:
+        - action: rebuild
+          path: cmd/
+        - action: rebuild
+          path: internal/
+        - action: rebuild
+          path: go.sum
     environment:
       - RATCHET_DATABASE_HOST=db
       - RATCHET_DATABASE_PORT=5432
@@ -20,3 +28,15 @@ services:
       - "5432:5432"
     environment:
       - POSTGRES_PASSWORD=mypass
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: postgres@admin.com
+      PGADMIN_DEFAULT_PASSWORD: mypass
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    logging:
+      driver: none
