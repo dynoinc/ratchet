@@ -3,6 +3,7 @@ module github.com/rajatgoel/ratchet
 go 1.23.2
 
 require (
+	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/jackc/pgx/v5 v5.7.1
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/slack-go/slack v0.14.0
