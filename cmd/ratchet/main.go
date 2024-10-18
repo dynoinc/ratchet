@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/carlmjohnson/versioninfo"
 	"github.com/kelseyhightower/envconfig"
 
 	"github.com/rajatgoel/ratchet/internal"
