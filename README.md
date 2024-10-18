@@ -12,6 +12,6 @@ AI bot to help reduce operational toil
   * Access `ratchet` UI at http://localhost:5001.
   * Passing `--attach app` will make docker-compose only show `app` service logs on terminal.
   * If you want to automatically re-build bot and changes, enable watch inside it by pressing `w` once it starts.
-* Access `pgadmin` at https://localhost:8080. 
+* Access `pgadmin` at http://localhost:8080. 
   * Login using username `postgres@admin.com` and password `mypass`. 
   * Add a server with host `db` and password `mypass`.
