@@ -26,6 +26,8 @@ type Config struct {
 }
 
 func main() {
+	log.Println("Running version:", versioninfo.Short())
+
 	var c Config
 	if err := envconfig.Process("ratchet", &c); err != nil {
 		log.Fatalf("error loading configuration: %v", err)
