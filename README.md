@@ -3,6 +3,7 @@ AI bot to help reduce operational toil
 
 ## Contributing
 
+* To an slack workspace where you are admin, add an app using the manifest from `app-manifest.yaml`.
 * Get access to a working Slack app/bot token and add it to `.env` (.gitignore'd) file as -
 ```
   RATCHET_SLACK_APP_TOKEN=xapp-...
