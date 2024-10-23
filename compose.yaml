@@ -17,6 +17,7 @@ services:
       - RATCHET_DATABASE_USER=postgres
       - RATCHET_DATABASE_PASS=mypass
       - RATCHET_DATABASE_NAME=postgres
+      - RATCHET_DATABASE_DISABLE_TLS=true
     env_file: 
       - path: .env
         required: false
