@@ -15,6 +15,6 @@ func TestDBConnection(t *testing.T) {
 	postgresContainer, err := postgres.Run(ctx, "postgres:latest", postgres.BasicWaitStrategies())
 	require.NoError(t, err)
 
-	err = internal.TestDBConnection(postgresContainer.MustConnectionString(ctx))
-	require.NoErrorf(t, err, postgresContainer.MustConnectionString(ctx))
+	_, err = internal.NewDBConnectionWithURL(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
+	require.NoError(t, err)
 }

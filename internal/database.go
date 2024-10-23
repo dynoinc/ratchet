@@ -39,12 +39,16 @@ func NewDBConnection(ctx context.Context, c DatabaseConfig) (*schema.Queries, er
 		dbURL.RawQuery = "sslmode=disable"
 	}
 
+	return NewDBConnectionWithURL(ctx, dbURL.String())
+}
+
+func NewDBConnectionWithURL(ctx context.Context, dbURL string) (*schema.Queries, error) {
 	d, err := iofs.New(migrationFiles, "schema/migrations")
 	if err != nil {
 		return nil, fmt.Errorf("unable to load migrations: %w", err)
 	}
 
-	m, err := migrate.NewWithSourceInstance("iofs", d, dbURL.String())
+	m, err := migrate.NewWithSourceInstance("iofs", d, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create driver: %w", err)
 	}
@@ -53,7 +57,7 @@ func NewDBConnection(ctx context.Context, c DatabaseConfig) (*schema.Queries, er
 		return nil, fmt.Errorf("unable to apply migrations: %w", err)
 	}
 
-	pool, err := pgxpool.New(ctx, dbURL.String())
+	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to connect to database: %w", err)
 	}
