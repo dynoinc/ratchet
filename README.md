@@ -9,10 +9,10 @@ AI bot to help reduce operational toil
   RATCHET_SLACK_APP_TOKEN=xapp-...
   RATCHET_SLACK_BOT_TOKEN=xoxb-...
 ```
-* Use `docker compose up --remove-orphans --attach app` to start the stack locally.
+* Use `docker compose up --remove-orphans --watch --attach app` to start the stack locally.
   * Access `ratchet` UI at http://localhost:5001.
   * Passing `--attach app` will make docker-compose only show `app` service logs on terminal.
-  * If you want to automatically re-build bot on changes, enable watch by pressing `w`.
+  * Passing `--watch` makes docker-compare recompile bot on any change and update container.
 * Access `pgadmin` UI at http://localhost:8080. 
   * Login using username `postgres@admin.com` and password `mypass`. 
   * Add a server with host `db` and password `mypass`.
