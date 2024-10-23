@@ -15,6 +15,7 @@ oauth_config:
   scopes:
     bot:
       - channels:history
+      - channels:join
       - channels:read
       - chat:write
       - commands
@@ -23,7 +24,6 @@ oauth_config:
       - mpim:read
       - reactions:read
       - reactions:write
-      - channels:join
 settings:
   event_subscriptions:
     bot_events:
