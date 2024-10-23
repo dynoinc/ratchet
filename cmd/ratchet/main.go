@@ -5,22 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
-	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/kelseyhightower/envconfig"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/rajatgoel/ratchet/internal"
 )
 
 type Config struct {
 	// Database configuration
-	DatabaseHost string `split_words:"true"`
-	DatabasePort int    `split_words:"true"`
-	DatabaseUser string `split_words:"true"`
-	DatabasePass string `split_words:"true"`
-	DatabaseName string `split_words:"true"`
+	internal.DatabaseConfig
 	// Slack configuration
 	SlackBotToken string `split_words:"true" required:"true"`
 	SlackAppToken string `split_words:"true" required:"true"`
@@ -29,6 +29,9 @@ type Config struct {
 }
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	log.Println("Running version:", versioninfo.Short())
 
 	var c Config
@@ -36,30 +39,58 @@ func main() {
 		log.Fatalf("error loading configuration: %v", err)
 	}
 
-	ctx := context.Background()
-	if err := internal.SetupSlack(ctx, c.SlackAppToken, c.SlackBotToken); err != nil {
-		log.Printf("error setting up Slack: %v", err)
+	// Database setup
+	dbQueries, err := internal.NewDBConnection(ctx, c.DatabaseConfig)
+	if err != nil {
+		log.Fatalf("error setting up database: %v", err)
 	}
 
-	// Database test
-	dbURL := &url.URL{
-		Scheme: "postgres", // Use the appropriate scheme for your database
-		User:   url.UserPassword(c.DatabaseUser, c.DatabasePass),
-		Host:   fmt.Sprintf("%s:%d", c.DatabaseHost, c.DatabasePort),
-		Path:   c.DatabaseName,
-	}
-	if err := internal.TestDBConnection(dbURL.String()); err != nil {
-		log.Printf("Database test failed: %v", err)
-	} else {
-		log.Println("Database test passed")
+	// Slack setup
+	bot, err := internal.NewSlackBot(ctx, c.SlackAppToken, c.SlackBotToken, dbQueries)
+	if err != nil {
+		log.Fatalf("error setting up Slack: %v", err)
 	}
 
-	log.Printf("Starting HTTP server on %s", c.HTTPAddr)
+	// HTTP server setup
 	server := &http.Server{
-		Addr:    c.HTTPAddr,
-		Handler: internal.NewHandler(),
+		BaseContext: func(listener net.Listener) context.Context { return ctx },
+		Addr:        c.HTTPAddr,
+		Handler:     internal.NewHandler(),
 	}
-	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("HTTP server error: %v", err)
+
+	wg, ctx := errgroup.WithContext(ctx)
+	wg.Go(func() error {
+		log.Printf("Starting HTTP server on %s", c.HTTPAddr)
+		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("HTTP server error: %w", err)
+		}
+
+		return nil
+	})
+
+	wg.Go(func() error {
+		log.Printf("Starting bot with ID %s", bot.BotUserID)
+		return bot.Run(ctx)
+	})
+	wg.Go(func() error {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+		select {
+		case <-ctx.Done():
+		case <-c:
+			log.Println("Shutting down")
+			cancel()
+
+			if err := server.Shutdown(ctx); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err := wg.Wait(); err != nil {
+		log.Printf("error running server: %v\n", err)
 	}
 }

@@ -2,143 +2,151 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
+	"slices"
+	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+
+	"github.com/rajatgoel/ratchet/internal/schema"
 )
 
-type slackBot struct {
-	botUserID string
+type SlackBot struct {
+	BotUserID string
 
-	client       *slack.Client
-	socketClient *socketmode.Client
+	api    *slack.Client
+	client *socketmode.Client
+
+	dbQueries *schema.Queries
 }
 
-func SetupSlack(ctx context.Context, appToken, botToken string) error {
-	client := slack.New(
+func NewSlackBot(ctx context.Context, appToken, botToken string, dbQueries *schema.Queries) (*SlackBot, error) {
+	api := slack.New(
 		botToken,
-		//slack.OptionDebug(true),
 		slack.OptionAppLevelToken(appToken),
 		slack.OptionLog(log.New(os.Stdout, "slack: ", log.Lshortfile|log.LstdFlags)),
 	)
 
-	authTest, err := client.AuthTest()
+	authTest, err := api.AuthTestContext(ctx)
 	if err != nil {
-		return fmt.Errorf("Slack API test failed: %v", err)
+		return nil, fmt.Errorf("slack API test failed: %v", err)
 	}
-	log.Printf("Bot ID is %s", authTest.UserID)
 
 	socketClient := socketmode.New(
-		client,
-		//socketmode.OptionDebug(true),
+		api,
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
 
-	slackBot := &slackBot{
-		botUserID:    authTest.UserID,
-		client:       client,
-		socketClient: socketClient,
-	}
-
-	go slackBot.processSocketModeEvents(ctx)
-	go slackBot.socketClient.RunContext(ctx)
-	return nil
+	return &SlackBot{
+		BotUserID: authTest.UserID,
+		api:       api,
+		client:    socketClient,
+		dbQueries: dbQueries,
+	}, nil
 }
 
-func (b *slackBot) processSocketModeEvents(ctx context.Context) {
-	for evt := range b.socketClient.Events {
-		if evt.Type == socketmode.EventTypeHello || evt.Type == socketmode.EventTypeConnecting || evt.Type == socketmode.EventTypeConnected {
-			continue
+func (b *SlackBot) Run(ctx context.Context) error {
+	go func() {
+		commands := map[string]func(ctx context.Context, evt socketmode.Event, cmd slack.SlashCommand){
+			"track-channel": b.handleTrackChannel,
 		}
 
-		log.Printf("Got socket mode event: %#v", evt)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case evt := <-b.client.Events:
+				switch evt.Type {
+				case socketmode.EventTypeSlashCommand:
+					cmd, ok := evt.Data.(slack.SlashCommand)
+					if !ok {
+						continue
+					}
 
-		switch evt.Type {
-		case socketmode.EventTypeEventsAPI:
-			eventsAPIEvent, _ := evt.Data.(slackevents.EventsAPIEvent)
-			log.Printf("Got a events API event: %v", eventsAPIEvent)
-
-			switch eventsAPIEvent.InnerEvent.Type {
-			case "member_joined_channel":
-				memberEvent := eventsAPIEvent.InnerEvent.Data.(*slackevents.MemberJoinedChannelEvent)
-
-				// Only trigger modal when the bot itself joins the channel
-				if memberEvent.User == b.botUserID && memberEvent.Inviter != "" {
-					handleBotJoin(ctx, b.socketClient, memberEvent)
+					subCmd := ""
+					if args := strings.Fields(cmd.Text); len(args) > 0 {
+						subCmd = args[0]
+					}
+					if handler, ok := commands[subCmd]; ok {
+						handler(ctx, evt, cmd)
+						continue
+					}
+					b.client.Ack(*evt.Request, &slack.Msg{
+						Text: fmt.Sprintf("Please provide a command: %v", slices.Collect(maps.Keys(commands))),
+					})
+				case socketmode.EventTypeEventsAPI:
+					eventsAPI, ok := evt.Data.(slackevents.EventsAPIEvent)
+					if !ok {
+						continue
+					}
+					b.client.Ack(*evt.Request)
+					b.handleEventAPI(eventsAPI)
 				}
 			}
-		case socketmode.EventTypeInteractive:
-			callback, ok := evt.Data.(slack.InteractionCallback)
-			if ok {
-				if callback.Type == slack.InteractionTypeViewSubmission {
-					handleModalSubmission(b.socketClient, callback)
-				}
-			}
 		}
+	}()
 
-		if evt.Request != nil {
-			b.socketClient.Ack(*evt.Request)
-		}
-	}
+	return b.client.RunContext(ctx)
 }
 
-func handleBotJoin(ctx context.Context, client *socketmode.Client, event *slackevents.MemberJoinedChannelEvent) {
-	modalRequest := slack.ModalViewRequest{
-		Type:   slack.VTModal,
-		Title:  slack.NewTextBlockObject("plain_text", "Ratchet", true, false),
-		Submit: slack.NewTextBlockObject("plain_text", "Submit", true, false),
-		Close:  slack.NewTextBlockObject("plain_text", "Cancel", true, false),
-		Blocks: slack.Blocks{
-			BlockSet: []slack.Block{
-				slack.NewInputBlock(
-					"team_name_block",
-					slack.NewTextBlockObject("plain_text", "Team name", false, false),
-					nil,
-					slack.NewPlainTextInputBlockElement(
-						slack.NewTextBlockObject("plain_text", "Enter your team name", false, false),
-						"plain_text_input-action",
-					),
-				),
-				slack.NewInputBlock(
-					"channel_type_block",
-					slack.NewTextBlockObject("plain_text", "Channel type", false, false),
-					nil,
-					slack.NewRadioButtonsBlockElement(
-						"radio_buttons-action",
-						slack.NewOptionBlockObject("ops", slack.NewTextBlockObject("mrkdwn", "*Ops* - Alerts are routed here", false, false), nil),
-						slack.NewOptionBlockObject("help", slack.NewTextBlockObject("mrkdwn", "*Help* - Users ask for help here", false, false), nil),
-						slack.NewOptionBlockObject("bots", slack.NewTextBlockObject("mrkdwn", "*Bots* - Automation posts updates here", false, false), nil),
-					),
-				),
-			},
-		},
+func (b *SlackBot) handleTrackChannel(ctx context.Context, evt socketmode.Event, cmd slack.SlashCommand) {
+	args := strings.Fields(cmd.Text)
+	if len(args) < 2 || args[1] == "" {
+		b.client.Ack(*evt.Request, &slack.Msg{
+			Text: "Please provide a valid team name: `/ratchet track-channel <team-name>`",
+		})
+		return
 	}
 
-	encoded, _ := json.Marshal(modalRequest)
-	log.Println(string(encoded))
-	_, err := client.Client.OpenViewContext(ctx, event.Inviter, modalRequest)
-	if err != nil {
-		log.Printf("Failed to open modal: %v", err)
+	// Join the channel
+	teamName := args[1]
+	if _, _, _, err := b.api.JoinConversationContext(ctx, cmd.ChannelID); err != nil {
+		b.client.Ack(*evt.Request, &slack.Msg{
+			Text: fmt.Sprintf("Failed to join channel %s: %v", cmd.ChannelID, err),
+		})
+		return
 	}
+
+	// Insert the team name into the database
+	channel, err := b.dbQueries.InsertSlackChannel(ctx, schema.InsertSlackChannelParams{
+		ChannelID: cmd.ChannelID,
+		TeamName:  teamName,
+	})
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.ConstraintName == "slack_channels_pkey" {
+			b.client.Ack(*evt.Request, &slack.Msg{
+				Text: fmt.Sprintf("Channel %s is already being tracked under %s", cmd.ChannelID, teamName),
+			})
+		} else {
+			b.client.Ack(*evt.Request, &slack.Msg{
+				Text: fmt.Sprintf("Failed to track channel %s under %s: %v", cmd.ChannelID, teamName, err),
+			})
+		}
+	}
+
+	b.client.Ack(*evt.Request, &slack.Msg{
+		Text: fmt.Sprintf("Successfully joined channel %s and started tracking messages under %s", channel.ChannelID, teamName),
+	})
 }
 
-func handleModalSubmission(client *socketmode.Client, callback slack.InteractionCallback) {
-	teamName := callback.View.State.Values["team_name_block"]["plain_text_input-action"].Value
-	channelType := callback.View.State.Values["channel_type_block"]["radio_buttons-action"].SelectedOption.Value
-	log.Printf("Team name: %s, Channel type: %s", teamName, channelType)
+func (b *SlackBot) handleEventAPI(event slackevents.EventsAPIEvent) {
+	switch event.Type {
+	case slackevents.CallbackEvent:
+		switch ev := event.InnerEvent.Data.(type) {
+		case *slackevents.MessageEvent:
+			// Process the message here
+			log.Printf("Channel: %s, User: %s, Message: %s",
+				ev.Channel, ev.User, ev.Text)
 
-	// Exit the channel
-	_, _, err := client.Client.PostMessage(callback.Channel.ID, slack.MsgOptionText("Exiting channel", false))
-	if err != nil {
-		log.Printf("Failed to post message: %v", err)
-	}
-	_, err = client.Client.LeaveConversation(callback.Channel.ID)
-	if err != nil {
-		log.Printf("Failed to leave channel: %v", err)
+			// Add your message processing logic here
+		}
 	}
 }
