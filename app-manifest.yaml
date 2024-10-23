@@ -9,7 +9,7 @@ features:
   slash_commands:
     - command: /ratchet
       description: Interact with ratchet bot
-      usage_hint: "[invite] [team name] [channel type]"
+      usage_hint: "[command] [args]"
       should_escape: false
 oauth_config:
   scopes:
