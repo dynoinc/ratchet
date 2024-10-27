@@ -1,5 +1,0 @@
-CREATE TABLE slack_channels (
-    channel_id VARCHAR(50) PRIMARY KEY,
-    team_name VARCHAR(100) NOT NULL,
-    added_ts TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);

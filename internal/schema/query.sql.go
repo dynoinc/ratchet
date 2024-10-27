@@ -10,21 +10,20 @@ import (
 )
 
 const getSlackChannelByID = `-- name: GetSlackChannelByID :one
-SELECT channel_id, team_name, added_ts FROM slack_channels
+SELECT channel_id, team_name, enabled FROM slack_channels
 WHERE channel_id = $1
 `
 
 func (q *Queries) GetSlackChannelByID(ctx context.Context, channelID string) (SlackChannel, error) {
 	row := q.db.QueryRow(ctx, getSlackChannelByID, channelID)
 	var i SlackChannel
-	err := row.Scan(&i.ChannelID, &i.TeamName, &i.AddedTs)
+	err := row.Scan(&i.ChannelID, &i.TeamName, &i.Enabled)
 	return i, err
 }
 
 const getSlackChannelsByTeam = `-- name: GetSlackChannelsByTeam :many
-SELECT channel_id, team_name, added_ts FROM slack_channels
+SELECT channel_id, team_name, enabled FROM slack_channels
 WHERE team_name = $1
-ORDER BY added_ts DESC
 `
 
 func (q *Queries) GetSlackChannelsByTeam(ctx context.Context, teamName string) ([]SlackChannel, error) {
@@ -36,7 +35,7 @@ func (q *Queries) GetSlackChannelsByTeam(ctx context.Context, teamName string) (
 	var items []SlackChannel
 	for rows.Next() {
 		var i SlackChannel
-		if err := rows.Scan(&i.ChannelID, &i.TeamName, &i.AddedTs); err != nil {
+		if err := rows.Scan(&i.ChannelID, &i.TeamName, &i.Enabled); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -51,23 +50,23 @@ const insertSlackChannel = `-- name: InsertSlackChannel :one
 INSERT INTO slack_channels (
     channel_id,
     team_name,
-    added_ts
+    enabled
 ) VALUES (
     $1,
     $2,
-    COALESCE($3, CURRENT_TIMESTAMP))
-RETURNING channel_id, team_name, added_ts
+    TRUE
+)
+RETURNING channel_id, team_name, enabled
 `
 
 type InsertSlackChannelParams struct {
 	ChannelID string
 	TeamName  string
-	Column3   interface{}
 }
 
 func (q *Queries) InsertSlackChannel(ctx context.Context, arg InsertSlackChannelParams) (SlackChannel, error) {
-	row := q.db.QueryRow(ctx, insertSlackChannel, arg.ChannelID, arg.TeamName, arg.Column3)
+	row := q.db.QueryRow(ctx, insertSlackChannel, arg.ChannelID, arg.TeamName)
 	var i SlackChannel
-	err := row.Scan(&i.ChannelID, &i.TeamName, &i.AddedTs)
+	err := row.Scan(&i.ChannelID, &i.TeamName, &i.Enabled)
 	return i, err
 }
