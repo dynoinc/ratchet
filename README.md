@@ -40,7 +40,7 @@ AI bot to help reduce operational toil
   * [PK] `service`
   * [PK] `created_ts`
   * `runbook`
-  * `active` (bool)
+  * `active` (bool, at most one active runbook per alert)
   * `source` (jsonb, ai model that generated the runbook or other info about how runbook was generated)
 
 ## Contributing
@@ -56,5 +56,4 @@ AI bot to help reduce operational toil
   * Passing `--attach app` will make docker-compose only show `app` service logs on terminal.
   * Passing `--watch` makes docker-compare recompile bot on any change and update container.
 * Access `pgadmin` UI at http://localhost:8080.
-  * Login using username `postgres@admin.com` and password `mypass`.
   * Add a server with host `db` and password `mypass`.

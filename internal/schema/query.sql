@@ -2,11 +2,12 @@
 INSERT INTO slack_channels (
     channel_id,
     team_name,
-    added_ts
+    enabled
 ) VALUES (
     $1,
     $2,
-    COALESCE($3, CURRENT_TIMESTAMP))
+    TRUE
+)
 RETURNING *;
 
 -- name: GetSlackChannelByID :one
@@ -15,5 +16,4 @@ WHERE channel_id = $1;
 
 -- name: GetSlackChannelsByTeam :many
 SELECT * FROM slack_channels
-WHERE team_name = $1
-ORDER BY added_ts DESC;
+WHERE team_name = $1;

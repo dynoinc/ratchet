@@ -33,11 +33,11 @@ services:
     image: dpage/pgadmin4:latest
     container_name: pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: postgres@admin.com
-      PGADMIN_DEFAULT_PASSWORD: mypass
+      PGADMIN_DEFAULT_EMAIL: pgadmin4@pgadmin.org
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
       - "8080:80"
     depends_on:
       - db
-    logging:
-      driver: none
