@@ -48,6 +48,36 @@ func NewSlackBot(ctx context.Context, appToken, botToken string, dbQueries *sche
 }
 
 func (b *SlackBot) Run(ctx context.Context) error {
+	channels, _, err := b.api.GetConversationsContext(ctx, &slack.GetConversationsParameters{})
+	if err != nil {
+		return fmt.Errorf("error getting conversations: %v", err)
+	}
+
+	channelIDs := make([]string, 0, len(channels))
+	for _, channel := range channels {
+		channelIDs = append(channelIDs, channel.ID)
+	}
+
+	existingChannels, err := b.dbQueries.GetSlackChannelsByIDs(ctx, channelIDs)
+	if err != nil {
+		return fmt.Errorf("error getting channels from db: %v", err)
+	}
+
+	existingChannelMap := make(map[string]struct{})
+	for _, channel := range existingChannels {
+		existingChannelMap[channel.ChannelID] = struct{}{}
+	}
+
+	for _, channel := range channels {
+		if _, exists := existingChannelMap[channel.ID]; !exists {
+			if _, err := b.api.LeaveConversationContext(ctx, channel.ID); err != nil {
+				log.Printf("Error leaving conversation %s: %v", channel.ID, err)
+			} else {
+				log.Printf("Left conversation %s", channel.ID)
+			}
+		}
+	}
+
 	go func() {
 		for {
 			select {
