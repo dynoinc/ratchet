@@ -56,5 +56,7 @@ AI bot to help reduce operational toil
   * Passing `--attach app` will make docker-compose only show `app` service logs on terminal.
   * Passing `--watch` makes docker-compare sync+restart bot if new binary is available at `bin/ratchet`.
     * To automatically re-compile on update, use `fswatch go.sum internal/ cmd/ | GOOS=linux xargs -n1 -I{} go build -o bin/ratchet ./cmd/ratchet/main.go`
+  * Or you can just use `itermocil`.
 * Access `pgadmin` UI at http://localhost:8080.
   * Add a server with host `db` and password `mypass`.
+
