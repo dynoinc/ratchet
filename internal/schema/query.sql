@@ -6,7 +6,7 @@ INSERT INTO slack_channels (
 ) VALUES (
     $1,
     $2,
-    TRUE
+    $3
 )
 RETURNING *;
 
@@ -26,11 +26,3 @@ RETURNING *;
 -- name: GetSlackChannelByID :one
 SELECT * FROM slack_channels
 WHERE channel_id = $1;
-
--- name: GetSlackChannelsByIDs :many
-SELECT * FROM slack_channels
-WHERE channel_id = ANY($1::text[]);
-
--- name: GetSlackChannelsByTeam :many
-SELECT * FROM slack_channels
-WHERE team_name = $1;
