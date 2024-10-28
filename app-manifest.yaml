@@ -6,11 +6,6 @@ features:
   bot_user:
     display_name: ratchet
     always_online: false
-  slash_commands:
-    - command: /ratchet
-      description: Interact with ratchet bot
-      usage_hint: "[command] [args]"
-      should_escape: false
 oauth_config:
   scopes:
     bot:
@@ -30,6 +25,7 @@ settings:
       - channel_left
       - group_left
       - member_joined_channel
+      - member_left_channel
       - message.channels
       - message.groups
       - reaction_added

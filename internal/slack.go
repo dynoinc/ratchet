@@ -2,15 +2,10 @@ package internal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"maps"
 	"os"
-	"slices"
-	"strings"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -54,33 +49,12 @@ func NewSlackBot(ctx context.Context, appToken, botToken string, dbQueries *sche
 
 func (b *SlackBot) Run(ctx context.Context) error {
 	go func() {
-		commands := map[string]func(ctx context.Context, evt socketmode.Event, cmd slack.SlashCommand){
-			"track-channel": b.handleTrackChannel,
-		}
-
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case evt := <-b.client.Events:
 				switch evt.Type {
-				case socketmode.EventTypeSlashCommand:
-					cmd, ok := evt.Data.(slack.SlashCommand)
-					if !ok {
-						continue
-					}
-
-					subCmd := ""
-					if args := strings.Fields(cmd.Text); len(args) > 0 {
-						subCmd = args[0]
-					}
-					if handler, ok := commands[subCmd]; ok {
-						handler(ctx, evt, cmd)
-						continue
-					}
-					b.client.Ack(*evt.Request, &slack.Msg{
-						Text: fmt.Sprintf("Please provide a command: %v", slices.Collect(maps.Keys(commands))),
-					})
 				case socketmode.EventTypeEventsAPI:
 					eventsAPI, ok := evt.Data.(slackevents.EventsAPIEvent)
 					if !ok {
@@ -88,6 +62,13 @@ func (b *SlackBot) Run(ctx context.Context) error {
 					}
 					b.client.Ack(*evt.Request)
 					b.handleEventAPI(eventsAPI)
+				case socketmode.EventTypeInteractive:
+					interaction, ok := evt.Data.(slack.InteractionCallback)
+					if !ok {
+						continue
+					}
+					b.client.Ack(*evt.Request)
+					b.handleInteraction(ctx, interaction)
 				}
 			}
 		}
@@ -96,51 +77,126 @@ func (b *SlackBot) Run(ctx context.Context) error {
 	return b.client.RunContext(ctx)
 }
 
-func (b *SlackBot) handleTrackChannel(ctx context.Context, evt socketmode.Event, cmd slack.SlashCommand) {
-	args := strings.Fields(cmd.Text)
-	if len(args) < 2 || args[1] == "" {
-		b.client.Ack(*evt.Request, &slack.Msg{
-			Text: "Please provide a valid team name: `/ratchet track-channel <team-name>`",
-		})
+func (b *SlackBot) handleOnboardCallback(ctx context.Context, interaction slack.InteractionCallback) {
+	// Check if channel already exists and is enabled. If yes, do nothing.
+	channel, err := b.dbQueries.GetSlackChannelByID(ctx, interaction.Channel.ID)
+	if err == nil && channel.Enabled {
 		return
 	}
 
-	// Join the channel
-	teamName := args[1]
-	if _, _, _, err := b.api.JoinConversationContext(ctx, cmd.ChannelID); err != nil {
-		b.client.Ack(*evt.Request, &slack.Msg{
-			Text: fmt.Sprintf("Failed to join channel %s: %v", cmd.ChannelID, err),
-		})
-		return
+	modal := slack.ModalViewRequest{
+		Type:            slack.VTModal,
+		Title:           slack.NewTextBlockObject("plain_text", "Ratchet onboarding", false, false),
+		Submit:          slack.NewTextBlockObject("plain_text", "Submit", false, false),
+		Close:           slack.NewTextBlockObject("plain_text", "Cancel", false, false),
+		CallbackID:      "onboard_modal_callback",
+		PrivateMetadata: interaction.Channel.ID,
+		Blocks: slack.Blocks{
+			BlockSet: []slack.Block{
+				slack.InputBlock{
+					Type:    slack.MBTInput,
+					BlockID: "team_name_block",
+					Label:   slack.NewTextBlockObject("plain_text", "Enter team name", false, false),
+					Element: slack.PlainTextInputBlockElement{
+						Type:     slack.METPlainTextInput,
+						ActionID: "team_name_input",
+					},
+				},
+			},
+		},
 	}
 
-	// Insert the team name into the database
-	channel, err := b.dbQueries.InsertSlackChannel(ctx, schema.InsertSlackChannelParams{
-		ChannelID: cmd.ChannelID,
-		TeamName:  teamName,
-	})
+	_, err = b.api.OpenViewContext(ctx, interaction.TriggerID, modal)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.ConstraintName == "slack_channels_pkey" {
-			b.client.Ack(*evt.Request, &slack.Msg{
-				Text: fmt.Sprintf("Channel %s is already being tracked under %s", cmd.ChannelID, teamName),
-			})
-		} else {
-			b.client.Ack(*evt.Request, &slack.Msg{
-				Text: fmt.Sprintf("Failed to track channel %s under %s: %v", cmd.ChannelID, teamName, err),
-			})
+		log.Printf("Error opening modal: %v", err)
+	}
+}
+
+func (b *SlackBot) handleOnboardModalSubmit(ctx context.Context, interaction slack.InteractionCallback) {
+	teamName := interaction.View.State.Values["team_name_block"]["team_name_input"].Value
+	channelID := interaction.View.PrivateMetadata
+	log.Printf("Team name: %s, channelID: %s", teamName, channelID)
+	existingChannel, err := b.dbQueries.GetSlackChannelByID(ctx, channelID)
+	if err == nil {
+		if existingChannel.Enabled {
+			if _, _, err := b.api.PostMessageContext(
+				ctx,
+				interaction.User.ID,
+				slack.MsgOptionText(fmt.Sprintf("Channel %s is already registered under team %s", channelID, existingChannel.TeamName), false),
+			); err != nil {
+				log.Printf("Error posting message: %v", err)
+			}
+
+			return
+		}
+
+		if _, err := b.dbQueries.UpdateSlackChannel(ctx, schema.UpdateSlackChannelParams{
+			ChannelID: channelID,
+			TeamName:  teamName,
+		}); err != nil {
+			if _, _, err := b.api.PostMessageContext(
+				ctx,
+				interaction.User.ID,
+				slack.MsgOptionText(fmt.Sprintf("Failed to update channel %s: %v", channelID, err), false),
+			); err != nil {
+				log.Printf("Error posting message: %v", err)
+			}
+			return
+		}
+	} else {
+		if _, err := b.dbQueries.InsertSlackChannel(ctx, schema.InsertSlackChannelParams{
+			ChannelID: channelID,
+			TeamName:  teamName,
+		}); err != nil {
+			if _, _, err := b.api.PostMessageContext(
+				ctx,
+				interaction.User.ID,
+				slack.MsgOptionText(fmt.Sprintf("Failed to register channel %s: %v", channelID, err), false),
+			); err != nil {
+				log.Printf("Error posting message: %v", err)
+			}
+			return
 		}
 	}
 
-	b.client.Ack(*evt.Request, &slack.Msg{
-		Text: fmt.Sprintf("Successfully joined channel %s and started tracking messages under %s", channel.ChannelID, teamName),
-	})
+	if _, _, err := b.api.PostMessageContext(ctx, channelID, slack.MsgOptionText(
+		fmt.Sprintf("Successfully registered channel %s under team %s", channelID, teamName),
+		false)); err != nil {
+		log.Printf("Error posting message: %v", err)
+	}
 }
 
 func (b *SlackBot) handleEventAPI(event slackevents.EventsAPIEvent) {
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
+		case *slackevents.MemberLeftChannelEvent:
+			if ev.User != b.BotUserID {
+				return
+			}
+
+			if _, err := b.dbQueries.DisableSlackChannel(context.Background(), ev.Channel); err != nil {
+				log.Printf("Error disabling channel: %v", err)
+			}
+		case *slackevents.MemberJoinedChannelEvent:
+			if ev.User != b.BotUserID {
+				return
+			}
+
+			attachment := slack.Attachment{
+				Text:       "Thanks for inviting ratchet to your channel. Click the button below to onboard.",
+				CallbackID: "onboard_callback",
+				Actions: []slack.AttachmentAction{
+					{
+						Name:  "onboard",
+						Text:  "Click here to onboard",
+						Type:  "button",
+						Value: "onboard",
+					},
+				},
+			}
+
+			b.api.PostMessage(ev.Channel, slack.MsgOptionAttachments(attachment))
 		case *slackevents.MessageEvent:
 			// Process the message here
 			log.Printf("Channel: %s, User: %s, Message: %s",
@@ -148,5 +204,16 @@ func (b *SlackBot) handleEventAPI(event slackevents.EventsAPIEvent) {
 
 			// Add your message processing logic here
 		}
+	}
+}
+
+func (b *SlackBot) handleInteraction(ctx context.Context, interaction slack.InteractionCallback) {
+	if interaction.CallbackID == "onboard_callback" {
+		b.handleOnboardCallback(ctx, interaction)
+		return
+	}
+	if interaction.View.CallbackID == "onboard_modal_callback" {
+		b.handleOnboardModalSubmit(ctx, interaction)
+		return
 	}
 }
