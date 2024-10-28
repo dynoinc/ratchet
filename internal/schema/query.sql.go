@@ -9,6 +9,20 @@ import (
 	"context"
 )
 
+const disableSlackChannel = `-- name: DisableSlackChannel :one
+UPDATE slack_channels
+SET enabled = FALSE
+WHERE channel_id = $1
+RETURNING channel_id, team_name, enabled
+`
+
+func (q *Queries) DisableSlackChannel(ctx context.Context, channelID string) (SlackChannel, error) {
+	row := q.db.QueryRow(ctx, disableSlackChannel, channelID)
+	var i SlackChannel
+	err := row.Scan(&i.ChannelID, &i.TeamName, &i.Enabled)
+	return i, err
+}
+
 const getSlackChannelByID = `-- name: GetSlackChannelByID :one
 SELECT channel_id, team_name, enabled FROM slack_channels
 WHERE channel_id = $1
@@ -66,6 +80,26 @@ type InsertSlackChannelParams struct {
 
 func (q *Queries) InsertSlackChannel(ctx context.Context, arg InsertSlackChannelParams) (SlackChannel, error) {
 	row := q.db.QueryRow(ctx, insertSlackChannel, arg.ChannelID, arg.TeamName)
+	var i SlackChannel
+	err := row.Scan(&i.ChannelID, &i.TeamName, &i.Enabled)
+	return i, err
+}
+
+const updateSlackChannel = `-- name: UpdateSlackChannel :one
+UPDATE slack_channels
+SET team_name = $2,
+    enabled = TRUE
+WHERE channel_id = $1
+RETURNING channel_id, team_name, enabled
+`
+
+type UpdateSlackChannelParams struct {
+	ChannelID string
+	TeamName  string
+}
+
+func (q *Queries) UpdateSlackChannel(ctx context.Context, arg UpdateSlackChannelParams) (SlackChannel, error) {
+	row := q.db.QueryRow(ctx, updateSlackChannel, arg.ChannelID, arg.TeamName)
 	var i SlackChannel
 	err := row.Scan(&i.ChannelID, &i.TeamName, &i.Enabled)
 	return i, err
