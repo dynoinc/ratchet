@@ -55,7 +55,7 @@ func main() {
 	server := &http.Server{
 		BaseContext: func(listener net.Listener) context.Context { return ctx },
 		Addr:        c.HTTPAddr,
-		Handler:     internal.NewHandler(),
+		Handler:     internal.NewHandler(dbQueries),
 	}
 
 	wg, ctx := errgroup.WithContext(ctx)

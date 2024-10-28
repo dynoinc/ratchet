@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+    {{template "header" .}}
+    <body>
+        <header class="container-fluid navbar">
+            <nav class="grid" style="display: flex; align-items: center">
+                <ul>
+                    <section>
+                        <a href="/" aria-label="Home">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                fill="white"
+                                viewBox="0 0 24 24"
+                            >
+                                <path d="M12 3l9 9h-3v9H6v-9H3l9-9z" />
+                            </svg>
+                        </a>
+                    </section>
+                    <li>
+                        <section>
+                            <strong>Ratchet</strong>
+                        </section>
+                    </li>
+                </ul>
+            </nav>
+        </header>
+
+        <main class="container-fluid">
+            <section class="container-fluid" id="itemList">
+                <h3>Slack channels</h3>
+                <table class="striped">
+                    <thead>
+                        <tr>
+                            <th>Channel Name</th>
+                            <th>Enabled</th>
+                            <th>Registered at</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Channels}}
+                        <tr>
+                            <td>{{.ChannelID}}</td>
+                            <td>{{.Enabled}}</td>
+                            <td>{{.CreatedAt}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </section>
+        </main>
+    </body>
+</html>

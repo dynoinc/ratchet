@@ -23,6 +23,7 @@ services:
         required: false
     depends_on:
       - db
+    restart: always
   db:
     image: postgres:latest
     ports:
