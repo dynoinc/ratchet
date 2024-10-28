@@ -48,36 +48,6 @@ func NewSlackBot(ctx context.Context, appToken, botToken string, dbQueries *sche
 }
 
 func (b *SlackBot) Run(ctx context.Context) error {
-	channels, _, err := b.api.GetConversationsContext(ctx, &slack.GetConversationsParameters{})
-	if err != nil {
-		return fmt.Errorf("error getting conversations: %v", err)
-	}
-
-	channelIDs := make([]string, 0, len(channels))
-	for _, channel := range channels {
-		channelIDs = append(channelIDs, channel.ID)
-	}
-
-	existingChannels, err := b.dbQueries.GetSlackChannelsByIDs(ctx, channelIDs)
-	if err != nil {
-		return fmt.Errorf("error getting channels from db: %v", err)
-	}
-
-	existingChannelMap := make(map[string]struct{})
-	for _, channel := range existingChannels {
-		existingChannelMap[channel.ChannelID] = struct{}{}
-	}
-
-	for _, channel := range channels {
-		if _, exists := existingChannelMap[channel.ID]; !exists {
-			if _, err := b.api.LeaveConversationContext(ctx, channel.ID); err != nil {
-				log.Printf("Error leaving conversation %s: %v", channel.ID, err)
-			} else {
-				log.Printf("Left conversation %s", channel.ID)
-			}
-		}
-	}
-
 	go func() {
 		for {
 			select {
@@ -114,6 +84,14 @@ func (b *SlackBot) handleOnboardCallback(ctx context.Context, interaction slack.
 		return
 	}
 
+	if _, err := b.dbQueries.InsertSlackChannel(ctx, schema.InsertSlackChannelParams{
+		ChannelID: interaction.Channel.ID,
+		TeamName:  "",
+	}); err != nil {
+		log.Printf("Error inserting channel: %v", err)
+		return
+	}
+
 	modal := slack.ModalViewRequest{
 		Type:            slack.VTModal,
 		Title:           slack.NewTextBlockObject("plain_text", "Ratchet onboarding", false, false),
@@ -145,48 +123,44 @@ func (b *SlackBot) handleOnboardCallback(ctx context.Context, interaction slack.
 func (b *SlackBot) handleOnboardModalSubmit(ctx context.Context, interaction slack.InteractionCallback) {
 	teamName := interaction.View.State.Values["team_name_block"]["team_name_input"].Value
 	channelID := interaction.View.PrivateMetadata
-	log.Printf("Team name: %s, channelID: %s", teamName, channelID)
+
 	existingChannel, err := b.dbQueries.GetSlackChannelByID(ctx, channelID)
-	if err == nil {
-		if existingChannel.Enabled {
-			if _, _, err := b.api.PostMessageContext(
-				ctx,
-				interaction.User.ID,
-				slack.MsgOptionText(fmt.Sprintf("Channel %s is already registered under team %s", channelID, existingChannel.TeamName), false),
-			); err != nil {
-				log.Printf("Error posting message: %v", err)
-			}
+	if err != nil {
+		if _, _, err := b.api.PostMessageContext(
+			ctx,
+			interaction.User.ID,
+			slack.MsgOptionText("Error: channel record not found. Please contact Ratchet admins to debug further.", false),
+		); err != nil {
+			log.Printf("Error posting message: %v", err)
+		}
+		return
+	}
 
-			return
+	if existingChannel.Enabled {
+		if _, _, err := b.api.PostMessageContext(
+			ctx,
+			interaction.User.ID,
+			slack.MsgOptionText(fmt.Sprintf("Channel %s is already registered under team %s", channelID, existingChannel.TeamName), false),
+		); err != nil {
+			log.Printf("Error posting message: %v", err)
 		}
 
-		if _, err := b.dbQueries.UpdateSlackChannel(ctx, schema.UpdateSlackChannelParams{
-			ChannelID: channelID,
-			TeamName:  teamName,
-		}); err != nil {
-			if _, _, err := b.api.PostMessageContext(
-				ctx,
-				interaction.User.ID,
-				slack.MsgOptionText(fmt.Sprintf("Failed to update channel %s: %v", channelID, err), false),
-			); err != nil {
-				log.Printf("Error posting message: %v", err)
-			}
-			return
+		return
+	}
+
+	if _, err := b.dbQueries.UpdateSlackChannel(ctx, schema.UpdateSlackChannelParams{
+		ChannelID: channelID,
+		TeamName:  teamName,
+	}); err != nil {
+		if _, _, err := b.api.PostMessageContext(
+			ctx,
+			interaction.User.ID,
+			slack.MsgOptionText(fmt.Sprintf("Failed to update channel %s: %v", channelID, err), false),
+		); err != nil {
+			log.Printf("Error posting message: %v", err)
 		}
-	} else {
-		if _, err := b.dbQueries.InsertSlackChannel(ctx, schema.InsertSlackChannelParams{
-			ChannelID: channelID,
-			TeamName:  teamName,
-		}); err != nil {
-			if _, _, err := b.api.PostMessageContext(
-				ctx,
-				interaction.User.ID,
-				slack.MsgOptionText(fmt.Sprintf("Failed to register channel %s: %v", channelID, err), false),
-			); err != nil {
-				log.Printf("Error posting message: %v", err)
-			}
-			return
-		}
+
+		return
 	}
 
 	if _, _, err := b.api.PostMessageContext(ctx, channelID, slack.MsgOptionText(

@@ -215,6 +215,7 @@ type SlackChannel struct {
 	ChannelID string
 	TeamName  string
 	Enabled   bool
+	CreatedAt pgtype.Timestamp
 }
 
 type SlackMessage struct {
