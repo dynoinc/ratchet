@@ -45,6 +45,60 @@ func (q *Queries) GetSlackChannelByID(ctx context.Context, channelID string) (Sl
 	return i, err
 }
 
+const getSlackChannelsByTeamName = `-- name: GetSlackChannelsByTeamName :many
+SELECT channel_id, team_name, enabled, created_at FROM slack_channels
+WHERE team_name = $1
+`
+
+func (q *Queries) GetSlackChannelsByTeamName(ctx context.Context, teamName string) ([]SlackChannel, error) {
+	rows, err := q.db.Query(ctx, getSlackChannelsByTeamName, teamName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SlackChannel
+	for rows.Next() {
+		var i SlackChannel
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.TeamName,
+			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUniqueTeamNames = `-- name: GetUniqueTeamNames :many
+SELECT DISTINCT team_name FROM slack_channels
+`
+
+func (q *Queries) GetUniqueTeamNames(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, getUniqueTeamNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var team_name string
+		if err := rows.Scan(&team_name); err != nil {
+			return nil, err
+		}
+		items = append(items, team_name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertSlackChannel = `-- name: InsertSlackChannel :one
 INSERT INTO slack_channels (
     channel_id,

@@ -26,3 +26,10 @@ RETURNING *;
 -- name: GetSlackChannelByID :one
 SELECT * FROM slack_channels
 WHERE channel_id = $1;
+
+-- name: GetSlackChannelsByTeamName :many
+SELECT * FROM slack_channels
+WHERE team_name = $1;
+
+-- name: GetUniqueTeamNames :many
+SELECT DISTINCT team_name FROM slack_channels;

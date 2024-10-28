@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+    {{template "header" .}}
+    <body>
+        <header class="container-fluid navbar">
+            <nav class="grid" style="display: flex; align-items: center">
+                <ul>
+                    <li>
+                        <section>
+                            <strong>Ratchet</strong>
+                        </section>
+                    </li>
+                </ul>
+                <ul style="margin-left: auto">
+                    <li>
+                        <section class="container">
+                            <input
+                                type="search"
+                                name="search"
+                                id="searchBox"
+                                onkeyup="filterItems()"
+                                placeholder="Search"
+                                aria-label="Search"
+                            />
+                        </section>
+                    </li>
+                </ul>
+            </nav>
+        </header>
+
+        <main class="container-fluid">
+            <section class="container-fluid" id="itemList">
+                <div
+                    class="grid"
+                    style="--columns: 5; display: flex; flex-wrap: wrap"
+                >
+                    {{range .Teams}}
+                    <article class="item card" style="width: 10rem">
+                        <a href="/{{.}}">{{.}}</a>
+                    </article>
+                    {{end}}
+                </div>
+            </section>
+        </main>
+
+        <script>
+            // Function to filter items based on search input
+            function filterItems() {
+                const searchInput = document
+                    .getElementById("searchBox")
+                    .value.toLowerCase();
+
+                const items = document.querySelectorAll("#itemList .item");
+                items.forEach((item) => {
+                    const text = item.textContent.toLowerCase();
+                    if (text.includes(searchInput)) {
+                        item.style.display = "block";
+                    } else {
+                        item.style.display = "none";
+                    }
+                });
+            }
+        </script>
+    </body>
+</html>
