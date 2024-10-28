@@ -54,6 +54,7 @@ AI bot to help reduce operational toil
 * Use `docker compose up --remove-orphans --watch --attach app` to start the stack locally.
   * Access `ratchet` UI at http://localhost:5001.
   * Passing `--attach app` will make docker-compose only show `app` service logs on terminal.
-  * Passing `--watch` makes docker-compare recompile bot on any change and update container.
+  * Passing `--watch` makes docker-compare sync+restart bot if new binary is available at `bin/ratchet`.
+    * To automatically re-compile on update, use `fswatch go.sum internal/ cmd/ | GOOS=linux xargs -n1 -I{} go build -o bin/ratchet ./cmd/ratchet/main.go`
 * Access `pgadmin` UI at http://localhost:8080.
   * Add a server with host `db` and password `mypass`.

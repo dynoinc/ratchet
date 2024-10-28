@@ -5,12 +5,9 @@ services:
       - "5001:5001"
     develop:
       watch:
-        - action: rebuild
-          path: cmd/
-        - action: rebuild
-          path: internal/
-        - action: rebuild
-          path: go.sum
+        - action: sync+restart
+          path: bin/
+          target: /app
     environment:
       - RATCHET_DATABASE_HOST=db
       - RATCHET_DATABASE_PORT=5432
