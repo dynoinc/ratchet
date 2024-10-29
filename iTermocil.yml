@@ -5,4 +5,5 @@ windows:
     panes:
       - docker compose up --remove-orphans --watch --attach app
       - fswatch go.sum internal/ cmd/ | GOOS=linux xargs -n1 -I{} go build -o bin/ratchet ./cmd/ratchet/main.go
+      - fswatch internal/sqlc.yml internal/schema/query.sql internal/schema/migrations/ | xargs -n1 -I{} sqlc generate -f internal/sqlc.yml
       - /bin/bash
