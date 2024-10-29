@@ -2,46 +2,16 @@
 AI bot to help reduce operational toil
 
 ## Database Schema
-* `slack_channels`
-  * [PK] `channel_id`
-  * `team_name`
-  * `enabled` (bool)
 
-* `slack_activities` (links to `slack_channels`)
-  * [PK] `channel_id`
-  * [PK] `activity_slack_ts` (timestamp of the root message)
-  * `activity_type` (enum: `alert`, `human`, `bot`)
-
-* `slack_messages` (ties to `slack_activities`)
-  * [PK] `channel_id`
-  * [PK] `activity_slack_ts`
-  * [PK] `message_channel_id` (allows us to link messages in other channels to the same activity)
-  * [PK] `slack_ts`
-  * `user_id`
-  * `user_type` (enum: `human`, `bot`)
-  * `text`
-  * `reactions`
-
-* `alerts` (links to `slack_activities` of type `alert`. sparse index on unresolved alerts)
-  * [PK] `channel_id`
-  * [PK] `activity_slack_ts`
-  * `triggered_ts` (timestamp when alert was triggered)
-  * `resolved_ts` (timestamp when alert was resolved, nil if unresolved)
-  * `alert_name`
-  * `service`
-  * `severity` (enum: `low`, `high`)
-  * `actionable` (bool)
-  * `root_cause_category` (enum: `bug`, `dependency failure`, `misconfigured`, `other`)
-  * `root_cause` (free text)
-
-* `alerts_runbook` (links to `slack_channels`. sparse index on active runbook)
-  * [PK] `channel_id`
-  * [PK] `alert_name`
-  * [PK] `service`
-  * [PK] `created_ts`
-  * `runbook`
-  * `active` (bool, at most one active runbook per alert)
-  * `source` (jsonb, ai model that generated the runbook or other info about how runbook was generated)
+* The whole thing revolves around "Service" (to account for re-orgs)
+* Service have alerts.
+* Alerts have runbooks. All the past versions are kept in system, exactly one is active.
+* Service has human asking for help. The whole slack thread is one instance of human interaction.
+* Service has bot sending notifications about events related to it. Each notification is a separate instance.
+* Alerts, humans and bot notifications come via one or more channels.
+* Each channel is owned by a team. Owning team can change. Team can have multiple channels.
+* Team names can be changed, teams can merge.
+* Each human is either a member of a team or a customer asking for help.
 
 ## Contributing
 
@@ -59,4 +29,3 @@ AI bot to help reduce operational toil
   * Or you can just use `itermocil`.
 * Access `pgadmin` UI at http://localhost:8080.
   * Add a server with host `db` and password `mypass`.
-

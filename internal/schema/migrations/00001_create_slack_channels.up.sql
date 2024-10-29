@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS slack_channels (
+    channel_id VARCHAR PRIMARY KEY,
+    team_name VARCHAR NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
