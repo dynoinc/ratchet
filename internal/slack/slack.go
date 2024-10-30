@@ -1,4 +1,4 @@
-package internal
+package slack
 
 import (
 	"context"
@@ -10,19 +10,18 @@ import (
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 
-	"github.com/rajatgoel/ratchet/internal/schema"
+	"github.com/rajatgoel/ratchet/internal"
 )
 
-type SlackBot struct {
+type SlackIntegration struct {
 	BotUserID string
 
 	api    *slack.Client
 	client *socketmode.Client
-
-	dbQueries *schema.Queries
+	bot    *internal.Bot
 }
 
-func NewSlackBot(ctx context.Context, appToken, botToken string, dbQueries *schema.Queries) (*SlackBot, error) {
+func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*SlackIntegration, error) {
 	api := slack.New(
 		botToken,
 		slack.OptionAppLevelToken(appToken),
@@ -39,15 +38,15 @@ func NewSlackBot(ctx context.Context, appToken, botToken string, dbQueries *sche
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
 
-	return &SlackBot{
+	return &SlackIntegration{
 		BotUserID: authTest.UserID,
 		api:       api,
 		client:    socketClient,
-		dbQueries: dbQueries,
+		bot:       bot,
 	}, nil
 }
 
-func (b *SlackBot) Run(ctx context.Context) error {
+func (b *SlackIntegration) Run(ctx context.Context) error {
 	go func() {
 		for {
 			select {
@@ -61,7 +60,7 @@ func (b *SlackBot) Run(ctx context.Context) error {
 						continue
 					}
 					b.client.Ack(*evt.Request)
-					b.handleEventAPI(eventsAPI)
+					b.handleEventAPI(ctx, eventsAPI)
 				case socketmode.EventTypeInteractive:
 					interaction, ok := evt.Data.(slack.InteractionCallback)
 					if !ok {
@@ -77,18 +76,14 @@ func (b *SlackBot) Run(ctx context.Context) error {
 	return b.client.RunContext(ctx)
 }
 
-func (b *SlackBot) handleOnboardCallback(ctx context.Context, interaction slack.InteractionCallback) {
-	// Check if channel already exists and is enabled. If yes, do nothing.
-	channel, err := b.dbQueries.GetSlackChannelByID(ctx, interaction.Channel.ID)
-	if err == nil && channel.Enabled {
+func (b *SlackIntegration) handleOnboardCallback(ctx context.Context, interaction slack.InteractionCallback) {
+	// Insert an intent to onboard the channel.
+	enabled, err := b.bot.InsertIntent(ctx, interaction.Channel.ID)
+	if err != nil {
+		log.Printf("Error inserting intent: %v", err)
 		return
 	}
-
-	if _, err := b.dbQueries.InsertSlackChannel(ctx, schema.InsertSlackChannelParams{
-		ChannelID: interaction.Channel.ID,
-		TeamName:  "",
-	}); err != nil {
-		log.Printf("Error inserting channel: %v", err)
+	if enabled {
 		return
 	}
 
@@ -120,46 +115,18 @@ func (b *SlackBot) handleOnboardCallback(ctx context.Context, interaction slack.
 	}
 }
 
-func (b *SlackBot) handleOnboardModalSubmit(ctx context.Context, interaction slack.InteractionCallback) {
+func (b *SlackIntegration) handleOnboardModalSubmit(ctx context.Context, interaction slack.InteractionCallback) {
 	teamName := interaction.View.State.Values["team_name_block"]["team_name_input"].Value
 	channelID := interaction.View.PrivateMetadata
 
-	existingChannel, err := b.dbQueries.GetSlackChannelByID(ctx, channelID)
-	if err != nil {
+	if err := b.bot.OnboardChannel(ctx, channelID, teamName); err != nil {
 		if _, _, err := b.api.PostMessageContext(
 			ctx,
 			interaction.User.ID,
-			slack.MsgOptionText("Error: channel record not found. Please contact Ratchet admins to debug further.", false),
+			slack.MsgOptionText(fmt.Sprintf("Error onboarding channel %v for team %v: %v", channelID, teamName, err), false),
 		); err != nil {
 			log.Printf("Error posting message: %v", err)
 		}
-		return
-	}
-
-	if existingChannel.Enabled {
-		if _, _, err := b.api.PostMessageContext(
-			ctx,
-			interaction.User.ID,
-			slack.MsgOptionText(fmt.Sprintf("Channel %s is already registered under team %s", channelID, existingChannel.TeamName), false),
-		); err != nil {
-			log.Printf("Error posting message: %v", err)
-		}
-
-		return
-	}
-
-	if _, err := b.dbQueries.UpdateSlackChannel(ctx, schema.UpdateSlackChannelParams{
-		ChannelID: channelID,
-		TeamName:  teamName,
-	}); err != nil {
-		if _, _, err := b.api.PostMessageContext(
-			ctx,
-			interaction.User.ID,
-			slack.MsgOptionText(fmt.Sprintf("Failed to update channel %s: %v", channelID, err), false),
-		); err != nil {
-			log.Printf("Error posting message: %v", err)
-		}
-
 		return
 	}
 
@@ -170,7 +137,7 @@ func (b *SlackBot) handleOnboardModalSubmit(ctx context.Context, interaction sla
 	}
 }
 
-func (b *SlackBot) handleEventAPI(event slackevents.EventsAPIEvent) {
+func (b *SlackIntegration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) {
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
@@ -179,7 +146,7 @@ func (b *SlackBot) handleEventAPI(event slackevents.EventsAPIEvent) {
 				return
 			}
 
-			if _, err := b.dbQueries.DisableSlackChannel(context.Background(), ev.Channel); err != nil {
+			if err := b.bot.DisableChannel(ctx, ev.Channel); err != nil {
 				log.Printf("Error disabling channel: %v", err)
 			}
 		case *slackevents.MemberJoinedChannelEvent:
@@ -200,7 +167,9 @@ func (b *SlackBot) handleEventAPI(event slackevents.EventsAPIEvent) {
 				},
 			}
 
-			b.api.PostMessage(ev.Channel, slack.MsgOptionAttachments(attachment))
+			if _, _, err := b.api.PostMessageContext(ctx, ev.Channel, slack.MsgOptionAttachments(attachment)); err != nil {
+				log.Printf("Error posting message: %v", err)
+			}
 		case *slackevents.MessageEvent:
 			// Process the message here
 			log.Printf("Channel: %s, User: %s, Message: %s",
@@ -211,7 +180,7 @@ func (b *SlackBot) handleEventAPI(event slackevents.EventsAPIEvent) {
 	}
 }
 
-func (b *SlackBot) handleInteraction(ctx context.Context, interaction slack.InteractionCallback) {
+func (b *SlackIntegration) handleInteraction(ctx context.Context, interaction slack.InteractionCallback) {
 	if interaction.CallbackID == "onboard_callback" {
 		b.handleOnboardCallback(ctx, interaction)
 		return

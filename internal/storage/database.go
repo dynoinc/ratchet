@@ -1,4 +1,4 @@
-package internal
+package storage
 
 import (
 	"context"
@@ -12,8 +12,6 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/rajatgoel/ratchet/internal/schema"
 )
 
 type DatabaseConfig struct {
@@ -28,7 +26,7 @@ type DatabaseConfig struct {
 //go:embed schema/migrations/*.sql
 var migrationFiles embed.FS
 
-func NewDBConnection(ctx context.Context, c DatabaseConfig) (*schema.Queries, error) {
+func New(ctx context.Context, c DatabaseConfig) (*pgxpool.Pool, error) {
 	dbURL := url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.DatabaseUser, c.DatabasePass),
@@ -42,7 +40,7 @@ func NewDBConnection(ctx context.Context, c DatabaseConfig) (*schema.Queries, er
 	return NewDBConnectionWithURL(ctx, dbURL.String())
 }
 
-func NewDBConnectionWithURL(ctx context.Context, dbURL string) (*schema.Queries, error) {
+func NewDBConnectionWithURL(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 	d, err := iofs.New(migrationFiles, "schema/migrations")
 	if err != nil {
 		return nil, fmt.Errorf("unable to load migrations: %w", err)
@@ -63,5 +61,5 @@ func NewDBConnectionWithURL(ctx context.Context, dbURL string) (*schema.Queries,
 	}
 
 	log.Println("Migrations applied successfully!")
-	return schema.New(pool), nil
+	return pool, nil
 }
