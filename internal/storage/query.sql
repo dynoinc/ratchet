@@ -1,13 +1,7 @@
--- name: InsertSlackChannel :one
-INSERT INTO slack_channels (
-    channel_id,
-    team_name,
-    enabled
-) VALUES (
-    $1,
-    $2,
-    $3
-)
+-- name: InsertOrGetSlackChannel :one
+INSERT INTO slack_channels (channel_id, team_name, enabled)
+VALUES ($1, '', false)
+    ON CONFLICT (channel_id) DO NOTHING
 RETURNING *;
 
 -- name: UpdateSlackChannel :one

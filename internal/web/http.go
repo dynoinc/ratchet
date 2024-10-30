@@ -1,4 +1,4 @@
-package internal
+package web
 
 import (
 	"embed"
@@ -6,7 +6,9 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/rajatgoel/ratchet/internal/schema"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/rajatgoel/ratchet/internal/storage/schema"
 )
 
 //go:embed templates/*.html
@@ -20,7 +22,7 @@ type httpHandlers struct {
 	templates *template.Template
 }
 
-func NewHandler(dbQueries *schema.Queries) (http.Handler, error) {
+func New(db *pgxpool.Pool) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -32,7 +34,7 @@ func NewHandler(dbQueries *schema.Queries) (http.Handler, error) {
 	}
 
 	handlers := &httpHandlers{
-		dbQueries: dbQueries,
+		dbQueries: schema.New(db),
 		templates: templates,
 	}
 

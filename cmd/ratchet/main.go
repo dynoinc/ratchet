@@ -16,14 +16,19 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/rajatgoel/ratchet/internal"
+	"github.com/rajatgoel/ratchet/internal/slack"
+	"github.com/rajatgoel/ratchet/internal/storage"
+	"github.com/rajatgoel/ratchet/internal/web"
 )
 
 type Config struct {
 	// Database configuration
-	internal.DatabaseConfig
+	storage.DatabaseConfig
+
 	// Slack configuration
 	SlackBotToken string `split_words:"true" required:"true"`
 	SlackAppToken string `split_words:"true" required:"true"`
+
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:":5001"`
 }
@@ -40,19 +45,25 @@ func main() {
 	}
 
 	// Database setup
-	dbQueries, err := internal.NewDBConnection(ctx, c.DatabaseConfig)
+	db, err := storage.New(ctx, c.DatabaseConfig)
 	if err != nil {
 		log.Fatalf("error setting up database: %v", err)
 	}
 
-	// Slack setup
-	bot, err := internal.NewSlackBot(ctx, c.SlackAppToken, c.SlackBotToken, dbQueries)
+	// Bot setup (the business logic goes here)
+	bot, err := internal.New(db)
+	if err != nil {
+		log.Fatalf("error setting up bot: %v", err)
+	}
+
+	// Slack integration setup
+	slack, err := slack.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
 	if err != nil {
 		log.Fatalf("error setting up Slack: %v", err)
 	}
 
 	// HTTP server setup
-	handler, err := internal.NewHandler(dbQueries)
+	handler, err := web.New(db)
 	if err != nil {
 		log.Fatalf("error setting up HTTP server: %v", err)
 	}
@@ -74,8 +85,8 @@ func main() {
 	})
 
 	wg.Go(func() error {
-		log.Printf("Starting bot with ID %s", bot.BotUserID)
-		return bot.Run(ctx)
+		log.Printf("Starting bot with ID %s", slack.BotUserID)
+		return slack.Run(ctx)
 	})
 	wg.Go(func() error {
 		c := make(chan os.Signal, 1)

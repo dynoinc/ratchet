@@ -99,27 +99,15 @@ func (q *Queries) GetUniqueTeamNames(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-const insertSlackChannel = `-- name: InsertSlackChannel :one
-INSERT INTO slack_channels (
-    channel_id,
-    team_name,
-    enabled
-) VALUES (
-    $1,
-    $2,
-    $3
-)
+const insertOrGetSlackChannel = `-- name: InsertOrGetSlackChannel :one
+INSERT INTO slack_channels (channel_id, team_name, enabled)
+VALUES ($1, '', false)
+    ON CONFLICT (channel_id) DO NOTHING
 RETURNING channel_id, team_name, enabled, created_at
 `
 
-type InsertSlackChannelParams struct {
-	ChannelID string
-	TeamName  string
-	Enabled   bool
-}
-
-func (q *Queries) InsertSlackChannel(ctx context.Context, arg InsertSlackChannelParams) (SlackChannel, error) {
-	row := q.db.QueryRow(ctx, insertSlackChannel, arg.ChannelID, arg.TeamName, arg.Enabled)
+func (q *Queries) InsertOrGetSlackChannel(ctx context.Context, channelID string) (SlackChannel, error) {
+	row := q.db.QueryRow(ctx, insertOrGetSlackChannel, channelID)
 	var i SlackChannel
 	err := row.Scan(
 		&i.ChannelID,

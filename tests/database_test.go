@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/rajatgoel/ratchet/internal"
+	"github.com/rajatgoel/ratchet/internal/storage"
 )
 
 func TestDBConnection(t *testing.T) {
@@ -15,6 +15,6 @@ func TestDBConnection(t *testing.T) {
 	postgresContainer, err := postgres.Run(ctx, "postgres:latest", postgres.BasicWaitStrategies())
 	require.NoError(t, err)
 
-	_, err = internal.NewDBConnectionWithURL(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
+	_, err = storage.NewDBConnectionWithURL(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
 	require.NoError(t, err)
 }
