@@ -52,10 +52,15 @@ func main() {
 	}
 
 	// HTTP server setup
+	handler, err := internal.NewHandler(dbQueries)
+	if err != nil {
+		log.Fatalf("error setting up HTTP server: %v", err)
+	}
+
 	server := &http.Server{
 		BaseContext: func(listener net.Listener) context.Context { return ctx },
 		Addr:        c.HTTPAddr,
-		Handler:     internal.NewHandler(dbQueries),
+		Handler:     handler,
 	}
 
 	wg, ctx := errgroup.WithContext(ctx)
