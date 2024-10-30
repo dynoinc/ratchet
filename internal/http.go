@@ -3,21 +3,33 @@ package internal
 import (
 	"embed"
 	"html/template"
+	"io/fs"
 	"net/http"
 
 	"github.com/rajatgoel/ratchet/internal/schema"
 )
 
-//go:embed templates/*.html static/*.css
+//go:embed templates/*.html
 var templateFS embed.FS
+
+//go:embed static/*
+var staticFS embed.FS
 
 type httpHandlers struct {
 	dbQueries *schema.Queries
 	templates *template.Template
 }
 
-func NewHandler(dbQueries *schema.Queries) http.Handler {
-	templates := template.Must(template.ParseFS(templateFS, "templates/*.html"))
+func NewHandler(dbQueries *schema.Queries) (http.Handler, error) {
+	templates, err := template.ParseFS(templateFS, "templates/*.html")
+	if err != nil {
+		return nil, err
+	}
+
+	staticFS, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return nil, err
+	}
 
 	handlers := &httpHandlers{
 		dbQueries: dbQueries,
@@ -25,14 +37,10 @@ func NewHandler(dbQueries *schema.Queries) http.Handler {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServerFS(staticFS)))
 	mux.HandleFunc("GET /{$}", handlers.root)
 	mux.HandleFunc("GET /{team}", handlers.team)
-	mux.HandleFunc("/static/stylesheet.css", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/css")
-		css, _ := templateFS.ReadFile("static/stylesheet.css")
-		w.Write(css)
-	})
-	return mux
+	return mux, nil
 }
 
 func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
