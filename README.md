@@ -1,6 +1,15 @@
 # ratchet [![build](https://github.com/rajatgoel/ratchet/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/rajatgoel/ratchet/actions/workflows/build.yml)
 AI bot to help reduce operational toil
 
+## Code organization
+
+* We are trying to keep things simple by only targetting one database, integration, etc.
+* For backend we use `postgres` managed by `sqlc`. All that code is in `internal/storage`.
+* Think of slack integration (at `internal/slack`) as a client and bot (at `internal`) as server. 
+  * Based on interactions that happens on slack, bot returns 0 or more actions to take. 
+  * This way we can write tests for the bot without messing with slack.
+  * Later, we should consider replaying Slack HTTP API requests/responses to test this integration.
+
 ## Database Schema
 
 * The whole thing revolves around "Service" (to account for re-orgs)
