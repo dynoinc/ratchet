@@ -23,4 +23,5 @@ go.work.sum
 
 # env file and binaries
 .env
+.envrc
 bin/
