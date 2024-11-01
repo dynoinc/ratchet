@@ -6,20 +6,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/rajatgoel/ratchet/internal"
-	"github.com/rajatgoel/ratchet/internal/storage"
 )
 
 func TestOnboardingFlow(t *testing.T) {
+	db := SetupStorage(t)
+
 	ctx := context.Background()
-	postgresContainer, err := postgres.Run(ctx, "postgres:latest", postgres.BasicWaitStrategies())
-	require.NoError(t, err)
-
-	db, err := storage.NewDBConnectionWithURL(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
-	require.NoError(t, err)
-
 	bot, err := internal.New(db)
 	require.NoError(t, err)
 
