@@ -15,7 +15,7 @@ func SetupStorage(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	ctx := context.Background()
-	postgresContainer, err := postgres.Run(ctx, "postgres:latest", postgres.BasicWaitStrategies())
+	postgresContainer, err := postgres.Run(ctx, "postgres:12.19", postgres.BasicWaitStrategies())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
 
