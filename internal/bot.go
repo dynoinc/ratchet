@@ -91,6 +91,7 @@ func (b *Bot) StartConversation(ctx context.Context, channelID string, conversat
 	if err := qtx.AddMessage(ctx, schema.AddMessageParams{
 		ChannelID: channelID,
 		SlackTs:   conversationID,
+		MessageTs: conversationID,
 		Attrs:     attrs,
 	}); err != nil {
 		return false, err
