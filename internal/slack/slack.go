@@ -10,7 +10,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 
-	"github.com/rajatgoel/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal"
 )
 
 type SlackIntegration struct {

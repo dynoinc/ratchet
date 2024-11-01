@@ -1,4 +1,4 @@
-module github.com/rajatgoel/ratchet
+module github.com/dynoinc/ratchet
 
 go 1.23.2
 
