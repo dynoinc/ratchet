@@ -7,10 +7,11 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    channel_id VARCHAR,
-    slack_ts VARCHAR,
+    channel_id VARCHAR NOT NULL,
+    slack_ts VARCHAR NOT NULL,
+    message_ts VARCHAR NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     attrs JSONB,
 
-    PRIMARY KEY (channel_id, slack_ts)
+    PRIMARY KEY (channel_id, slack_ts, message_ts)
 );

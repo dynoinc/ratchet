@@ -1,7 +1,9 @@
 -- name: InsertOrGetSlackChannel :one
 INSERT INTO slack_channels (channel_id, team_name, enabled)
 VALUES ($1, '', false)
-    ON CONFLICT (channel_id) DO NOTHING
+ON CONFLICT (channel_id) DO UPDATE SET
+    team_name = EXCLUDED.team_name,
+    enabled = EXCLUDED.enabled
 RETURNING *;
 
 -- name: UpdateSlackChannel :one
