@@ -17,10 +17,10 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/rajatgoel/ratchet/internal"
-	"github.com/rajatgoel/ratchet/internal/slack"
-	"github.com/rajatgoel/ratchet/internal/storage"
-	"github.com/rajatgoel/ratchet/internal/web"
+	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/slack"
+	"github.com/dynoinc/ratchet/internal/storage"
+	"github.com/dynoinc/ratchet/internal/web"
 )
 
 type Config struct {
