@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rajatgoel/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal"
 )
 
 func TestOnboardingFlow(t *testing.T) {

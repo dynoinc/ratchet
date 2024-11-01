@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/rajatgoel/ratchet/internal/storage"
+	"github.com/dynoinc/ratchet/internal/storage"
 )
 
 func SetupStorage(t *testing.T) *pgxpool.Pool {

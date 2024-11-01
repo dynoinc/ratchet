@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/rajatgoel/ratchet/internal/storage/schema"
+	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
 type Bot struct {
