@@ -11,6 +11,7 @@ import (
 	"github.com/slack-go/slack/socketmode"
 
 	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type SlackIntegration struct {
@@ -78,12 +79,12 @@ func (b *SlackIntegration) Run(ctx context.Context) error {
 
 func (b *SlackIntegration) handleOnboardCallback(ctx context.Context, interaction slack.InteractionCallback) {
 	// Insert an intent to onboard the channel.
-	enabled, err := b.bot.InsertIntent(ctx, interaction.Channel.ID)
+	alreadyEnabled, err := b.bot.InsertIntent(ctx, interaction.Channel.ID)
 	if err != nil {
 		log.Printf("Error inserting intent: %v", err)
 		return
 	}
-	if enabled {
+	if alreadyEnabled {
 		return
 	}
 
@@ -172,10 +173,41 @@ func (b *SlackIntegration) handleEventAPI(ctx context.Context, event slackevents
 			}
 		case *slackevents.MessageEvent:
 			// Process the message here
-			log.Printf("Channel: %s, User: %s, Message: %s",
-				ev.Channel, ev.User, ev.Text)
+			log.Printf("Channel: %s, User: %s, Message: %s, Ts: %s, ThreadTs: %s",
+				ev.Channel, ev.User, ev.Text, ev.TimeStamp, ev.ThreadTimeStamp)
 
-			// Add your message processing logic here
+			if ev.ThreadTimeStamp != "" {
+				if err := b.bot.AddMessage(
+					ctx,
+					ev.Channel,
+					ev.ThreadTimeStamp,
+					ev.TimeStamp,
+					dto.MessageAttrs{Upstream: *ev},
+				); err != nil {
+					log.Printf("Error adding message: %v", err)
+				}
+
+				return
+			}
+
+			inserted, err := b.bot.StartConversation(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
+			if err != nil {
+				log.Printf("Error starting conversation: %v", err)
+				return
+			}
+
+			if !inserted {
+				// leave channel.
+				if _, _, err := b.api.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText(
+					"Please onboard the channel to start using ratchet", false)); err != nil {
+					log.Printf("Error posting message: %v", err)
+
+				}
+
+				if _, err := b.api.LeaveConversationContext(ctx, ev.Channel); err != nil {
+					log.Printf("Error leaving channel: %v", err)
+				}
+			}
 		}
 	}
 }

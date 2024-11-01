@@ -5,8 +5,23 @@
 package schema
 
 import (
+	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type Conversation struct {
+	ChannelID string
+	SlackTs   string
+	Attrs     dto.ConversationAttrs
+}
+
+type Message struct {
+	ChannelID string
+	SlackTs   string
+	MessageTs string
+	CreatedAt pgtype.Timestamptz
+	Attrs     dto.MessageAttrs
+}
 
 type SlackChannel struct {
 	ChannelID string

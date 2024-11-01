@@ -1,10 +1,21 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    queries: "query.sql"
+    queries: "schema"
     schema: "schema/migrations"
     gen:
       go:
         package: "schema"
         out: "schema"
         sql_package: "pgx/v5"
+        overrides:
+          - column: conversations.attrs
+            go_type:
+              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+              package: "dto"
+              type: "ConversationAttrs"
+          - column: messages.attrs
+            go_type:
+              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+              package: "dto"
+              type: "MessageAttrs"
