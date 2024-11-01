@@ -30,11 +30,4 @@ AI bot to help reduce operational toil
   RATCHET_SLACK_APP_TOKEN=xapp-...
   RATCHET_SLACK_BOT_TOKEN=xoxb-...
 ```
-* Use `docker compose up --remove-orphans --watch --attach app` to start the stack locally.
-  * Access `ratchet` UI at http://localhost:5001.
-  * Passing `--attach app` will make docker-compose only show `app` service logs on terminal.
-  * Passing `--watch` makes docker-compare sync+restart bot if new binary is available at `bin/ratchet`.
-    * To automatically re-compile on update, use `fswatch go.sum internal/ cmd/ | GOOS=linux xargs -n1 -I{} go build -o bin/ratchet ./cmd/ratchet/main.go`
-  * Or you can just use `itermocil`.
-* Access `pgadmin` UI at http://localhost:8080.
-  * Add a server with host `db` and password `mypass`.
+* Just start the binary using `go run ./cmd/ratchet/main.go`. It depends on docker to start a postgres instance.
