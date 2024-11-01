@@ -4,8 +4,11 @@ go 1.23.2
 
 require (
 	github.com/carlmjohnson/versioninfo v0.22.5
+	github.com/docker/docker v27.2.0+incompatible
+	github.com/docker/go-connections v0.5.0
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.7.1
+	github.com/joho/godotenv v1.5.1
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/slack-go/slack v0.14.0
 	github.com/stretchr/testify v1.9.0
@@ -24,8 +27,6 @@ require (
 	github.com/cpuguy83/dockercfg v0.3.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/docker v27.2.0+incompatible // indirect
-	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect

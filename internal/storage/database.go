@@ -15,11 +15,11 @@ import (
 )
 
 type DatabaseConfig struct {
-	DatabaseHost       string `split_words:"true"`
-	DatabasePort       int    `split_words:"true"`
-	DatabaseUser       string `split_words:"true"`
-	DatabasePass       string `split_words:"true"`
-	DatabaseName       string `split_words:"true"`
+	DatabaseHost       string `split_words:"true" default:"localhost"`
+	DatabasePort       int    `split_words:"true" default:"5432"`
+	DatabaseUser       string `split_words:"true" default:"postgres"`
+	DatabasePass       string `split_words:"true" default:"password"`
+	DatabaseName       string `split_words:"true" default:"postgres"`
 	DatabaseDisableTLS bool   `split_words:"true" default:"false"`
 }
 

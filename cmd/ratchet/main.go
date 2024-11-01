@@ -15,6 +15,8 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/joho/godotenv"
+
 	"github.com/rajatgoel/ratchet/internal"
 	"github.com/rajatgoel/ratchet/internal/slack"
 	"github.com/rajatgoel/ratchet/internal/storage"
@@ -22,6 +24,8 @@ import (
 )
 
 type Config struct {
+	DevMode bool `split_words:"true" default:"true"`
+
 	// Database configuration
 	storage.DatabaseConfig
 
@@ -39,12 +43,21 @@ func main() {
 
 	log.Println("Running version:", versioninfo.Short())
 
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	var c Config
 	if err := envconfig.Process("ratchet", &c); err != nil {
 		log.Fatalf("error loading configuration: %v", err)
 	}
 
 	// Database setup
+	if c.DevMode {
+		if err := storage.StartPostgresContainer(ctx, c.DatabaseConfig); err != nil {
+			log.Fatalf("error setting up dev database: %v", err)
+		}
+	}
 	db, err := storage.New(ctx, c.DatabaseConfig)
 	if err != nil {
 		log.Fatalf("error setting up database: %v", err)
@@ -57,7 +70,7 @@ func main() {
 	}
 
 	// Slack integration setup
-	slack, err := slack.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
+	slackIntegration, err := slack.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
 	if err != nil {
 		log.Fatalf("error setting up Slack: %v", err)
 	}
@@ -85,8 +98,8 @@ func main() {
 	})
 
 	wg.Go(func() error {
-		log.Printf("Starting bot with ID %s", slack.BotUserID)
-		return slack.Run(ctx)
+		log.Printf("Starting bot with ID %s", slackIntegration.BotUserID)
+		return slackIntegration.Run(ctx)
 	})
 	wg.Go(func() error {
 		c := make(chan os.Signal, 1)
@@ -106,7 +119,7 @@ func main() {
 		return nil
 	})
 
-	if err := wg.Wait(); err != nil {
+	if err := wg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("error running server: %v\n", err)
 	}
 }
