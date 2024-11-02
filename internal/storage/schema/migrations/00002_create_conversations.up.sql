@@ -13,5 +13,6 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     attrs JSONB,
 
-    PRIMARY KEY (channel_id, slack_ts, message_ts)
+    PRIMARY KEY (channel_id, slack_ts, message_ts),
+    FOREIGN KEY (channel_id, slack_ts) REFERENCES conversations(channel_id, slack_ts)
 );

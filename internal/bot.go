@@ -111,10 +111,18 @@ func (b *Bot) AddMessage(
 	messageTs string,
 	attrs dto.MessageAttrs,
 ) error {
-	return b.queries.AddMessage(ctx, schema.AddMessageParams{
+	err := b.queries.AddMessage(ctx, schema.AddMessageParams{
 		ChannelID: channelID,
 		SlackTs:   threadTs,
 		MessageTs: messageTs,
 		Attrs:     attrs,
 	})
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		// Conversation not found. Ignore this error.
+		return nil
+	}
+
+	return err
 }
