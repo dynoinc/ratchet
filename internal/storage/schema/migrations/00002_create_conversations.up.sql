@@ -14,5 +14,8 @@ CREATE TABLE IF NOT EXISTS messages (
     attrs JSONB,
 
     PRIMARY KEY (channel_id, slack_ts, message_ts),
-    FOREIGN KEY (channel_id, slack_ts) REFERENCES conversations(channel_id, slack_ts) ON DELETE CASCADE
+    FOREIGN KEY (channel_id, slack_ts) REFERENCES conversations(channel_id, slack_ts) ON DELETE CASCADE,
+    UNIQUE (channel_id, message_ts)
 );
+
+CREATE INDEX IF NOT EXISTS idx_channel_id_message_ts ON messages (channel_id, message_ts);

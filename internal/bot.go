@@ -128,3 +128,12 @@ func (b *Bot) AddMessage(
 
 	return err
 }
+
+func (b *Bot) UpdateReaction(ctx context.Context, channelID string, messageTs string, reaction string, delta int) error {
+	return b.queries.UpdateReactionCount(ctx, schema.UpdateReactionCountParams{
+		ChannelID: channelID,
+		MessageTs: messageTs,
+		Reaction:  reaction,
+		Delta:     int32(delta),
+	})
+}

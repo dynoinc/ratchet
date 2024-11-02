@@ -172,10 +172,6 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 				log.Printf("Error posting message: %v", err)
 			}
 		case *slackevents.MessageEvent:
-			// Process the message here
-			log.Printf("Channel: %s, User: %s, Message: %s, Ts: %s, ThreadTs: %s",
-				ev.Channel, ev.User, ev.Text, ev.TimeStamp, ev.ThreadTimeStamp)
-
 			if ev.ThreadTimeStamp != "" {
 				if err := b.bot.AddMessage(
 					ctx,
@@ -197,7 +193,7 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 			}
 
 			if !inserted {
-				// leave channel.
+				// Ratchet does not know about this channel. Ask user to follow onboarding steps and leave the channel.
 				if _, _, err := b.api.PostMessageContext(ctx, ev.Channel, slack.MsgOptionText(
 					"Please onboard the channel to start using ratchet", false)); err != nil {
 					log.Printf("Error posting message: %v", err)
@@ -208,6 +204,24 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 					log.Printf("Error leaving channel: %v", err)
 				}
 			}
+		case *slackevents.ReactionAddedEvent:
+			if ev.Item.Type != "message" {
+				return
+			}
+
+			if err := b.bot.UpdateReaction(ctx, ev.Item.Channel, ev.Item.Timestamp, ev.Reaction, 1); err != nil {
+				log.Printf("Error updating reaction: %v", err)
+			}
+		case *slackevents.ReactionRemovedEvent:
+			if ev.Item.Type != "message" {
+				return
+			}
+
+			if err := b.bot.UpdateReaction(ctx, ev.Item.Channel, ev.Item.Timestamp, ev.Reaction, -1); err != nil {
+				log.Printf("Error updating reaction: %v", err)
+			}
+		default:
+			log.Printf("Unhandled event: %v", ev)
 		}
 	}
 }
