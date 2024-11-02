@@ -120,7 +120,7 @@ func checkPostgresReady(c DatabaseConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database connection: %v", err)
 	}
-	defer db.Close()
+	defer func(db *sql.DB) { _ = db.Close() }(db)
 
 	var backoff time.Duration
 	for i := 0; i < 10; i++ {

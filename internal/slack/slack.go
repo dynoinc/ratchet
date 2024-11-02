@@ -14,7 +14,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
-type SlackIntegration struct {
+type Integration struct {
 	BotUserID string
 
 	api    *slack.Client
@@ -22,7 +22,7 @@ type SlackIntegration struct {
 	bot    *internal.Bot
 }
 
-func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*SlackIntegration, error) {
+func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*Integration, error) {
 	api := slack.New(
 		botToken,
 		slack.OptionAppLevelToken(appToken),
@@ -39,7 +39,7 @@ func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*Sl
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
 
-	return &SlackIntegration{
+	return &Integration{
 		BotUserID: authTest.UserID,
 		api:       api,
 		client:    socketClient,
@@ -47,7 +47,7 @@ func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*Sl
 	}, nil
 }
 
-func (b *SlackIntegration) Run(ctx context.Context) error {
+func (b *Integration) Run(ctx context.Context) error {
 	go func() {
 		for {
 			select {
@@ -77,7 +77,7 @@ func (b *SlackIntegration) Run(ctx context.Context) error {
 	return b.client.RunContext(ctx)
 }
 
-func (b *SlackIntegration) handleOnboardCallback(ctx context.Context, interaction slack.InteractionCallback) {
+func (b *Integration) handleOnboardCallback(ctx context.Context, interaction slack.InteractionCallback) {
 	// Insert an intent to onboard the channel.
 	alreadyEnabled, err := b.bot.InsertIntent(ctx, interaction.Channel.ID)
 	if err != nil {
@@ -116,7 +116,7 @@ func (b *SlackIntegration) handleOnboardCallback(ctx context.Context, interactio
 	}
 }
 
-func (b *SlackIntegration) handleOnboardModalSubmit(ctx context.Context, interaction slack.InteractionCallback) {
+func (b *Integration) handleOnboardModalSubmit(ctx context.Context, interaction slack.InteractionCallback) {
 	teamName := interaction.View.State.Values["team_name_block"]["team_name_input"].Value
 	channelID := interaction.View.PrivateMetadata
 
@@ -138,7 +138,7 @@ func (b *SlackIntegration) handleOnboardModalSubmit(ctx context.Context, interac
 	}
 }
 
-func (b *SlackIntegration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) {
+func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) {
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
@@ -212,7 +212,7 @@ func (b *SlackIntegration) handleEventAPI(ctx context.Context, event slackevents
 	}
 }
 
-func (b *SlackIntegration) handleInteraction(ctx context.Context, interaction slack.InteractionCallback) {
+func (b *Integration) handleInteraction(ctx context.Context, interaction slack.InteractionCallback) {
 	if interaction.CallbackID == "onboard_callback" {
 		b.handleOnboardCallback(ctx, interaction)
 		return

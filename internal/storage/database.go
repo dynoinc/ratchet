@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
+	"strconv"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -30,7 +32,7 @@ func New(ctx context.Context, c DatabaseConfig) (*pgxpool.Pool, error) {
 	dbURL := url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.DatabaseUser, c.DatabasePass),
-		Host:   fmt.Sprintf("%s:%d", c.DatabaseHost, c.DatabasePort),
+		Host:   net.JoinHostPort(c.DatabaseHost, strconv.Itoa(c.DatabasePort)),
 		Path:   c.DatabaseName,
 	}
 	if c.DatabaseDisableTLS {

@@ -3,8 +3,8 @@ AI bot to help reduce operational toil
 
 ## Code organization
 
-* We are trying to keep things simple by only targetting one database, integration, etc.
-* For backend we use `postgres` managed by `sqlc`. All that code is in `internal/storage`.
+* We are trying to keep things simple by only targeting one database, integration, etc.
+* For backend, we use `postgres` managed by `sqlc`. All that code is in `internal/storage`.
 * Think of slack integration (at `internal/slack`) as a client and bot (at `internal`) as server. 
   * Based on interactions that happens on slack, bot returns 0 or more actions to take. 
   * This way we can write tests for the bot without messing with slack.
@@ -24,7 +24,7 @@ AI bot to help reduce operational toil
 
 ## Contributing
 
-* To an slack workspace where you are admin, add an app using the manifest from `app-manifest.yaml`.
+* To a slack workspace where you are admin, add an app using the manifest from `app-manifest.yaml`.
 * Get access to a working Slack app/bot token and add it to `.env` (.gitignore'd) file as -
 ```
   RATCHET_SLACK_APP_TOKEN=xapp-...

@@ -25,6 +25,7 @@ func New(db *pgxpool.Pool) (*Bot, error) {
 }
 
 /* Slack channels related methods */
+
 func (b *Bot) InsertIntent(ctx context.Context, channelID string) (bool, error) {
 	slackChannel, err := b.queries.InsertOrGetSlackChannel(ctx, channelID)
 	if err != nil {
@@ -39,7 +40,7 @@ func (b *Bot) OnboardChannel(ctx context.Context, channelID string, teamName str
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := b.queries.WithTx(tx)
 	existingRecord, err := qtx.GetSlackChannelByID(ctx, channelID)
@@ -66,12 +67,13 @@ func (b *Bot) DisableChannel(ctx context.Context, channel string) error {
 }
 
 /* Slack conversations related methods */
+
 func (b *Bot) StartConversation(ctx context.Context, channelID string, conversationID string, attrs dto.MessageAttrs) (bool, error) {
 	tx, err := b.db.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := b.queries.WithTx(tx)
 
