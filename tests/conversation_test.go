@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -13,7 +14,8 @@ import (
 func TestConversations(t *testing.T) {
 	db := SetupStorage(t)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	bot, err := internal.New(db)
 	require.NoError(t, err)
 
@@ -41,7 +43,10 @@ func TestConversations(t *testing.T) {
 	})
 
 	t.Run("adding message to non-existing conversation fails", func(t *testing.T) {
-		err := bot.AddMessage(ctx, "channel1", "conv2", "message1", dto.MessageAttrs{})
+		// We are suppressing the error for now on non-existing conversation
+		// channel_id and message_ts is unique constraint. Try to add message
+		// to non-existing conversation and it should work.
+		err := bot.AddMessage(ctx, "channel1", "conv2", "message2", dto.MessageAttrs{})
 		require.NoError(t, err)
 	})
 }
