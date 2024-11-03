@@ -32,7 +32,10 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	// Check if the container is already running
 	containerName := "ratchet-db"
 	existingContainerID, err := findRunningContainer(cli, ctx, containerName)
-	if err == nil && existingContainerID != "" {
+	if err != nil {
+		return fmt.Errorf("failed to find running container: %v", err)
+	}
+	if existingContainerID != "" {
 		return nil
 	}
 
