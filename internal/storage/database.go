@@ -27,7 +27,7 @@ type DatabaseConfig struct {
 	DatabaseUser       string `split_words:"true" default:"postgres"`
 	DatabasePass       string `split_words:"true" default:"password"`
 	DatabaseName       string `split_words:"true" default:"postgres"`
-	DatabaseDisableTLS bool   `split_words:"true" default:"false"`
+	DatabaseDisableTLS bool   `split_words:"true" default:"true"`
 }
 
 func (c DatabaseConfig) URL() string {
