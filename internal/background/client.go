@@ -12,7 +12,7 @@ func New(db *pgxpool.Pool) (*river.Client[pgx.Tx], error) {
 	river.AddWorker(workers, &ClassifyMessageWorker{})
 	return river.NewClient(riverpgxv5.New(db), &river.Config{
 		Queues: map[string]river.QueueConfig{
-			"default": {
+			river.QueueDefault: {
 				MaxWorkers: 10,
 			},
 		},

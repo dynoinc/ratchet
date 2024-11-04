@@ -72,7 +72,11 @@ func (b *Bot) AddMessage(
 		return err
 	}
 
-	if _, err = b.riverClient.Insert(ctx, background.ClassifyMessageArgs{ChannelID: channelID, SlackTS: threadTs}, nil); err != nil {
+	if _, err = b.riverClient.Insert(
+		ctx,
+		background.ClassifyMessageArgs{ChannelID: channelID, SlackTS: threadTs},
+		nil,
+	); err != nil {
 		return err
 	}
 

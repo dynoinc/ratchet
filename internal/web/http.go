@@ -59,7 +59,7 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 	mux.Handle("/riverui", riverServer)
 	mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServerFS(staticFS)))
 	mux.HandleFunc("GET /{$}", handlers.root)
-	mux.HandleFunc("GET /{team}", handlers.team)
+	mux.HandleFunc("GET /team/{team}", handlers.team)
 
 	return mux, nil
 }
