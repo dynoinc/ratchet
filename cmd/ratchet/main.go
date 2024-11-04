@@ -117,7 +117,7 @@ func main() {
 		log.Printf("Starting river client")
 		err := riverClient.Start(ctx)
 		if err != nil {
-			log.Printf("river client error: %w", err)
+			log.Printf("river client error: %v", err)
 		}
 		return err
 	})
