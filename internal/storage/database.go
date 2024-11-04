@@ -16,6 +16,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+//go:embed schema/migrations/*.sql
+var migrationFiles embed.FS
+
 type DatabaseConfig struct {
 	DatabaseHost       string `split_words:"true" default:"localhost"`
 	DatabasePort       int    `split_words:"true" default:"5432"`
@@ -25,10 +28,7 @@ type DatabaseConfig struct {
 	DatabaseDisableTLS bool   `split_words:"true" default:"false"`
 }
 
-//go:embed schema/migrations/*.sql
-var migrationFiles embed.FS
-
-func New(ctx context.Context, c DatabaseConfig) (*pgxpool.Pool, error) {
+func (c DatabaseConfig) URL() string {
 	dbURL := url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.DatabaseUser, c.DatabasePass),
@@ -39,10 +39,10 @@ func New(ctx context.Context, c DatabaseConfig) (*pgxpool.Pool, error) {
 		dbURL.RawQuery = "sslmode=disable"
 	}
 
-	return NewDBConnectionWithURL(ctx, dbURL.String())
+	return dbURL.String()
 }
 
-func NewDBConnectionWithURL(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
+func New(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 	d, err := iofs.New(migrationFiles, "schema/migrations")
 	if err != nil {
 		return nil, fmt.Errorf("unable to load migrations: %w", err)

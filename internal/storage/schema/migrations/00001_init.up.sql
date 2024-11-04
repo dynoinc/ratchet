@@ -1,9 +1,16 @@
-CREATE TABLE IF NOT EXISTS conversations (
-    channel_id VARCHAR REFERENCES slack_channels(channel_id) ON DELETE CASCADE,
-    slack_ts VARCHAR NOT NULL,
-    attrs JSONB,
+CREATE TABLE IF NOT EXISTS slack_channels (
+    channel_id VARCHAR PRIMARY KEY,
+    team_name VARCHAR NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-    PRIMARY KEY (channel_id, slack_ts)
+CREATE TABLE IF NOT EXISTS conversations (
+     channel_id VARCHAR REFERENCES slack_channels(channel_id) ON DELETE CASCADE,
+     slack_ts VARCHAR NOT NULL,
+     attrs JSONB,
+
+     PRIMARY KEY (channel_id, slack_ts)
 );
 
 CREATE TABLE IF NOT EXISTS messages (

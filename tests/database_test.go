@@ -19,7 +19,7 @@ func SetupStorage(t *testing.T) *pgxpool.Pool {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
 
-	db, err := storage.NewDBConnectionWithURL(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
+	db, err := storage.New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
 	require.NoError(t, err)
 	return db
 }

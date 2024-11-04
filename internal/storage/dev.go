@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"math"
@@ -13,6 +12,9 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -87,12 +89,26 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	}
 
 	// Check readiness with exponential backoff
-	if err := checkPostgresReady(c); err != nil {
+	if err := checkPostgresReady(ctx, c); err != nil {
 		return fmt.Errorf("PostgreSQL readiness check failed: %v", err)
 	}
 
 	// Return container ID and stop function
 	return nil
+}
+
+func ResetDatabase(ctx context.Context, c DatabaseConfig) error {
+	d, err := iofs.New(migrationFiles, "schema/migrations")
+	if err != nil {
+		return fmt.Errorf("unable to load migrations: %w", err)
+	}
+
+	m, err := migrate.NewWithSourceInstance("iofs", d, c.URL())
+	if err != nil {
+		return fmt.Errorf("unable to create driver: %w", err)
+	}
+
+	return m.Drop()
 }
 
 // findRunningContainer checks if a container with the given name is already running and returns its ID.
@@ -111,29 +127,21 @@ func findRunningContainer(cli *client.Client, ctx context.Context, containerName
 	return "", nil
 }
 
-// checkPostgresReady checks if PostgreSQL is ready to accept connections by running "SELECT 1" with exponential backoff.
-func checkPostgresReady(c DatabaseConfig) error {
-	dsn := fmt.Sprintf(
-		"host=127.0.0.1 port=5432 user=%s password=%s dbname=%s sslmode=disable",
-		c.DatabaseUser,
-		c.DatabasePass,
-		c.DatabaseName,
-	)
-	db, err := sql.Open("postgres", dsn)
+// checkPostgresReady checks if PostgreSQL is ready by pinging it.
+func checkPostgresReady(ctx context.Context, c DatabaseConfig) error {
+	pool, err := pgxpool.New(ctx, c.URL())
 	if err != nil {
-		return fmt.Errorf("failed to open database connection: %v", err)
+		return fmt.Errorf("failed to create connection pool: %v", err)
 	}
-	defer func(db *sql.DB) { _ = db.Close() }(db)
+	defer pool.Close()
 
 	var backoff time.Duration
 	for i := 0; i < 10; i++ {
-		err = db.Ping()
+		err = pool.Ping(ctx)
 		if err == nil {
-			var result int
-			if err = db.QueryRow("SELECT 1").Scan(&result); err == nil && result == 1 {
-				return nil
-			}
+			return nil
 		}
+
 		backoff = time.Duration(math.Pow(2, float64(i))) * 100 * time.Millisecond
 		log.Printf("PostgreSQL is not ready, retrying in %v: %v", backoff, err)
 		time.Sleep(backoff)

@@ -57,8 +57,11 @@ func main() {
 		if err := storage.StartPostgresContainer(ctx, c.DatabaseConfig); err != nil {
 			log.Fatalf("error setting up dev database: %v", err)
 		}
+		if err := storage.ResetDatabase(ctx, c.DatabaseConfig); err != nil {
+			log.Fatalf("error resetting dev database: %v", err)
+		}
 	}
-	db, err := storage.New(ctx, c.DatabaseConfig)
+	db, err := storage.New(ctx, c.DatabaseConfig.URL())
 	if err != nil {
 		log.Fatalf("error setting up database: %v", err)
 	}
