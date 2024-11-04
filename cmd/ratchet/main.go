@@ -18,6 +18,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
@@ -28,6 +29,9 @@ type Config struct {
 
 	// Database configuration
 	storage.DatabaseConfig
+
+	// LLM configuration
+	llm.LLMConfig
 
 	// Slack configuration
 	SlackBotToken string `split_words:"true" required:"true"`
@@ -64,6 +68,17 @@ func main() {
 	db, err := storage.New(ctx, c.DatabaseConfig.URL())
 	if err != nil {
 		log.Fatalf("error setting up database: %v", err)
+	}
+
+	// LLM setup
+	if c.DevMode {
+		if err := llm.StartOllamaContainer(ctx, c.LLMConfig); err != nil {
+			log.Fatalf("error setting up dev LLM: %v", err)
+		}
+	}
+	_, err = llm.New(ctx, c.LLMConfig)
+	if err != nil {
+		log.Fatalf("error setting up LLM: %v", err)
 	}
 
 	// Bot setup (the business logic goes here)
