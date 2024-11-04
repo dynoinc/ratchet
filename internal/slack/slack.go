@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -96,8 +97,16 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 
 			err := b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
 			if err != nil {
-				log.Printf("Error adding message: %v", err)
-				return
+				if errors.Is(err, internal.ErrChannelNotKnown) {
+					err = b.bot.InsertOrEnableChannel(ctx, ev.Channel)
+					if err == nil {
+						err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
+					}
+
+					if err != nil {
+						log.Printf("Error adding message: %v", err)
+					}
+				}
 			}
 		default:
 			log.Printf("Unhandled event: %v", ev)

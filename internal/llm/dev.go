@@ -25,18 +25,14 @@ const (
 )
 
 func StartOllamaContainer(ctx context.Context, c LLMConfig) error {
+	// If local ollama is running, just use that.
+	if checkHealth(ollamaURL) == nil {
+		return nil
+	}
+
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %v", err)
-	}
-
-	// Check if the container is already running
-	existingContainerID, err := findRunningContainer(cli, ctx, containerName)
-	if err != nil {
-		return fmt.Errorf("failed to find running container: %v", err)
-	}
-	if existingContainerID != "" {
-		return nil
 	}
 
 	out, err := cli.ImagePull(ctx, ollamaImage, image.PullOptions{})
@@ -80,11 +76,9 @@ func StartOllamaContainer(ctx context.Context, c LLMConfig) error {
 		return fmt.Errorf("failed to list Ollama models: %v", err)
 	}
 	if !slices.ContainsFunc(models.Models, func(m api.ListModelResponse) bool { return m.Name == modelName }) {
-		// pull the model
 		if err := ollamaClient.Pull(ctx, &api.PullRequest{
 			Model: modelName,
 		}, func(p api.ProgressResponse) error {
-			log.Printf("Downloading %s model: %v/%v\n", modelName, p.Completed, p.Total)
 			return nil
 		}); err != nil {
 			return fmt.Errorf("failed to pull Ollama model: %v", err)
@@ -112,20 +106,4 @@ func checkHealth(url string) error {
 	}
 
 	return fmt.Errorf("ollama health check failed after multiple attempts")
-}
-
-// findRunningContainer checks if a container with the given name is already running and returns its ID.
-func findRunningContainer(cli *client.Client, ctx context.Context, containerName string) (string, error) {
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
-	if err != nil {
-		return "", fmt.Errorf("failed to list containers: %v", err)
-	}
-	for _, c := range containers {
-		for _, name := range c.Names {
-			if name == "/"+containerName && c.State == "running" {
-				return c.ID, nil
-			}
-		}
-	}
-	return "", nil
 }

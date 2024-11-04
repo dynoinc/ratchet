@@ -13,7 +13,7 @@ func TestOnboardingFlow(t *testing.T) {
 	db := SetupStorage(t)
 
 	ctx := context.Background()
-	bot, err := internal.New(db)
+	bot, err := internal.New(db, nil)
 	require.NoError(t, err)
 
 	t.Run("can add channel", func(t *testing.T) {

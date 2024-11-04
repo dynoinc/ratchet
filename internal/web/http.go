@@ -1,12 +1,17 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
+	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
@@ -22,7 +27,7 @@ type httpHandlers struct {
 	templates *template.Template
 }
 
-func New(db *pgxpool.Pool) (http.Handler, error) {
+func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx], logger *slog.Logger) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -38,10 +43,24 @@ func New(db *pgxpool.Pool) (http.Handler, error) {
 		templates: templates,
 	}
 
+	opts := &riverui.ServerOpts{
+		Client: riverClient,
+		DB:     db,
+		Prefix: "/riverui",
+		Logger: logger,
+	}
+	riverServer, err := riverui.NewServer(opts)
+	if err != nil {
+		return nil, err
+	}
+	riverServer.Start(ctx)
+
 	mux := http.NewServeMux()
+	mux.Handle("/riverui", riverServer)
 	mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServerFS(staticFS)))
 	mux.HandleFunc("GET /{$}", handlers.root)
 	mux.HandleFunc("GET /{team}", handlers.team)
+
 	return mux, nil
 }
 

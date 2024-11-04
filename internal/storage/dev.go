@@ -12,8 +12,6 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -95,20 +93,6 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 
 	// Return container ID and stop function
 	return nil
-}
-
-func ResetDatabase(ctx context.Context, c DatabaseConfig) error {
-	d, err := iofs.New(migrationFiles, "schema/migrations")
-	if err != nil {
-		return fmt.Errorf("unable to load migrations: %w", err)
-	}
-
-	m, err := migrate.NewWithSourceInstance("iofs", d, c.URL())
-	if err != nil {
-		return fmt.Errorf("unable to create driver: %w", err)
-	}
-
-	return m.Drop()
 }
 
 // findRunningContainer checks if a container with the given name is already running and returns its ID.

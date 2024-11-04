@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -45,6 +47,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	wg, ctx := errgroup.WithContext(ctx)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
 	log.Println("Running version:", versioninfo.Short())
 
 	if err := godotenv.Load(); err != nil {
@@ -60,9 +65,6 @@ func main() {
 	if c.DevMode {
 		if err := storage.StartPostgresContainer(ctx, c.DatabaseConfig); err != nil {
 			log.Fatalf("error setting up dev database: %v", err)
-		}
-		if err := storage.ResetDatabase(ctx, c.DatabaseConfig); err != nil {
-			log.Fatalf("error resetting dev database: %v", err)
 		}
 	}
 	db, err := storage.New(ctx, c.DatabaseConfig.URL())
@@ -81,8 +83,14 @@ func main() {
 		log.Fatalf("error setting up LLM: %v", err)
 	}
 
+	// Background worker setup
+	riverClient, err := background.New(db)
+	if err != nil {
+		log.Fatalf("error setting up background worker: %v", err)
+	}
+
 	// Bot setup (the business logic goes here)
-	bot, err := internal.New(db)
+	bot, err := internal.New(db, riverClient)
 	if err != nil {
 		log.Fatalf("error setting up bot: %v", err)
 	}
@@ -94,7 +102,7 @@ func main() {
 	}
 
 	// HTTP server setup
-	handler, err := web.New(db)
+	handler, err := web.New(ctx, db, riverClient, logger)
 	if err != nil {
 		log.Fatalf("error setting up HTTP server: %v", err)
 	}
@@ -105,7 +113,14 @@ func main() {
 		Handler:     handler,
 	}
 
-	wg, ctx := errgroup.WithContext(ctx)
+	wg.Go(func() error {
+		log.Printf("Starting river client")
+		err := riverClient.Start(ctx)
+		if err != nil {
+			log.Printf("river client error: %w", err)
+		}
+		return err
+	})
 	wg.Go(func() error {
 		log.Printf("Starting HTTP server on %s", c.HTTPAddr)
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
