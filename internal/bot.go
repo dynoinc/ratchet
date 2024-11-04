@@ -49,7 +49,7 @@ func (b *Bot) DisableChannel(ctx context.Context, channel string) error {
 func (b *Bot) AddMessage(
 	ctx context.Context,
 	channelID string,
-	threadTs string,
+	slackTs string,
 	attrs dto.MessageAttrs,
 ) error {
 	tx, err := b.db.Begin(ctx)
@@ -61,11 +61,11 @@ func (b *Bot) AddMessage(
 	qtx := b.queries.WithTx(tx)
 	if err := qtx.AddMessage(ctx, schema.AddMessageParams{
 		ChannelID: channelID,
-		SlackTs:   threadTs,
+		SlackTs:   slackTs,
 		Attrs:     attrs,
 	}); err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 			return ErrChannelNotKnown
 		}
 
@@ -74,7 +74,7 @@ func (b *Bot) AddMessage(
 
 	if _, err = b.riverClient.Insert(
 		ctx,
-		background.ClassifyMessageArgs{ChannelID: channelID, SlackTS: threadTs},
+		background.ClassifyMessageArgs{ChannelID: channelID, SlackTS: slackTs},
 		nil,
 	); err != nil {
 		return err
