@@ -34,5 +34,6 @@ func TestConversations(t *testing.T) {
 	t.Run("fails to add message to unknown channel", func(t *testing.T) {
 		err := bot.AddMessage(ctx, "channel2", "conv2", dto.MessageAttrs{})
 		require.Error(t, err)
+		require.ErrorIs(t, err, internal.ErrChannelNotKnown)
 	})
 }
