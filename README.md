@@ -12,15 +12,11 @@ AI bot to help reduce operational toil
 
 ## Database Schema
 
-* The whole thing revolves around "Service" (to account for re-orgs)
-* Service have alerts.
-* Alerts have runbooks. All the past versions are kept in system, exactly one is active.
-* Service has human asking for help. The whole slack thread is one instance of human interaction.
-* Service has bot sending notifications about events related to it. Each notification is a separate instance.
-* Alerts, humans and bot notifications come via one or more channels.
-* Each channel is owned by a team. Owning team can change. Team can have multiple channels.
-* Team names can be changed, teams can merge.
-* Each human is either a member of a team or a customer asking for help.
+* The whole thing revolves around "Service" (to account for re-orgs / team renames).
+* Service have alerts. Alerts have runbooks. All the past versions are kept in system, exactly one is active.
+* Service has human asking for help.
+* Service has bot sending notifications about related events. Each notification is considered complete in itself.
+* Alerts, humans and bot notifications come via one or more channels for same service. 
 
 ## Contributing
 

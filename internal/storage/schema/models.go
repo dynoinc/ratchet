@@ -9,23 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type Conversation struct {
+type Channel struct {
 	ChannelID string
-	SlackTs   string
-	Attrs     dto.ConversationAttrs
+	Enabled   bool
+	CreatedAt pgtype.Timestamp
 }
 
 type Message struct {
 	ChannelID string
 	SlackTs   string
-	MessageTs string
-	CreatedAt pgtype.Timestamptz
 	Attrs     dto.MessageAttrs
-}
-
-type SlackChannel struct {
-	ChannelID string
-	TeamName  string
-	Enabled   bool
-	CreatedAt pgtype.Timestamp
 }

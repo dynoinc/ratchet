@@ -12,84 +12,18 @@ import (
 )
 
 const addMessage = `-- name: AddMessage :exec
-INSERT INTO messages (channel_id, slack_ts, message_ts, created_at, attrs)
-VALUES ($1, $2,$3, NOW(), $4)
+INSERT INTO messages (channel_id, slack_ts, attrs)
+VALUES ($1, $2, $3)
+ON CONFLICT (channel_id, slack_ts) DO NOTHING
 `
 
 type AddMessageParams struct {
 	ChannelID string
 	SlackTs   string
-	MessageTs string
 	Attrs     dto.MessageAttrs
 }
 
 func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
-	_, err := q.db.Exec(ctx, addMessage,
-		arg.ChannelID,
-		arg.SlackTs,
-		arg.MessageTs,
-		arg.Attrs,
-	)
-	return err
-}
-
-const startConversation = `-- name: StartConversation :exec
-INSERT INTO conversations (channel_id, slack_ts, attrs)
-VALUES ($1, $2, $3)
-ON CONFLICT (channel_id, slack_ts) DO NOTHING
-`
-
-type StartConversationParams struct {
-	ChannelID string
-	SlackTs   string
-	Attrs     dto.ConversationAttrs
-}
-
-func (q *Queries) StartConversation(ctx context.Context, arg StartConversationParams) error {
-	_, err := q.db.Exec(ctx, startConversation, arg.ChannelID, arg.SlackTs, arg.Attrs)
-	return err
-}
-
-const updateReactionCount = `-- name: UpdateReactionCount :exec
-WITH updated_data AS (
-    SELECT
-        channel_id,
-        message_ts,
-        CASE
-            WHEN COALESCE((messages.attrs -> 'reactions' ->> $1::text)::int, 0) + $2::int > 0
-            THEN COALESCE(messages.attrs, '{}'::jsonb) || jsonb_build_object(
-                    'reactions',
-                    COALESCE(messages.attrs->'reactions', '{}'::jsonb) || jsonb_build_object(
-                            $1::text, (COALESCE((messages.attrs -> 'reactions' ->> $1::text)::int, 0) + $2::int)
-                    )
-            )
-            ELSE COALESCE(messages.attrs, '{}'::jsonb) || jsonb_build_object(
-                    'reactions', COALESCE(messages.attrs->'reactions', '{}'::jsonb) - $1::text
-            )
-            END AS new_data
-    FROM messages
-    WHERE messages.channel_id = $3 AND messages.message_ts = $4
-)
-UPDATE messages
-SET attrs = updated_data.new_data
-FROM updated_data
-WHERE messages.channel_id = updated_data.channel_id
-  AND messages.message_ts = updated_data.message_ts
-`
-
-type UpdateReactionCountParams struct {
-	Reaction  string
-	Delta     int32
-	ChannelID string
-	MessageTs string
-}
-
-func (q *Queries) UpdateReactionCount(ctx context.Context, arg UpdateReactionCountParams) error {
-	_, err := q.db.Exec(ctx, updateReactionCount,
-		arg.Reaction,
-		arg.Delta,
-		arg.ChannelID,
-		arg.MessageTs,
-	)
+	_, err := q.db.Exec(ctx, addMessage, arg.ChannelID, arg.SlackTs, arg.Attrs)
 	return err
 }

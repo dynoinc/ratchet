@@ -31,25 +31,7 @@
 
         <main class="container-fluid">
             <section class="container-fluid" id="itemList">
-                <h3>Slack channels</h3>
-                <table class="striped">
-                    <thead>
-                        <tr>
-                            <th>Channel Name</th>
-                            <th>Enabled</th>
-                            <th>Registered at</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {{range .Channels}}
-                        <tr>
-                            <td>{{.ChannelID}}</td>
-                            <td>{{.Enabled}}</td>
-                            <td>{{.CreatedAt}}</td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
+                <h3>Channel home page</h3>
             </section>
         </main>
     </body>

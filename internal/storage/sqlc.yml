@@ -9,11 +9,6 @@ sql:
         out: "schema"
         sql_package: "pgx/v5"
         overrides:
-          - column: conversations.attrs
-            go_type:
-              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
-              package: "dto"
-              type: "ConversationAttrs"
           - column: messages.attrs
             go_type:
               import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"

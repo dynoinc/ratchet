@@ -46,16 +46,16 @@ func New(db *pgxpool.Pool) (http.Handler, error) {
 }
 
 func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
-	teams, err := h.dbQueries.GetUniqueTeamNames(request.Context())
+	channels, err := h.dbQueries.GetSlackChannels(request.Context())
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	data := struct {
-		Teams []string
+		Channels []schema.Channel
 	}{
-		Teams: teams,
+		Channels: channels,
 	}
 
 	writer.Header().Set("Content-Type", "text/html")
@@ -67,19 +67,8 @@ func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
-	channels, err := h.dbQueries.GetSlackChannelsByTeamName(request.Context(), request.PathValue("team"))
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	data := struct {
-		Channels []schema.SlackChannel
-	}{
-		Channels: channels,
-	}
 	writer.Header().Set("Content-Type", "text/html")
-	err = h.templates.ExecuteTemplate(writer, "team.html", data)
+	err := h.templates.ExecuteTemplate(writer, "team.html", nil)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return

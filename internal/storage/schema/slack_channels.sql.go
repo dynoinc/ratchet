@@ -10,61 +10,33 @@ import (
 )
 
 const disableSlackChannel = `-- name: DisableSlackChannel :one
-UPDATE slack_channels
+UPDATE channels
 SET enabled = FALSE
 WHERE channel_id = $1
-RETURNING channel_id, team_name, enabled, created_at
+RETURNING channel_id, enabled, created_at
 `
 
-func (q *Queries) DisableSlackChannel(ctx context.Context, channelID string) (SlackChannel, error) {
+func (q *Queries) DisableSlackChannel(ctx context.Context, channelID string) (Channel, error) {
 	row := q.db.QueryRow(ctx, disableSlackChannel, channelID)
-	var i SlackChannel
-	err := row.Scan(
-		&i.ChannelID,
-		&i.TeamName,
-		&i.Enabled,
-		&i.CreatedAt,
-	)
+	var i Channel
+	err := row.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt)
 	return i, err
 }
 
-const getSlackChannelByID = `-- name: GetSlackChannelByID :one
-SELECT channel_id, team_name, enabled, created_at FROM slack_channels
-WHERE channel_id = $1
+const getSlackChannels = `-- name: GetSlackChannels :many
+SELECT channel_id, enabled, created_at FROM channels
 `
 
-func (q *Queries) GetSlackChannelByID(ctx context.Context, channelID string) (SlackChannel, error) {
-	row := q.db.QueryRow(ctx, getSlackChannelByID, channelID)
-	var i SlackChannel
-	err := row.Scan(
-		&i.ChannelID,
-		&i.TeamName,
-		&i.Enabled,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getSlackChannelsByTeamName = `-- name: GetSlackChannelsByTeamName :many
-SELECT channel_id, team_name, enabled, created_at FROM slack_channels
-WHERE team_name = $1
-`
-
-func (q *Queries) GetSlackChannelsByTeamName(ctx context.Context, teamName string) ([]SlackChannel, error) {
-	rows, err := q.db.Query(ctx, getSlackChannelsByTeamName, teamName)
+func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
+	rows, err := q.db.Query(ctx, getSlackChannels)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SlackChannel
+	var items []Channel
 	for rows.Next() {
-		var i SlackChannel
-		if err := rows.Scan(
-			&i.ChannelID,
-			&i.TeamName,
-			&i.Enabled,
-			&i.CreatedAt,
-		); err != nil {
+		var i Channel
+		if err := rows.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -75,72 +47,16 @@ func (q *Queries) GetSlackChannelsByTeamName(ctx context.Context, teamName strin
 	return items, nil
 }
 
-const getUniqueTeamNames = `-- name: GetUniqueTeamNames :many
-SELECT DISTINCT team_name FROM slack_channels
+const insertOrEnableChannel = `-- name: InsertOrEnableChannel :one
+INSERT INTO channels (channel_id, enabled)
+VALUES ($1, TRUE)
+ON CONFLICT (channel_id) DO UPDATE SET enabled = TRUE
+RETURNING channel_id, enabled, created_at
 `
 
-func (q *Queries) GetUniqueTeamNames(ctx context.Context) ([]string, error) {
-	rows, err := q.db.Query(ctx, getUniqueTeamNames)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var team_name string
-		if err := rows.Scan(&team_name); err != nil {
-			return nil, err
-		}
-		items = append(items, team_name)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const insertOrGetSlackChannel = `-- name: InsertOrGetSlackChannel :one
-INSERT INTO slack_channels (channel_id, team_name, enabled)
-VALUES ($1, '', false)
-ON CONFLICT (channel_id) DO UPDATE SET
-    team_name = EXCLUDED.team_name,
-    enabled = EXCLUDED.enabled
-RETURNING channel_id, team_name, enabled, created_at
-`
-
-func (q *Queries) InsertOrGetSlackChannel(ctx context.Context, channelID string) (SlackChannel, error) {
-	row := q.db.QueryRow(ctx, insertOrGetSlackChannel, channelID)
-	var i SlackChannel
-	err := row.Scan(
-		&i.ChannelID,
-		&i.TeamName,
-		&i.Enabled,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const updateSlackChannel = `-- name: UpdateSlackChannel :one
-UPDATE slack_channels
-SET team_name = $2,
-    enabled = TRUE
-WHERE channel_id = $1
-RETURNING channel_id, team_name, enabled, created_at
-`
-
-type UpdateSlackChannelParams struct {
-	ChannelID string
-	TeamName  string
-}
-
-func (q *Queries) UpdateSlackChannel(ctx context.Context, arg UpdateSlackChannelParams) (SlackChannel, error) {
-	row := q.db.QueryRow(ctx, updateSlackChannel, arg.ChannelID, arg.TeamName)
-	var i SlackChannel
-	err := row.Scan(
-		&i.ChannelID,
-		&i.TeamName,
-		&i.Enabled,
-		&i.CreatedAt,
-	)
+func (q *Queries) InsertOrEnableChannel(ctx context.Context, channelID string) (Channel, error) {
+	row := q.db.QueryRow(ctx, insertOrEnableChannel, channelID)
+	var i Channel
+	err := row.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt)
 	return i, err
 }
