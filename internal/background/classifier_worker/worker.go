@@ -25,7 +25,7 @@ type Config struct {
 
 	// In case it is possible to deterministically classify an incident (the alert bot always uses
 	// the same message format), we can use this to classify the incident without using the OpenAI API.
-	IncidentBinary string `split_words:"true" required:"true"`
+	IncidentBinary string `split_words:"true" required:"false"`
 }
 
 type ClassifierWorker struct {
@@ -130,6 +130,8 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		if err := w.processIncidentAction(ctx, msg, action); err != nil {
 			return fmt.Errorf("failed to process incident action: %w", err)
 		}
+	} else {
+		log.Printf("no incident binary found, skipping classification")
 	}
 
 	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions.

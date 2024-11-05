@@ -1,6 +1,8 @@
 package background
 
 import (
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -14,6 +16,20 @@ type ClassifierArgs struct {
 
 func (c ClassifierArgs) Kind() string {
 	return "classifier"
+}
+
+const (
+	DefaultHistoricalLookbackPeriod = 14 * 24 * time.Hour // 2 weeks
+)
+
+type MessagesIngestionWorkerArgs struct {
+	ChannelID string    `json:"channel_id"`
+	StartTime time.Time `json:"start_time"`
+	EndTime   time.Time `json:"end_time"`
+}
+
+func (m MessagesIngestionWorkerArgs) Kind() string {
+	return "ingest_historical_messages"
 }
 
 func New(db *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error) {

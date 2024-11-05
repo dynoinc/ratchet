@@ -97,3 +97,7 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 		}
 	}
 }
+
+func (b *Integration) SlackClient() *slack.Client {
+	return &b.client.Client
+}

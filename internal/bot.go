@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
@@ -20,21 +21,62 @@ var (
 )
 
 type Bot struct {
-	DB          *pgxpool.Pool
-	RiverClient *river.Client[pgx.Tx]
+	DB             *pgxpool.Pool
+	RiverClient    *river.Client[pgx.Tx]
+	lookbackPeriod time.Duration
 }
 
 func New(db *pgxpool.Pool) *Bot {
 	return &Bot{
-		DB: db,
+		DB:             db,
+		lookbackPeriod: background.DefaultHistoricalLookbackPeriod,
 	}
 }
 
 /* Slack channels related methods */
 
 func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
-	_, err := schema.New(b.DB).AddChannel(ctx, channelID)
+	if _, err := schema.New(b.DB).AddChannel(ctx, channelID); err != nil {
+		return err
+	}
+
+	// Schedule historical message ingestion
+	now := time.Now()
+	_, err := b.RiverClient.Insert(
+		ctx,
+		background.MessagesIngestionWorkerArgs{
+			ChannelID: channelID,
+			StartTime: now.Add(-b.lookbackPeriod),
+			EndTime:   now,
+		},
+		nil,
+	)
 	return err
+}
+
+// EnsureHistoricalMessages on startup to ensure all historical messages are ingested
+func (b *Bot) EnsureHistoricalMessages(ctx context.Context) error {
+	channels, err := schema.New(b.DB).GetSlackChannels(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	for _, channel := range channels {
+		_, err = b.RiverClient.Insert(
+			ctx,
+			background.MessagesIngestionWorkerArgs{
+				ChannelID: channel.ChannelID,
+				StartTime: now.Add(-b.lookbackPeriod),
+				EndTime:   now,
+			},
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 /* Slack messages related methods */
