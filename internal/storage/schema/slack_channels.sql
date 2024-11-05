@@ -12,3 +12,6 @@ RETURNING *;
 
 -- name: GetSlackChannels :many
 SELECT * FROM channels;
+
+-- name: GetChannelByID :one
+SELECT * FROM channels WHERE channel_id = $1;

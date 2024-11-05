@@ -2,7 +2,6 @@ package slack
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -91,22 +90,22 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 				log.Printf("Error enabling channel: %v", err)
 			}
 		case *slackevents.MessageEvent:
+
+			enabled, err := b.bot.IsChannelEnabled(ctx, ev.Channel)
+			if err != nil {
+				log.Printf("Error checking channel status: %v", err)
+				return
+			}
+
+			if !enabled {
+				return
+			}
+
 			if ev.ThreadTimeStamp != "" {
 				return
 			}
 
-			err := b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
-			if err == nil {
-				return
-			}
-
-			if errors.Is(err, internal.ErrChannelNotKnown) {
-				err = b.bot.InsertOrEnableChannel(ctx, ev.Channel)
-				if err == nil {
-					err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
-				}
-			}
-
+			err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
 			if err != nil {
 				log.Printf("Error adding message: %v", err)
 			}
