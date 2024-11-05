@@ -22,6 +22,7 @@ import (
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
+	"github.com/dynoinc/ratchet/internal/background/ingestion_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -96,9 +97,16 @@ func main() {
 		log.Fatalf("error setting up classifier: %v", err)
 	}
 
+	// Ingestion worker setup
+	ingestionWorker, err := ingestion_worker.New(bot, slackIntegration.SlackClient())
+	if err != nil {
+		log.Fatalf("error setting up ingestion worker: %v", err)
+	}
+
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
+	river.AddWorker(workers, ingestionWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		log.Fatalf("error setting up background worker: %v", err)
@@ -123,6 +131,11 @@ func main() {
 		if err != nil {
 			log.Printf("river client error: %v", err)
 		}
+		// Ensure historical messages are ingested for all channels
+		if err := bot.EnsureHistoricalMessages(context.Background()); err != nil {
+			log.Printf("Error ensuring historical messages: %v", err)
+		}
+
 		return err
 	})
 	wg.Go(func() error {
