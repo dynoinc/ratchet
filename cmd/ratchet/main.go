@@ -32,9 +32,6 @@ type Config struct {
 	// Database configuration
 	storage.DatabaseConfig
 
-	// LLM configuration
-	llm.LLMConfig
-
 	// Slack configuration
 	SlackBotToken string `split_words:"true" required:"true"`
 	SlackAppToken string `split_words:"true" required:"true"`
@@ -75,13 +72,9 @@ func main() {
 
 	// LLM setup
 	if c.DevMode {
-		if err := llm.StartOllamaContainer(ctx, c.LLMConfig); err != nil {
-			log.Fatalf("error setting up dev LLM: %v", err)
+		if err := llm.StartOllamaContainer(ctx); err != nil {
+			log.Fatalf("error setting up ollama: %v", err)
 		}
-	}
-	_, err = llm.New(ctx, c.LLMConfig)
-	if err != nil {
-		log.Fatalf("error setting up LLM: %v", err)
 	}
 
 	// Background worker setup

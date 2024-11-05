@@ -1,6 +1,5 @@
 CREATE TABLE channels (
     channel_id VARCHAR PRIMARY KEY,
-    enabled BOOLEAN NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

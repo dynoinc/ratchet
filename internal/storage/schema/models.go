@@ -11,7 +11,6 @@ import (
 
 type Channel struct {
 	ChannelID string
-	Enabled   bool
 	CreatedAt pgtype.Timestamp
 }
 

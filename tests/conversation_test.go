@@ -24,7 +24,7 @@ func TestConversations(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("can add messages to known channel", func(t *testing.T) {
-		err := bot.InsertOrEnableChannel(ctx, "channel1")
+		err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 
 		err = bot.AddMessage(ctx, "channel1", "conv1", dto.MessageAttrs{})

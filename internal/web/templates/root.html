@@ -49,9 +49,9 @@
                     class="grid"
                     style="--columns: 5; display: flex; flex-wrap: wrap"
                 >
-                    {{range .Teams}}
+                    {{range .Channels}}
                     <article class="item card" style="width: 10rem">
-                        <a href="/team/{{.ChannelID}}">{{.ChannelID}} ({{.Enabled}})</a>
+                        <a href="/team/{{.ChannelID}}">{{.ChannelID}}</a>
                     </article>
                     {{end}}
                 </div>

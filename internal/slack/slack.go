@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -73,39 +74,21 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
-		case *slackevents.MemberLeftChannelEvent:
-			if ev.User != b.BotUserID {
-				return
-			}
-
-			if err := b.bot.DisableChannel(ctx, ev.Channel); err != nil {
-				log.Printf("Error disabling channel: %v", err)
-			}
-		case *slackevents.MemberJoinedChannelEvent:
-			if ev.User != b.BotUserID {
-				return
-			}
-
-			if err := b.bot.InsertOrEnableChannel(ctx, ev.Channel); err != nil {
-				log.Printf("Error enabling channel: %v", err)
-			}
 		case *slackevents.MessageEvent:
-
-			enabled, err := b.bot.IsChannelEnabled(ctx, ev.Channel)
-			if err != nil {
-				log.Printf("Error checking channel status: %v", err)
-				return
-			}
-
-			if !enabled {
-				return
-			}
-
 			if ev.ThreadTimeStamp != "" {
 				return
 			}
 
-			err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
+			err := b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
+			if err != nil {
+				if errors.Is(err, internal.ErrChannelNotKnown) {
+					err = b.bot.AddChannel(ctx, ev.Channel)
+					if err == nil {
+						err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
+					}
+				}
+			}
+
 			if err != nil {
 				log.Printf("Error adding message: %v", err)
 			}

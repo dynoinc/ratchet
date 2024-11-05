@@ -9,33 +9,22 @@ import (
 	"context"
 )
 
-const disableSlackChannel = `-- name: DisableSlackChannel :one
-UPDATE channels
-SET enabled = FALSE
-WHERE channel_id = $1
-RETURNING channel_id, enabled, created_at
+const addChannel = `-- name: AddChannel :one
+INSERT INTO channels (channel_id)
+VALUES ($1)
+ON CONFLICT (channel_id) DO UPDATE SET channel_id = EXCLUDED.channel_id
+RETURNING channel_id, created_at
 `
 
-func (q *Queries) DisableSlackChannel(ctx context.Context, channelID string) (Channel, error) {
-	row := q.db.QueryRow(ctx, disableSlackChannel, channelID)
+func (q *Queries) AddChannel(ctx context.Context, channelID string) (Channel, error) {
+	row := q.db.QueryRow(ctx, addChannel, channelID)
 	var i Channel
-	err := row.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt)
-	return i, err
-}
-
-const getChannelByID = `-- name: GetChannelByID :one
-SELECT channel_id, enabled, created_at FROM channels WHERE channel_id = $1
-`
-
-func (q *Queries) GetChannelByID(ctx context.Context, channelID string) (Channel, error) {
-	row := q.db.QueryRow(ctx, getChannelByID, channelID)
-	var i Channel
-	err := row.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt)
+	err := row.Scan(&i.ChannelID, &i.CreatedAt)
 	return i, err
 }
 
 const getSlackChannels = `-- name: GetSlackChannels :many
-SELECT channel_id, enabled, created_at FROM channels
+SELECT channel_id, created_at FROM channels
 `
 
 func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
@@ -47,7 +36,7 @@ func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
 	var items []Channel
 	for rows.Next() {
 		var i Channel
-		if err := rows.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.ChannelID, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -56,18 +45,4 @@ func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
 		return nil, err
 	}
 	return items, nil
-}
-
-const insertOrEnableChannel = `-- name: InsertOrEnableChannel :one
-INSERT INTO channels (channel_id, enabled)
-VALUES ($1, TRUE)
-ON CONFLICT (channel_id) DO UPDATE SET enabled = TRUE
-RETURNING channel_id, enabled, created_at
-`
-
-func (q *Queries) InsertOrEnableChannel(ctx context.Context, channelID string) (Channel, error) {
-	row := q.db.QueryRow(ctx, insertOrEnableChannel, channelID)
-	var i Channel
-	err := row.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt)
-	return i, err
 }

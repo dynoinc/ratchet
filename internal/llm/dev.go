@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -14,17 +13,15 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/ollama/ollama/api"
 )
 
 const (
 	containerName = "ratchet-ollama"
 	ollamaImage   = "ollama/ollama"
 	ollamaURL     = "http://localhost:11434/"
-	modelName     = "mistral:latest"
 )
 
-func StartOllamaContainer(ctx context.Context, c LLMConfig) error {
+func StartOllamaContainer(ctx context.Context) error {
 	// If local ollama is running, just use that.
 	if checkHealth(ollamaURL) == nil {
 		return nil
@@ -64,25 +61,6 @@ func StartOllamaContainer(ctx context.Context, c LLMConfig) error {
 
 	if err := checkHealth(ollamaURL); err != nil {
 		return fmt.Errorf("failed to check Ollama health: %v", err)
-	}
-
-	ollamaClient, err := api.ClientFromEnvironment()
-	if err != nil {
-		return fmt.Errorf("failed to create Ollama client: %v", err)
-	}
-
-	models, err := ollamaClient.List(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list Ollama models: %v", err)
-	}
-	if !slices.ContainsFunc(models.Models, func(m api.ListModelResponse) bool { return m.Name == modelName }) {
-		if err := ollamaClient.Pull(ctx, &api.PullRequest{
-			Model: modelName,
-		}, func(p api.ProgressResponse) error {
-			return nil
-		}); err != nil {
-			return fmt.Errorf("failed to pull Ollama model: %v", err)
-		}
 	}
 
 	return nil

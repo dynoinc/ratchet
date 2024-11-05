@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
@@ -36,13 +35,8 @@ func New(db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) (*Bot, error) {
 
 /* Slack channels related methods */
 
-func (b *Bot) InsertOrEnableChannel(ctx context.Context, channelID string) error {
-	_, err := b.queries.InsertOrEnableChannel(ctx, channelID)
-	return err
-}
-
-func (b *Bot) DisableChannel(ctx context.Context, channel string) error {
-	_, err := b.queries.DisableSlackChannel(ctx, channel)
+func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
+	_, err := b.queries.AddChannel(ctx, channelID)
 	return err
 }
 
@@ -83,12 +77,4 @@ func (b *Bot) AddMessage(
 	}
 
 	return tx.Commit(ctx)
-}
-
-func (b *Bot) IsChannelEnabled(ctx context.Context, channelID string) (bool, error) {
-	channel, err := b.queries.GetChannelByID(ctx, channelID)
-	if err != nil {
-		return false, fmt.Errorf("failed to get channel: %w", err)
-	}
-	return channel.Enabled, nil
 }
