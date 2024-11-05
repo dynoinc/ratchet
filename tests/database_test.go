@@ -4,14 +4,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/storage"
 )
 
-func SetupStorage(t *testing.T) *pgxpool.Pool {
+func SetupBot(t *testing.T) *internal.Bot {
 	t.Helper()
 
 	ctx := context.Background()
@@ -21,9 +23,15 @@ func SetupStorage(t *testing.T) *pgxpool.Pool {
 
 	db, err := storage.New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
 	require.NoError(t, err)
-	return db
+
+	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{})
+	require.NoError(t, err)
+
+	bot := internal.New(db)
+	bot.RiverClient = riverClient
+	return bot
 }
 
-func TestDBConnection(t *testing.T) {
-	_ = SetupStorage(t)
+func TestSetupBot(t *testing.T) {
+	_ = SetupBot(t)
 }

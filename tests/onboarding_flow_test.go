@@ -7,17 +7,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
 func TestOnboardingFlow(t *testing.T) {
-	db := SetupStorage(t)
+	bot := SetupBot(t)
 
 	ctx := context.Background()
-	bot, err := internal.New(db, nil)
-	require.NoError(t, err)
-
 	t.Run("can add channel", func(t *testing.T) {
 		err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
@@ -36,7 +32,7 @@ func TestOnboardingFlow(t *testing.T) {
 	})
 
 	t.Run("listing channels works", func(t *testing.T) {
-		channels, err := schema.New(db).GetSlackChannels(ctx)
+		channels, err := schema.New(bot.DB).GetSlackChannels(ctx)
 		require.NoError(t, err)
 		require.Len(t, channels, 3)
 		for _, id := range []string{"channel1", "channel2", "channel3"} {

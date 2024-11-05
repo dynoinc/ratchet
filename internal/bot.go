@@ -20,23 +20,20 @@ var (
 )
 
 type Bot struct {
-	db          *pgxpool.Pool
-	queries     *schema.Queries
-	riverClient *river.Client[pgx.Tx]
+	DB          *pgxpool.Pool
+	RiverClient *river.Client[pgx.Tx]
 }
 
-func New(db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) (*Bot, error) {
+func New(db *pgxpool.Pool) *Bot {
 	return &Bot{
-		db:          db,
-		queries:     schema.New(db),
-		riverClient: riverClient,
-	}, nil
+		DB: db,
+	}
 }
 
 /* Slack channels related methods */
 
 func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
-	_, err := b.queries.AddChannel(ctx, channelID)
+	_, err := schema.New(b.DB).AddChannel(ctx, channelID)
 	return err
 }
 
@@ -48,13 +45,13 @@ func (b *Bot) AddMessage(
 	slackTs string,
 	attrs dto.MessageAttrs,
 ) error {
-	tx, err := b.db.Begin(ctx)
+	tx, err := b.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := b.queries.WithTx(tx)
+	qtx := schema.New(b.DB).WithTx(tx)
 	if err := qtx.AddMessage(ctx, schema.AddMessageParams{
 		ChannelID: channelID,
 		SlackTs:   slackTs,
@@ -68,13 +65,20 @@ func (b *Bot) AddMessage(
 		return err
 	}
 
-	if _, err = b.riverClient.Insert(
+	if _, err = b.RiverClient.Insert(
 		ctx,
-		background.ClassifyMessageArgs{ChannelID: channelID, SlackTS: slackTs},
+		background.ClassifierArgs{ChannelID: channelID, SlackTS: slackTs},
 		nil,
 	); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) (schema.Message, error) {
+	return schema.New(b.DB).GetMessage(ctx, schema.GetMessageParams{
+		ChannelID: channelID,
+		SlackTs:   slackTs,
+	})
 }

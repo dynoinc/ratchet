@@ -7,9 +7,16 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-func New(db *pgxpool.Pool) (*river.Client[pgx.Tx], error) {
-	workers := river.NewWorkers()
-	river.AddWorker(workers, &ClassifyMessageWorker{})
+type ClassifierArgs struct {
+	ChannelID string `json:"channel_id"`
+	SlackTS   string `json:"slack_ts"`
+}
+
+func (c ClassifierArgs) Kind() string {
+	return "classifier"
+}
+
+func New(db *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error) {
 	return river.NewClient(riverpgxv5.New(db), &river.Config{
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {

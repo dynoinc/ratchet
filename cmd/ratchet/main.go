@@ -14,12 +14,14 @@ import (
 
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/riverqueue/river"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/joho/godotenv"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -31,6 +33,9 @@ type Config struct {
 
 	// Database configuration
 	storage.DatabaseConfig
+
+	// Classifier configuration
+	ClassifierConfig classifier_worker.Config
 
 	// Slack configuration
 	SlackBotToken string `split_words:"true" required:"true"`
@@ -44,12 +49,11 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	wg, ctx := errgroup.WithContext(ctx)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	log.Println("Running version:", versioninfo.Short())
-
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
@@ -77,23 +81,29 @@ func main() {
 		}
 	}
 
-	// Background worker setup
-	riverClient, err := background.New(db)
-	if err != nil {
-		log.Fatalf("error setting up background worker: %v", err)
-	}
-
-	// Bot setup (the business logic goes here)
-	bot, err := internal.New(db, riverClient)
-	if err != nil {
-		log.Fatalf("error setting up bot: %v", err)
-	}
+	// Bot setup
+	bot := internal.New(db)
 
 	// Slack integration setup
 	slackIntegration, err := slack.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
 	if err != nil {
 		log.Fatalf("error setting up Slack: %v", err)
 	}
+
+	// Classifier setup
+	classifier, err := classifier_worker.New(ctx, c.ClassifierConfig, bot)
+	if err != nil {
+		log.Fatalf("error setting up classifier: %v", err)
+	}
+
+	// Background job setup
+	workers := river.NewWorkers()
+	river.AddWorker(workers, classifier)
+	riverClient, err := background.New(db, workers)
+	if err != nil {
+		log.Fatalf("error setting up background worker: %v", err)
+	}
+	bot.RiverClient = riverClient
 
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient, logger)
