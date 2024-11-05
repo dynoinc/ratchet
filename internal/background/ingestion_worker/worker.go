@@ -3,8 +3,8 @@ package ingestion_worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
-	"time"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -30,8 +30,8 @@ func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[backgro
 	params := slack.GetConversationHistoryParameters{
 		ChannelID: j.Args.ChannelID,
 		Limit:     100,
-		Oldest:    j.Args.StartTime.Format(time.RFC3339),
-		Latest:    j.Args.EndTime.Format(time.RFC3339),
+		Oldest:    fmt.Sprintf("%d", j.Args.StartTime.Unix()),
+		Latest:    fmt.Sprintf("%d", j.Args.EndTime.Unix()),
 	}
 
 	for {
