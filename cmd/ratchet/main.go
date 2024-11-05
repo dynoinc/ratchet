@@ -47,6 +47,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	wg, ctx := errgroup.WithContext(ctx)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
