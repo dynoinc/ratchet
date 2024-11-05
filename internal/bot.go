@@ -82,3 +82,56 @@ func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) 
 		SlackTs:   slackTs,
 	})
 }
+
+/* Incident related methods */
+
+func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams) (int32, error) {
+	tx, err := b.DB.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := schema.New(b.DB).WithTx(tx)
+	id, err := qtx.OpenIncident(ctx, params)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := qtx.SetIncidentID(ctx, schema.SetIncidentIDParams{
+		ChannelID:  params.ChannelID,
+		SlackTs:    params.SlackTs,
+		IncidentID: id,
+	}); err != nil {
+		return 0, err
+	}
+
+	// TODO: enqueue a background job to post runbook for the alert to slack if we have any.
+
+	return 0, tx.Commit(ctx)
+}
+
+func (b *Bot) CloseIncident(ctx context.Context, alert string, service string) error {
+	tx, err := b.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := schema.New(b.DB).WithTx(tx)
+	incidentID, err := qtx.FindActiveIncident(ctx, schema.FindActiveIncidentParams{
+		Alert:   alert,
+		Service: service,
+	})
+	if err != nil {
+		return err
+	}
+
+	if _, err := qtx.CloseIncident(ctx, incidentID); err != nil {
+		return err
+	}
+
+	// TODO: enqueue a background job to process this incident.
+
+	return tx.Commit(ctx)
+}

@@ -35,7 +35,7 @@ type Config struct {
 	storage.DatabaseConfig
 
 	// Classifier configuration
-	ClassifierConfig classifier_worker.Config
+	Classifier classifier_worker.Config
 
 	// Slack configuration
 	SlackBotToken string `split_words:"true" required:"true"`
@@ -91,7 +91,7 @@ func main() {
 	}
 
 	// Classifier setup
-	classifier, err := classifier_worker.New(ctx, c.ClassifierConfig, bot)
+	classifier, err := classifier_worker.New(ctx, c.Classifier, bot)
 	if err != nil {
 		log.Fatalf("error setting up classifier: %v", err)
 	}

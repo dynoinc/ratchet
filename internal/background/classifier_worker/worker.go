@@ -15,16 +15,17 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
 type Config struct {
-	OpenAIAPIKey string `envconfig:"CLASSIFIER_OPENAI_API_KEY" default:"fake-classifier-key"`
-	OpenAIURL    string `envconfig:"CLASSIFIER_OPENAI_URL" default:"http://localhost:11434/v1/"`
-	OpenAIModel  string `envconfig:"CLASSIFIER_OPENAI_MODEL" default:"mistral"`
+	OpenAIAPIKey string `envconfig:"OPENAI_API_KEY" default:"fake-classifier-key"`
+	OpenAIURL    string `envconfig:"OPENAI_URL" default:"http://localhost:11434/v1/"`
+	OpenAIModel  string `envconfig:"OPENAI_MODEL" default:"mistral"`
 
 	// In case it is possible to deterministically classify an incident (the alert bot always uses
 	// the same message format), we can use this to classify the incident without using the OpenAI API.
-	ClassifierIncidentBinary string `split_words:"true"`
+	IncidentBinary string `split_words:"true" required:"true"`
 }
 
 type ClassifierWorker struct {
@@ -37,8 +38,8 @@ type ClassifierWorker struct {
 }
 
 func New(ctx context.Context, c Config, bot *internal.Bot) (*ClassifierWorker, error) {
-	if c.ClassifierIncidentBinary != "" {
-		if _, err := exec.LookPath(c.ClassifierIncidentBinary); err != nil {
+	if c.IncidentBinary != "" {
+		if _, err := exec.LookPath(c.IncidentBinary); err != nil {
 			return nil, err
 		}
 	}
@@ -49,7 +50,7 @@ func New(ctx context.Context, c Config, bot *internal.Bot) (*ClassifierWorker, e
 	}
 
 	return &ClassifierWorker{
-		incidentBinary: c.ClassifierIncidentBinary,
+		incidentBinary: c.IncidentBinary,
 		openaiClient:   openaiClient,
 		openaiModel:    c.OpenAIModel,
 		bot:            bot,
@@ -109,7 +110,7 @@ type IncidentAction struct {
 	Service string `json:"service"`
 
 	// Only used for open_incident.
-	Priority Priority `json:"priority"`
+	Priority Priority `json:"priority,omitempty"`
 }
 
 func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
@@ -119,16 +120,45 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 	}
 
 	if w.incidentBinary != "" {
+		log.Printf("processing message: %s\n", msg.Attrs.Upstream.Text)
 		action, err := runIncidentBinary(w.incidentBinary, msg.Attrs.Upstream)
 		if err != nil {
 			log.Printf("failed to classify incident with binary: %v", err)
 		}
 
-		log.Printf("classified incident with binary: %v", action)
+		log.Printf("classified incident: %v\n", action)
+		if err := w.processIncidentAction(ctx, msg, action); err != nil {
+			return fmt.Errorf("failed to process incident action: %w", err)
+		}
 	}
 
-	// TODO: Use OpenAI API to classify incident.
-	// TODO: Save classification to database.
+	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions.
+
+	return nil
+}
+
+func (w *ClassifierWorker) processIncidentAction(
+	ctx context.Context,
+	msg schema.Message,
+	action *IncidentAction,
+) error {
+	switch action.Action {
+	case ActionOpenIncident:
+		_, err := w.bot.OpenIncident(ctx, schema.OpenIncidentParams{
+			ChannelID: msg.ChannelID,
+			SlackTs:   msg.SlackTs,
+			Alert:     action.Alert,
+			Service:   action.Service,
+			Priority:  string(action.Priority),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to open incident: %w", err)
+		}
+	case ActionCloseIncident:
+		if err := w.bot.CloseIncident(ctx, action.Alert, action.Service); err != nil {
+			return fmt.Errorf("failed to close incident: %w", err)
+		}
+	}
 
 	return nil
 }

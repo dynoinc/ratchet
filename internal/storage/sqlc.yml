@@ -14,3 +14,8 @@ sql:
               import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
               package: "dto"
               type: "MessageAttrs"
+          - column: incidents.attrs
+            go_type:
+              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+              package: "dto"
+              type: "IncidentAttrs"

@@ -14,6 +14,18 @@ type Channel struct {
 	CreatedAt pgtype.Timestamp
 }
 
+type Incident struct {
+	IncidentID     int32
+	ChannelID      string
+	SlackTs        string
+	Alert          string
+	Service        string
+	Priority       string
+	Attrs          dto.IncidentAttrs
+	StartTimestamp pgtype.Timestamptz
+	EndTimestamp   pgtype.Timestamptz
+}
+
 type Message struct {
 	ChannelID string
 	SlackTs   string
