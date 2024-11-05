@@ -23,6 +23,17 @@ func (q *Queries) DisableSlackChannel(ctx context.Context, channelID string) (Ch
 	return i, err
 }
 
+const getChannelByID = `-- name: GetChannelByID :one
+SELECT channel_id, enabled, created_at FROM channels WHERE channel_id = $1
+`
+
+func (q *Queries) GetChannelByID(ctx context.Context, channelID string) (Channel, error) {
+	row := q.db.QueryRow(ctx, getChannelByID, channelID)
+	var i Channel
+	err := row.Scan(&i.ChannelID, &i.Enabled, &i.CreatedAt)
+	return i, err
+}
+
 const getSlackChannels = `-- name: GetSlackChannels :many
 SELECT channel_id, enabled, created_at FROM channels
 `

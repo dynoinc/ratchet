@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
@@ -82,4 +83,12 @@ func (b *Bot) AddMessage(
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (b *Bot) IsChannelEnabled(ctx context.Context, channelID string) (bool, error) {
+	channel, err := b.queries.GetChannelByID(ctx, channelID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get channel: %w", err)
+	}
+	return channel.Enabled, nil
 }
