@@ -54,31 +54,6 @@ func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
 	return err
 }
 
-// EnsureHistoricalMessages on startup to ensure all historical messages are ingested
-func (b *Bot) EnsureHistoricalMessages(ctx context.Context) error {
-	channels, err := schema.New(b.DB).GetSlackChannels(ctx)
-	if err != nil {
-		return err
-	}
-
-	now := time.Now()
-	for _, channel := range channels {
-		_, err = b.RiverClient.Insert(
-			ctx,
-			background.MessagesIngestionWorkerArgs{
-				ChannelID: channel.ChannelID,
-				StartTime: now.Add(-b.lookbackPeriod),
-				EndTime:   now,
-			},
-			nil,
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 /* Slack messages related methods */
 
 func (b *Bot) AddMessage(
@@ -102,6 +77,11 @@ func (b *Bot) AddMessage(
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.ForeignKeyViolation {
 			return ErrChannelNotKnown
+		}
+
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			// already exists, ignore
+			return nil
 		}
 
 		return err
@@ -137,6 +117,10 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 	qtx := schema.New(b.DB).WithTx(tx)
 	id, err := qtx.OpenIncident(ctx, params)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			return 0, nil
+		}
 		return 0, err
 	}
 

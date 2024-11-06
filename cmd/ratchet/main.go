@@ -132,16 +132,7 @@ func main() {
 
 	wg.Go(func() error {
 		log.Printf("Starting river client")
-		err := riverClient.Start(ctx)
-		if err != nil {
-			log.Printf("river client error: %v", err)
-		}
-		// Ensure historical messages are ingested for all channels
-		if err := bot.EnsureHistoricalMessages(context.Background()); err != nil {
-			log.Printf("Error ensuring historical messages: %v", err)
-		}
-
-		return err
+		return riverClient.Start(ctx)
 	})
 	wg.Go(func() error {
 		log.Printf("Starting HTTP server on %s", c.HTTPAddr)

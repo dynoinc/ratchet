@@ -60,6 +60,9 @@ INSERT INTO incidents (
     $5,
     now()
 )
+ON CONFLICT (channel_id, slack_ts)
+DO UPDATE SET
+    alert = EXCLUDED.alert
 RETURNING incident_id
 `
 

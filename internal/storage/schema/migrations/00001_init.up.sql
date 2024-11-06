@@ -25,5 +25,3 @@ CREATE TABLE incidents (
     FOREIGN KEY (channel_id, slack_ts) REFERENCES messages(channel_id, slack_ts) ON DELETE CASCADE,
     UNIQUE (channel_id, slack_ts)
 );
-
-CREATE UNIQUE INDEX unique_open_incident_per_alert_per_service ON incidents (alert, service) WHERE end_timestamp IS NULL;

@@ -14,6 +14,9 @@ INSERT INTO incidents (
     @priority,
     now()
 )
+ON CONFLICT (channel_id, slack_ts)
+DO UPDATE SET
+    alert = EXCLUDED.alert
 RETURNING incident_id;
 
 -- name: FindActiveIncident :one
