@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -12,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
-	"github.com/robfig/cron/v3"
 
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -68,7 +66,6 @@ func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
 		},
 		nil,
 	); err != nil {
-	if err != nil {
 		return err
 	}
 
@@ -196,28 +193,4 @@ func (b *Bot) CloseIncident(
 	// TODO: enqueue a background job to process this incident.
 
 	return tx.Commit(ctx)
-}
-
-// setupWeeklyReportJob configures the weekly report periodic job
-func (b *Bot) setupWeeklyReportJob(channelID string) error {
-	if b.RiverClient == nil {
-		return fmt.Errorf("RiverClient is not initialized")
-	}
-
-	// Schedule for every Monday at 9 AM PST
-	schedule, err := cron.ParseStandard("0 9 * * 1")
-	if err != nil {
-		return fmt.Errorf("error parsing cron schedule: %w", err)
-	}
-
-	constructor := func() (river.JobArgs, *river.InsertOpts) {
-		return &background.WeeklyReportJobArgs{ChannelID: channelID}, nil
-	}
-
-	periodicJob := river.NewPeriodicJob(schedule, constructor, &river.PeriodicJobOpts{
-		RunOnStart: false,
-	})
-
-	b.RiverClient.PeriodicJobs().Add(periodicJob)
-	return nil
 }

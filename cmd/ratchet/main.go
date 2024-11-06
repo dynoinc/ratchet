@@ -126,6 +126,11 @@ func main() {
 	}
 	bot.RiverClient = riverClient
 
+	// Setup periodic jobs
+	if err := background.SetupWeeklyReportJob(ctx, db, riverClient); err != nil {
+		log.Fatalf("error setting up periodic jobs: %v", err)
+	}
+
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient, logger)
 	if err != nil {
