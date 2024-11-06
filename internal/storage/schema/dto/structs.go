@@ -6,8 +6,8 @@ import (
 )
 
 type MessageAttrs struct {
-	Upstream slackevents.MessageEvent `json:"upstream"`
-	Message  slack.Message            `json:"message"`
+	Upstream *slackevents.MessageEvent `json:"upstream,omitempty"`
+	Message  *slack.Message            `json:"message,omitempty"`
 }
 
 type IncidentAttrs struct {

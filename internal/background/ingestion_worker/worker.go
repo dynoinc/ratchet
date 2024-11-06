@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/dynoinc/ratchet/internal"
-	"github.com/dynoinc/ratchet/internal/background"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack"
+
+	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type MessagesIngestionWorker struct {
@@ -44,7 +45,7 @@ func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[backgro
 
 		for _, msg := range messages.Messages {
 			// Attempt to add each message, ignoring duplicate errors
-			err := w.bot.AddMessage(ctx, j.Args.ChannelID, msg.Timestamp, dto.MessageAttrs{Message: msg})
+			err := w.bot.AddMessage(ctx, j.Args.ChannelID, msg.Timestamp, dto.MessageAttrs{Message: &msg})
 			if err != nil && !isDuplicateError(err) {
 				return err
 			}

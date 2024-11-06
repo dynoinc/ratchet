@@ -121,7 +121,7 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 
 	if w.incidentBinary != "" {
 		log.Printf("processing message: %s\n", msg.Attrs.Upstream.Text)
-		action, err := runIncidentBinary(w.incidentBinary, msg.Attrs.Upstream)
+		action, err := runIncidentBinary(w.incidentBinary, *msg.Attrs.Upstream)
 		if err != nil {
 			log.Printf("failed to classify incident with binary: %v", err)
 		}

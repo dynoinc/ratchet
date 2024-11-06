@@ -79,12 +79,12 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 				return
 			}
 
-			err := b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
+			err := b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: ev})
 			if err != nil {
 				if errors.Is(err, internal.ErrChannelNotKnown) {
 					err = b.bot.AddChannel(ctx, ev.Channel)
 					if err == nil {
-						err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: *ev})
+						err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: ev})
 					}
 				}
 			}

@@ -27,9 +27,11 @@ func (w *DevClassifierWorker) Work(ctx context.Context, job *river.Job[backgroun
 		return err
 	}
 
-	text := msg.Attrs.Message.Text
-	if msg.Attrs.Upstream.Text != "" {
+	var text string
+	if msg.Attrs.Upstream != nil {
 		text = msg.Attrs.Upstream.Text
+	} else {
+		text = msg.Attrs.Message.Text
 	}
 
 	var action IncidentAction
