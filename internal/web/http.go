@@ -53,10 +53,12 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 	if err != nil {
 		return nil, err
 	}
-	riverServer.Start(ctx)
+	if err := riverServer.Start(ctx); err != nil {
+		return nil, err
+	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/riverui", riverServer)
+	mux.Handle("/riverui/", riverServer)
 	mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServerFS(staticFS)))
 	mux.HandleFunc("GET /{$}", handlers.root)
 	mux.HandleFunc("GET /team/{team}", handlers.team)
