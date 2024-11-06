@@ -42,20 +42,6 @@ func New(db *pgxpool.Pool) *Bot {
 	}
 }
 
-// Initialize should be called after RiverClient is set
-func (b *Bot) Initialize() error {
-	if b.RiverClient == nil {
-		return fmt.Errorf("RiverClient must be set before initialization")
-	}
-
-	// Setup periodic jobs
-	if err := b.SetupWeeklyReportJob(); err != nil {
-		return fmt.Errorf("failed to setup weekly report job: %w", err)
-	}
-
-	return nil
-}
-
 /* Slack channels related methods */
 
 func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
@@ -82,6 +68,7 @@ func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
 		},
 		nil,
 	); err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -211,8 +198,8 @@ func (b *Bot) CloseIncident(
 	return tx.Commit(ctx)
 }
 
-// SetupWeeklyReportJob configures the weekly report periodic job
-func (b *Bot) SetupWeeklyReportJob() error {
+// setupWeeklyReportJob configures the weekly report periodic job
+func (b *Bot) setupWeeklyReportJob(channelID string) error {
 	if b.RiverClient == nil {
 		return fmt.Errorf("RiverClient is not initialized")
 	}
@@ -224,7 +211,7 @@ func (b *Bot) SetupWeeklyReportJob() error {
 	}
 
 	constructor := func() (river.JobArgs, *river.InsertOpts) {
-		return &background.WeeklyReportJobArgs{}, nil
+		return &background.WeeklyReportJobArgs{ChannelID: channelID}, nil
 	}
 
 	periodicJob := river.NewPeriodicJob(schedule, constructor, &river.PeriodicJobOpts{

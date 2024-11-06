@@ -110,7 +110,7 @@ func main() {
 	}
 
 	// Report worker setup
-	reportWorker, err := report_worker.New(db, slackIntegration.SlackClient())
+	reportWorker, err := report_worker.New(slackIntegration.SlackClient())
 	if err != nil {
 		log.Fatalf("error setting up report worker: %v", err)
 	}
@@ -125,11 +125,6 @@ func main() {
 		log.Fatalf("error setting up background worker: %v", err)
 	}
 	bot.RiverClient = riverClient
-
-	// Initialize bot (this will set up periodic jobs)
-	if err := bot.Initialize(); err != nil {
-		log.Fatalf("Failed to initialize bot: %v", err)
-	}
 
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient, logger)
