@@ -7,18 +7,18 @@ import (
 )
 
 type ReportData struct {
-	ChannelName      string
-	WeekRange        string
-	TotalIncidents   int
+	ChannelName       string
+	WeekRange         string
+	TotalIncidents    int
 	CriticalIncidents int
-	MajorIncidents   int
-	MinorIncidents   int
-	Incidents        []IncidentSummary
-	AvgResponseTime  string
-	ResolutionRate   float64
-	TeamScore       float64
-	ActionItems     []string
-	GeneratedAt     string
+	MajorIncidents    int
+	MinorIncidents    int
+	Incidents         []IncidentSummary
+	AvgResponseTime   string
+	ResolutionRate    float64
+	TeamScore         float64
+	ActionItems       []string
+	GeneratedAt       string
 }
 
 type IncidentSummary struct {
@@ -38,7 +38,7 @@ func NewGenerator() (*Generator, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Generator{
 		template: tmpl,
 	}, nil
@@ -47,12 +47,12 @@ func NewGenerator() (*Generator, error) {
 func (g *Generator) GenerateReport(channelName string, startDate time.Time) (string, error) {
 	// Generate mock data with more realistic and visually appealing content
 	data := ReportData{
-		ChannelName:      channelName,
-		WeekRange:        formatWeekRange(startDate),
-		TotalIncidents:   5,
+		ChannelName:       channelName,
+		WeekRange:         formatWeekRange(startDate),
+		TotalIncidents:    5,
 		CriticalIncidents: 1,
-		MajorIncidents:   2,
-		MinorIncidents:   2,
+		MajorIncidents:    2,
+		MinorIncidents:    2,
 		Incidents: []IncidentSummary{
 			{
 				Title:    "Database Connection Pool Exhaustion",
@@ -78,7 +78,7 @@ func (g *Generator) GenerateReport(channelName string, startDate time.Time) (str
 		},
 		AvgResponseTime: "12m",
 		ResolutionRate:  95.5,
-		TeamScore:      9.0,
+		TeamScore:       9.0,
 		ActionItems: []string{
 			"📚 Update incident response documentation for database issues",
 			"🔄 Implement automated failover for critical services",
@@ -99,4 +99,4 @@ func (g *Generator) GenerateReport(channelName string, startDate time.Time) (str
 func formatWeekRange(startDate time.Time) string {
 	endDate := startDate.AddDate(0, 0, 6)
 	return startDate.Format("Jan 2") + " - " + endDate.Format("Jan 2, 2006")
-} 
+}

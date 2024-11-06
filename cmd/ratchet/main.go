@@ -138,9 +138,9 @@ func main() {
 	}
 
 	server := &http.Server{
-			BaseContext: func(listener net.Listener) context.Context { return ctx },
-			Addr:        c.HTTPAddr,
-			Handler:     handler,
+		BaseContext: func(listener net.Listener) context.Context { return ctx },
+		Addr:        c.HTTPAddr,
+		Handler:     handler,
 	}
 
 	wg.Go(func() error {
