@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"log/slog"
@@ -33,7 +34,7 @@ type Config struct {
 	DevMode bool `split_words:"true" default:"true"`
 
 	// Database configuration
-	storage.DatabaseConfig
+	Database storage.DatabaseConfig
 
 	// Classifier configuration
 	Classifier classifier_worker.Config
@@ -47,6 +48,14 @@ type Config struct {
 }
 
 func main() {
+	help := flag.Bool("help", false, "Show help")
+	flag.Parse()
+
+	if *help {
+		envconfig.Usage("ratchet", &Config{})
+		return
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -66,11 +75,11 @@ func main() {
 
 	// Database setup
 	if c.DevMode {
-		if err := storage.StartPostgresContainer(ctx, c.DatabaseConfig); err != nil {
+		if err := storage.StartPostgresContainer(ctx, c.Database); err != nil {
 			log.Fatalf("error setting up dev database: %v", err)
 		}
 	}
-	db, err := storage.New(ctx, c.DatabaseConfig.URL())
+	db, err := storage.New(ctx, c.Database.URL())
 	if err != nil {
 		log.Fatalf("error setting up database: %v", err)
 	}

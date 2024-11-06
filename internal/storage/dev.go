@@ -43,9 +43,9 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	containerConfig := &container.Config{
 		Image: PostgresImage,
 		Env: []string{
-			"POSTGRES_USER=" + c.DatabaseUser,
-			"POSTGRES_PASSWORD=" + c.DatabasePass,
-			"POSTGRES_DB=" + c.DatabaseName,
+			"POSTGRES_USER=" + c.User,
+			"POSTGRES_PASSWORD=" + c.Pass,
+			"POSTGRES_DB=" + c.Name,
 		},
 		ExposedPorts: nat.PortSet{
 			"5432/tcp": struct{}{},

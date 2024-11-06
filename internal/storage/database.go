@@ -22,22 +22,22 @@ import (
 var migrationFiles embed.FS
 
 type DatabaseConfig struct {
-	DatabaseHost       string `split_words:"true" default:"localhost"`
-	DatabasePort       int    `split_words:"true" default:"5432"`
-	DatabaseUser       string `split_words:"true" default:"postgres"`
-	DatabasePass       string `split_words:"true" default:"password"`
-	DatabaseName       string `split_words:"true" default:"postgres"`
-	DatabaseDisableTLS bool   `split_words:"true" default:"true"`
+	Host       string `split_words:"true" default:"localhost"`
+	Port       int    `split_words:"true" default:"5432"`
+	User       string `split_words:"true" default:"postgres"`
+	Pass       string `split_words:"true" default:"password"`
+	Name       string `split_words:"true" default:"postgres"`
+	DisableTLS bool   `split_words:"true" default:"true"`
 }
 
 func (c DatabaseConfig) URL() string {
 	dbURL := url.URL{
 		Scheme: "postgres",
-		User:   url.UserPassword(c.DatabaseUser, c.DatabasePass),
-		Host:   net.JoinHostPort(c.DatabaseHost, strconv.Itoa(c.DatabasePort)),
-		Path:   c.DatabaseName,
+		User:   url.UserPassword(c.User, c.Pass),
+		Host:   net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
+		Path:   c.Name,
 	}
-	if c.DatabaseDisableTLS {
+	if c.DisableTLS {
 		dbURL.RawQuery = "sslmode=disable"
 	}
 

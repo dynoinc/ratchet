@@ -27,7 +27,7 @@ type Config struct {
 
 	// In case it is possible to deterministically classify an incident (the alert bot always uses
 	// the same message format), we can use this to classify the incident without using the OpenAI API.
-	IncidentBinary string `split_words:"true" required:"false"`
+	IncidentBinary string `split_words:"true"`
 }
 
 type ClassifierWorker struct {
