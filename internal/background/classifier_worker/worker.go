@@ -37,7 +37,7 @@ type ClassifierWorker struct {
 	bot            *internal.Bot
 }
 
-func New(ctx context.Context, c Config, bot *internal.Bot) (*ClassifierWorker, error) {
+func New(ctx context.Context, c Config, bot *internal.Bot) (river.Worker[background.ClassifierArgs], error) {
 	if c.IncidentBinary != "" {
 		if _, err := exec.LookPath(c.IncidentBinary); err != nil {
 			return nil, err
@@ -127,7 +127,7 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		}
 
 		log.Printf("classified incident: %v\n", action)
-		if err := w.processIncidentAction(ctx, msg, action); err != nil {
+		if err := processIncidentAction(ctx, w.bot, msg, action); err != nil {
 			return fmt.Errorf("failed to process incident action: %w", err)
 		}
 	} else {
@@ -139,14 +139,15 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 	return nil
 }
 
-func (w *ClassifierWorker) processIncidentAction(
+func processIncidentAction(
 	ctx context.Context,
+	bot *internal.Bot,
 	msg schema.Message,
 	action *IncidentAction,
 ) error {
 	switch action.Action {
 	case ActionOpenIncident:
-		_, err := w.bot.OpenIncident(ctx, schema.OpenIncidentParams{
+		_, err := bot.OpenIncident(ctx, schema.OpenIncidentParams{
 			ChannelID: msg.ChannelID,
 			SlackTs:   msg.SlackTs,
 			Alert:     action.Alert,
@@ -157,7 +158,7 @@ func (w *ClassifierWorker) processIncidentAction(
 			return fmt.Errorf("failed to open incident: %w", err)
 		}
 	case ActionCloseIncident:
-		if err := w.bot.CloseIncident(ctx, action.Alert, action.Service); err != nil {
+		if err := bot.CloseIncident(ctx, action.Alert, action.Service); err != nil {
 			return fmt.Errorf("failed to close incident: %w", err)
 		}
 	}

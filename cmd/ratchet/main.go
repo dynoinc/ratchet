@@ -92,9 +92,14 @@ func main() {
 	}
 
 	// Classifier setup
-	classifier, err := classifier_worker.New(ctx, c.Classifier, bot)
-	if err != nil {
-		log.Fatalf("error setting up classifier: %v", err)
+	var classifier river.Worker[background.ClassifierArgs]
+	if c.DevMode {
+		classifier = classifier_worker.NewDev(ctx, bot)
+	} else {
+		classifier, err = classifier_worker.New(ctx, c.Classifier, bot)
+		if err != nil {
+			log.Fatalf("error setting up classifier: %v", err)
+		}
 	}
 
 	// Ingestion worker setup
