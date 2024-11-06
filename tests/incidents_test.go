@@ -28,7 +28,7 @@ func TestIncidents(t *testing.T) {
 	}
 
 	t.Run("closing an incident that doesn't exist returns an error", func(t *testing.T) {
-		err := bot.CloseIncident(ctx, "channel1", "alert1", "service1", etz)
+		err := bot.CloseIncident(ctx, "channel1", "ts1", "alert1", "service1", etz)
 		require.Error(t, err)
 		require.Equal(t, internal.ErrNoOpenIncident, err)
 	})
@@ -52,7 +52,7 @@ func TestIncidents(t *testing.T) {
 	})
 
 	t.Run("can close incident", func(t *testing.T) {
-		err := bot.CloseIncident(ctx, "channel1", "alert1", "service1", etz)
+		err := bot.CloseIncident(ctx, "channel1", "ts1", "alert1", "service1", etz)
 		require.NoError(t, err)
 	})
 
@@ -87,7 +87,10 @@ func TestIncidents(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = bot.CloseIncident(ctx, "channel1", "alert1", "service1", etz)
+		err = bot.AddMessage(ctx, "channel1", "ts4", dto.MessageAttrs{})
+		require.NoError(t, err)
+
+		err = bot.CloseIncident(ctx, "channel1", "ts4", "alert1", "service1", etz)
 		require.NoError(t, err)
 
 		// Closes the incident that was opened immediately before the end timestamp.

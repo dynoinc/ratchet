@@ -6,8 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 func TestClassifierWorker(t *testing.T) {
@@ -33,7 +34,7 @@ func TestClassifierWorker(t *testing.T) {
 	}
 
 	t.Setenv("INCIDENT_BINARY_ACTION", "OPEN")
-	got, err := runIncidentBinary(executable, slackevents.MessageEvent{})
+	got, err := runIncidentBinary(executable, dto.MessageAttrs{})
 	require.NoError(t, err)
 	require.Equal(t, expected, *got)
 }

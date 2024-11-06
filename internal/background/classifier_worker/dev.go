@@ -3,7 +3,6 @@ package classifier_worker
 import (
 	"context"
 	"encoding/json"
-	"log"
 
 	"github.com/riverqueue/river"
 
@@ -35,10 +34,34 @@ func (w *DevClassifierWorker) Work(ctx context.Context, job *river.Job[backgroun
 	}
 
 	var action IncidentAction
-	if err := json.Unmarshal([]byte(text), &action); err != nil {
-		return nil
+	if err := json.Unmarshal([]byte(text), &action); err == nil {
+		return processIncidentAction(ctx, w.bot, msg, &action)
 	}
 
-	log.Printf("processing incident action: %v\n", action)
-	return processIncidentAction(ctx, w.bot, msg, &action)
+	subType := ""
+	if msg.Attrs.Upstream != nil {
+		subType = msg.Attrs.Upstream.SubType
+	} else {
+		subType = msg.Attrs.Message.SubType
+	}
+
+	if subType == "bot_message" {
+		botName := ""
+		if msg.Attrs.Upstream != nil {
+			botName = msg.Attrs.Upstream.Username
+		} else {
+			botName = msg.Attrs.Message.Username
+		}
+
+		return w.bot.TagAsBotNotification(ctx, msg.ChannelID, msg.SlackTs, botName)
+	}
+
+	userID := ""
+	if msg.Attrs.Upstream != nil {
+		userID = msg.Attrs.Upstream.User
+	} else {
+		userID = msg.Attrs.Message.User
+	}
+
+	return w.bot.TagAsUserMessage(ctx, msg.ChannelID, msg.SlackTs, userID)
 }

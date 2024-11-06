@@ -117,6 +117,22 @@ func (b *Bot) AddMessage(
 	return tx.Commit(ctx)
 }
 
+func (b *Bot) TagAsBotNotification(ctx context.Context, channelID, slackTs, botName string) error {
+	return schema.New(b.DB).TagAsBotNotification(ctx, schema.TagAsBotNotificationParams{
+		ChannelID: channelID,
+		SlackTs:   slackTs,
+		BotName:   botName,
+	})
+}
+
+func (b *Bot) TagAsUserMessage(ctx context.Context, channelID, slackTs, userID string) error {
+	return schema.New(b.DB).TagAsUserMessage(ctx, schema.TagAsUserMessageParams{
+		ChannelID: channelID,
+		SlackTs:   slackTs,
+		UserID:    userID,
+	})
+}
+
 func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) (schema.Message, error) {
 	return schema.New(b.DB).GetMessage(ctx, schema.GetMessageParams{
 		ChannelID: channelID,
@@ -148,6 +164,7 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 		ChannelID:  params.ChannelID,
 		SlackTs:    params.SlackTs,
 		IncidentID: id,
+		Action:     "open",
 	}); err != nil {
 		return 0, err
 	}
@@ -159,7 +176,7 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 
 func (b *Bot) CloseIncident(
 	ctx context.Context,
-	channelID, alert, service string,
+	channelID, slackTs, alert, service string,
 	endTimestamp pgtype.Timestamptz,
 ) error {
 	tx, err := b.DB.Begin(ctx)
@@ -180,6 +197,15 @@ func (b *Bot) CloseIncident(
 			return ErrNoOpenIncident
 		}
 
+		return err
+	}
+
+	if err := qtx.SetIncidentID(ctx, schema.SetIncidentIDParams{
+		ChannelID:  channelID,
+		SlackTs:    slackTs,
+		IncidentID: incident.IncidentID,
+		Action:     "close",
+	}); err != nil {
 		return err
 	}
 

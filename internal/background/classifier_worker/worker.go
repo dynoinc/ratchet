@@ -12,12 +12,12 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/riverqueue/river"
-	"github.com/slack-go/slack/slackevents"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type Config struct {
@@ -122,8 +122,7 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 	}
 
 	if w.incidentBinary != "" {
-		log.Printf("processing message: %s\n", msg.Attrs.Upstream.Text)
-		action, err := runIncidentBinary(w.incidentBinary, *msg.Attrs.Upstream)
+		action, err := runIncidentBinary(w.incidentBinary, msg.Attrs)
 		if err != nil {
 			log.Printf("failed to classify incident with binary: %v", err)
 		}
@@ -132,13 +131,35 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		if err := processIncidentAction(ctx, w.bot, msg, action); err != nil {
 			return fmt.Errorf("failed to process incident action: %w", err)
 		}
-	} else {
-		log.Printf("no incident binary found, skipping classification")
 	}
 
-	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions.
+	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions instead of this hard-coded behavior.
+	subType := ""
+	if msg.Attrs.Upstream != nil {
+		subType = msg.Attrs.Upstream.SubType
+	} else {
+		subType = msg.Attrs.Message.SubType
+	}
 
-	return nil
+	if subType == "bot_message" {
+		botName := ""
+		if msg.Attrs.Upstream != nil {
+			botName = msg.Attrs.Upstream.Username
+		} else {
+			botName = msg.Attrs.Message.Username
+		}
+
+		return w.bot.TagAsBotNotification(ctx, msg.ChannelID, msg.SlackTs, botName)
+	}
+
+	userID := ""
+	if msg.Attrs.Upstream != nil {
+		userID = msg.Attrs.Upstream.User
+	} else {
+		userID = msg.Attrs.Message.User
+	}
+
+	return w.bot.TagAsUserMessage(ctx, msg.ChannelID, msg.SlackTs, userID)
 }
 
 func processIncidentAction(
@@ -168,7 +189,7 @@ func processIncidentAction(
 			return fmt.Errorf("failed to open incident: %w", err)
 		}
 	case ActionCloseIncident:
-		if err := bot.CloseIncident(ctx, msg.ChannelID, action.Alert, action.Service, tz); err != nil {
+		if err := bot.CloseIncident(ctx, msg.ChannelID, msg.SlackTs, action.Alert, action.Service, tz); err != nil {
 			return fmt.Errorf("failed to close incident: %w", err)
 		}
 	}
@@ -176,7 +197,7 @@ func processIncidentAction(
 	return nil
 }
 
-func runIncidentBinary(binaryPath string, input slackevents.MessageEvent) (*IncidentAction, error) {
+func runIncidentBinary(binaryPath string, input dto.MessageAttrs) (*IncidentAction, error) {
 	inputJSON, err := json.Marshal(input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal input: %w", err)
