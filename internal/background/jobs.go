@@ -11,8 +11,14 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// SetupWeeklyReportJob configures the weekly report periodic job
-func SetupWeeklyReportJob(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) error {
+// Setup configures all periodic jobs
+func Setup(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) error {
+	// setup all periodic jobs
+	return setupWeeklyReportJob(ctx, db, riverClient)
+}
+
+// setupWeeklyReportJob configures the weekly report periodic job
+func setupWeeklyReportJob(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) error {
 	// Schedule for every Monday at 9 AM PST
 	// TODO: make this configurable per channel
 	schedule, err := cron.ParseStandard("0 9 * * 1")

@@ -127,7 +127,7 @@ func main() {
 	bot.RiverClient = riverClient
 
 	// Setup periodic jobs
-	if err := background.SetupWeeklyReportJob(ctx, db, riverClient); err != nil {
+	if err := background.Setup(ctx, db, riverClient); err != nil {
 		log.Fatalf("error setting up periodic jobs: %v", err)
 	}
 
