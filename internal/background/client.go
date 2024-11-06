@@ -18,10 +18,6 @@ func (c ClassifierArgs) Kind() string {
 	return "classifier"
 }
 
-const (
-	DefaultHistoricalLookbackPeriod = 14 * 24 * time.Hour // 2 weeks
-)
-
 type MessagesIngestionWorkerArgs struct {
 	ChannelID string    `json:"channel_id"`
 	StartTime time.Time `json:"start_time"`

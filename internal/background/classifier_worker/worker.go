@@ -152,6 +152,8 @@ func processIncidentAction(
 		return fmt.Errorf("failed to parse Slack timestamp: %w", err)
 	}
 
+	tz := pgtype.Timestamptz{Time: t, Valid: true}
+
 	switch action.Action {
 	case ActionOpenIncident:
 		_, err := bot.OpenIncident(ctx, schema.OpenIncidentParams{
@@ -160,13 +162,13 @@ func processIncidentAction(
 			Alert:          action.Alert,
 			Service:        action.Service,
 			Priority:       string(action.Priority),
-			StartTimestamp: pgtype.Timestamptz{Time: t, Valid: true},
+			StartTimestamp: tz,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to open incident: %w", err)
 		}
 	case ActionCloseIncident:
-		if err := bot.CloseIncident(ctx, action.Alert, action.Service, t); err != nil {
+		if err := bot.CloseIncident(ctx, msg.ChannelID, action.Alert, action.Service, tz); err != nil {
 			return fmt.Errorf("failed to close incident: %w", err)
 		}
 	}

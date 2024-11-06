@@ -19,20 +19,26 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
+const (
+	defaultHistoricalLookbackPeriod = 14 * 24 * time.Hour // 2 weeks
+)
+
 var (
 	ErrChannelNotKnown = errors.New("channel not known")
+	ErrNoOpenIncident  = errors.New("no open incident found")
 )
 
 type Bot struct {
-	DB             *pgxpool.Pool
-	RiverClient    *river.Client[pgx.Tx]
+	DB          *pgxpool.Pool
+	RiverClient *river.Client[pgx.Tx]
+
 	lookbackPeriod time.Duration
 }
 
 func New(db *pgxpool.Pool) *Bot {
 	return &Bot{
 		DB:             db,
-		lookbackPeriod: background.DefaultHistoricalLookbackPeriod,
+		lookbackPeriod: defaultHistoricalLookbackPeriod,
 	}
 }
 
@@ -53,22 +59,33 @@ func (b *Bot) Initialize() error {
 /* Slack channels related methods */
 
 func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
-	if _, err := schema.New(b.DB).AddChannel(ctx, channelID); err != nil {
+	tx, err := b.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := schema.New(b.DB).WithTx(tx)
+	if _, err := qtx.AddChannel(ctx, channelID); err != nil {
 		return err
 	}
 
 	// Schedule historical message ingestion
 	now := time.Now()
-	_, err := b.RiverClient.Insert(
+	if _, err := b.RiverClient.InsertTx(
 		ctx,
+		tx,
 		background.MessagesIngestionWorkerArgs{
 			ChannelID: channelID,
 			StartTime: now.Add(-b.lookbackPeriod),
 			EndTime:   now,
 		},
 		nil,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 /* Slack messages related methods */
@@ -104,8 +121,9 @@ func (b *Bot) AddMessage(
 		return err
 	}
 
-	if _, err = b.RiverClient.Insert(
+	if _, err = b.RiverClient.InsertTx(
 		ctx,
+		tx,
 		background.ClassifierArgs{ChannelID: channelID, SlackTS: slackTs},
 		nil,
 	); err != nil {
@@ -155,7 +173,11 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 	return 0, tx.Commit(ctx)
 }
 
-func (b *Bot) CloseIncident(ctx context.Context, alert string, service string, endTimestamp time.Time) error {
+func (b *Bot) CloseIncident(
+	ctx context.Context,
+	channelID, alert, service string,
+	endTimestamp pgtype.Timestamptz,
+) error {
 	tx, err := b.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -163,20 +185,23 @@ func (b *Bot) CloseIncident(ctx context.Context, alert string, service string, e
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := schema.New(b.DB).WithTx(tx)
-	incidentID, err := qtx.FindActiveIncident(ctx, schema.FindActiveIncidentParams{
-		Alert:   alert,
-		Service: service,
+	incident, err := qtx.GetLatestIncidentBeforeTimestamp(ctx, schema.GetLatestIncidentBeforeTimestampParams{
+		ChannelID:       channelID,
+		Alert:           alert,
+		Service:         service,
+		BeforeTimestamp: endTimestamp,
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNoOpenIncident
+		}
+
 		return err
 	}
 
 	if _, err := qtx.CloseIncident(ctx, schema.CloseIncidentParams{
-		EndTimestamp: pgtype.Timestamptz{
-			Time:  endTimestamp,
-			Valid: true,
-		},
-		IncidentID: incidentID,
+		EndTimestamp: endTimestamp,
+		IncidentID:   incident.IncidentID,
 	}); err != nil {
 		return err
 	}

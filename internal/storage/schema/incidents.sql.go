@@ -8,6 +8,7 @@ package schema
 import (
 	"context"
 
+	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -30,25 +31,81 @@ func (q *Queries) CloseIncident(ctx context.Context, arg CloseIncidentParams) (i
 	return incident_id, err
 }
 
-const findActiveIncident = `-- name: FindActiveIncident :one
-SELECT incident_id
+const getLatestIncidentBeforeTimestamp = `-- name: GetLatestIncidentBeforeTimestamp :one
+SELECT incident_id, channel_id, slack_ts, alert, service, priority, attrs, start_timestamp, end_timestamp
 FROM incidents
-WHERE alert = $1
-  AND service = $2
+WHERE channel_id = $1
+  AND alert = $2
+  AND service = $3
+  AND start_timestamp < $4
   AND end_timestamp IS NULL
+ORDER BY start_timestamp DESC
 LIMIT 1
 `
 
-type FindActiveIncidentParams struct {
-	Alert   string
-	Service string
+type GetLatestIncidentBeforeTimestampParams struct {
+	ChannelID       string
+	Alert           string
+	Service         string
+	BeforeTimestamp pgtype.Timestamptz
 }
 
-func (q *Queries) FindActiveIncident(ctx context.Context, arg FindActiveIncidentParams) (int32, error) {
-	row := q.db.QueryRow(ctx, findActiveIncident, arg.Alert, arg.Service)
-	var incident_id int32
-	err := row.Scan(&incident_id)
-	return incident_id, err
+func (q *Queries) GetLatestIncidentBeforeTimestamp(ctx context.Context, arg GetLatestIncidentBeforeTimestampParams) (Incident, error) {
+	row := q.db.QueryRow(ctx, getLatestIncidentBeforeTimestamp,
+		arg.ChannelID,
+		arg.Alert,
+		arg.Service,
+		arg.BeforeTimestamp,
+	)
+	var i Incident
+	err := row.Scan(
+		&i.IncidentID,
+		&i.ChannelID,
+		&i.SlackTs,
+		&i.Alert,
+		&i.Service,
+		&i.Priority,
+		&i.Attrs,
+		&i.StartTimestamp,
+		&i.EndTimestamp,
+	)
+	return i, err
+}
+
+const getOpenIncidents = `-- name: GetOpenIncidents :many
+SELECT incident_id, channel_id, slack_ts, alert, service, priority, attrs, start_timestamp, end_timestamp
+FROM incidents
+WHERE end_timestamp IS NULL
+`
+
+func (q *Queries) GetOpenIncidents(ctx context.Context) ([]Incident, error) {
+	rows, err := q.db.Query(ctx, getOpenIncidents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Incident
+	for rows.Next() {
+		var i Incident
+		if err := rows.Scan(
+			&i.IncidentID,
+			&i.ChannelID,
+			&i.SlackTs,
+			&i.Alert,
+			&i.Service,
+			&i.Priority,
+			&i.Attrs,
+			&i.StartTimestamp,
+			&i.EndTimestamp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const openIncident = `-- name: OpenIncident :one
@@ -58,6 +115,7 @@ INSERT INTO incidents (
     alert,
     service,
     priority,
+    attrs,
     start_timestamp
 ) VALUES (
     $1,
@@ -65,7 +123,8 @@ INSERT INTO incidents (
     $3,
     $4,
     $5,
-    $6
+    $6,
+    $7
 )
 ON CONFLICT (channel_id, slack_ts)
 DO UPDATE SET
@@ -79,6 +138,7 @@ type OpenIncidentParams struct {
 	Alert          string
 	Service        string
 	Priority       string
+	Attrs          dto.IncidentAttrs
 	StartTimestamp pgtype.Timestamptz
 }
 
@@ -89,6 +149,7 @@ func (q *Queries) OpenIncident(ctx context.Context, arg OpenIncidentParams) (int
 		arg.Alert,
 		arg.Service,
 		arg.Priority,
+		arg.Attrs,
 		arg.StartTimestamp,
 	)
 	var incident_id int32
