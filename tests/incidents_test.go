@@ -17,7 +17,7 @@ func TestIncidents(t *testing.T) {
 	ctx := context.Background()
 	bot := SetupBot(t)
 
-	now := time.Now().Round(0)
+	now := time.Now().Round(time.Millisecond)
 	stz := pgtype.Timestamptz{
 		Time:  now.Add(-time.Hour),
 		Valid: true,
