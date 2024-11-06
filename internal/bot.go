@@ -17,43 +17,59 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
+const (
+	defaultHistoricalLookbackPeriod = 14 * 24 * time.Hour // 2 weeks
+)
+
 var (
 	ErrChannelNotKnown = errors.New("channel not known")
 	ErrNoOpenIncident  = errors.New("no open incident found")
 )
 
 type Bot struct {
-	DB             *pgxpool.Pool
-	RiverClient    *river.Client[pgx.Tx]
+	DB          *pgxpool.Pool
+	RiverClient *river.Client[pgx.Tx]
+
 	lookbackPeriod time.Duration
 }
 
 func New(db *pgxpool.Pool) *Bot {
 	return &Bot{
 		DB:             db,
-		lookbackPeriod: background.DefaultHistoricalLookbackPeriod,
+		lookbackPeriod: defaultHistoricalLookbackPeriod,
 	}
 }
 
 /* Slack channels related methods */
 
 func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
-	if _, err := schema.New(b.DB).AddChannel(ctx, channelID); err != nil {
+	tx, err := b.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := schema.New(b.DB).WithTx(tx)
+	if _, err := qtx.AddChannel(ctx, channelID); err != nil {
 		return err
 	}
 
 	// Schedule historical message ingestion
 	now := time.Now()
-	_, err := b.RiverClient.Insert(
+	if _, err := b.RiverClient.InsertTx(
 		ctx,
+		tx,
 		background.MessagesIngestionWorkerArgs{
 			ChannelID: channelID,
 			StartTime: now.Add(-b.lookbackPeriod),
 			EndTime:   now,
 		},
 		nil,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 /* Slack messages related methods */
@@ -89,8 +105,9 @@ func (b *Bot) AddMessage(
 		return err
 	}
 
-	if _, err = b.RiverClient.Insert(
+	if _, err = b.RiverClient.InsertTx(
 		ctx,
+		tx,
 		background.ClassifierArgs{ChannelID: channelID, SlackTS: slackTs},
 		nil,
 	); err != nil {
