@@ -23,6 +23,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/ingestion_worker"
+	"github.com/dynoinc/ratchet/internal/background/report_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -108,15 +109,27 @@ func main() {
 		log.Fatalf("error setting up ingestion worker: %v", err)
 	}
 
+	// Report worker setup
+	reportWorker, err := report_worker.New(db, slackIntegration.SlackClient())
+	if err != nil {
+		log.Fatalf("error setting up report worker: %v", err)
+	}
+
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
 	river.AddWorker(workers, ingestionWorker)
+	river.AddWorker(workers, reportWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		log.Fatalf("error setting up background worker: %v", err)
 	}
 	bot.RiverClient = riverClient
+
+	// Initialize bot (this will set up periodic jobs)
+	if err := bot.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize bot: %v", err)
+	}
 
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient, logger)
@@ -125,9 +138,9 @@ func main() {
 	}
 
 	server := &http.Server{
-		BaseContext: func(listener net.Listener) context.Context { return ctx },
-		Addr:        c.HTTPAddr,
-		Handler:     handler,
+			BaseContext: func(listener net.Listener) context.Context { return ctx },
+			Addr:        c.HTTPAddr,
+			Handler:     handler,
 	}
 
 	wg.Go(func() error {

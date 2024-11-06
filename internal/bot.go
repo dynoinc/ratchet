@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -11,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
+	"github.com/robfig/cron/v3"
 
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -32,6 +34,20 @@ func New(db *pgxpool.Pool) *Bot {
 		DB:             db,
 		lookbackPeriod: background.DefaultHistoricalLookbackPeriod,
 	}
+}
+
+// Initialize should be called after RiverClient is set
+func (b *Bot) Initialize() error {
+	if b.RiverClient == nil {
+		return fmt.Errorf("RiverClient must be set before initialization")
+	}
+
+	// Setup periodic jobs
+	if err := b.SetupWeeklyReportJob(); err != nil {
+		return fmt.Errorf("failed to setup weekly report job: %w", err)
+	}
+
+	return nil
 }
 
 /* Slack channels related methods */
@@ -168,4 +184,28 @@ func (b *Bot) CloseIncident(ctx context.Context, alert string, service string, e
 	// TODO: enqueue a background job to process this incident.
 
 	return tx.Commit(ctx)
+}
+
+// SetupWeeklyReportJob configures the weekly report periodic job
+func (b *Bot) SetupWeeklyReportJob() error {
+	if b.RiverClient == nil {
+		return fmt.Errorf("RiverClient is not initialized")
+	}
+
+	// Schedule for every Monday at 9 AM PST
+	schedule, err := cron.ParseStandard("0 9 * * 1")
+	if err != nil {
+		return fmt.Errorf("error parsing cron schedule: %w", err)
+	}
+
+	constructor := func() (river.JobArgs, *river.InsertOpts) {
+		return &background.WeeklyReportJobArgs{}, nil
+	}
+
+	periodicJob := river.NewPeriodicJob(schedule, constructor, &river.PeriodicJobOpts{
+		RunOnStart: false,
+	})
+
+	b.RiverClient.PeriodicJobs().Add(periodicJob)
+	return nil
 }
