@@ -19,6 +19,7 @@ import (
 
 var (
 	ErrChannelNotKnown = errors.New("channel not known")
+	ErrNoOpenIncident  = errors.New("no open incident found")
 )
 
 type Bot struct {
@@ -139,7 +140,11 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 	return 0, tx.Commit(ctx)
 }
 
-func (b *Bot) CloseIncident(ctx context.Context, alert string, service string, endTimestamp time.Time) error {
+func (b *Bot) CloseIncident(
+	ctx context.Context,
+	channelID, alert, service string,
+	endTimestamp pgtype.Timestamptz,
+) error {
 	tx, err := b.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -147,20 +152,23 @@ func (b *Bot) CloseIncident(ctx context.Context, alert string, service string, e
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := schema.New(b.DB).WithTx(tx)
-	incidentID, err := qtx.FindActiveIncident(ctx, schema.FindActiveIncidentParams{
-		Alert:   alert,
-		Service: service,
+	incident, err := qtx.GetLatestIncidentBeforeTimestamp(ctx, schema.GetLatestIncidentBeforeTimestampParams{
+		ChannelID:       channelID,
+		Alert:           alert,
+		Service:         service,
+		BeforeTimestamp: endTimestamp,
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNoOpenIncident
+		}
+
 		return err
 	}
 
 	if _, err := qtx.CloseIncident(ctx, schema.CloseIncidentParams{
-		EndTimestamp: pgtype.Timestamptz{
-			Time:  endTimestamp,
-			Valid: true,
-		},
-		IncidentID: incidentID,
+		EndTimestamp: endTimestamp,
+		IncidentID:   incident.IncidentID,
 	}); err != nil {
 		return err
 	}
