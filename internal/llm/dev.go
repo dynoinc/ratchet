@@ -23,7 +23,7 @@ const (
 
 func StartOllamaContainer(ctx context.Context) error {
 	// If local ollama is running, just use that.
-	if checkHealth(ollamaURL) == nil {
+	if checkHealth(ollamaURL, 1) == nil {
 		return nil
 	}
 
@@ -59,20 +59,21 @@ func StartOllamaContainer(ctx context.Context) error {
 		return fmt.Errorf("failed to start container: %v", err)
 	}
 
-	if err := checkHealth(ollamaURL); err != nil {
+	if err := checkHealth(ollamaURL, 30); err != nil {
 		return fmt.Errorf("failed to check Ollama health: %v", err)
 	}
 
 	return nil
 }
 
-func checkHealth(url string) error {
+func checkHealth(url string, attempts int) error {
 	var backoff time.Duration
-	for retries := 0; retries < 10; retries++ {
+	for retries := 0; retries < attempts; retries++ {
 		resp, err := http.Get(url)
 		if resp != nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 		}
+
 		if err == nil && resp.StatusCode == http.StatusOK {
 			log.Println("Ollama health check passed.")
 			return nil

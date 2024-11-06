@@ -17,26 +17,21 @@ import (
 
 const (
 	PostgresImage = "postgres:12.19"
+	containerName = "ratchet-db"
 )
 
 // StartPostgresContainer starts a PostgreSQL container with persistent storage
-// and checks for readiness with a "SELECT 1" query using exponential backoff.
-// Returns the container ID and a function to stop the container.
+// and checks for readiness with a PING using exponential backoff.
 func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
+	// If postgres is already running, return
+	if checkPostgresReady(ctx, c, 1) == nil {
+		return nil
+	}
+
 	// Set up Docker client
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %v", err)
-	}
-
-	// Check if the container is already running
-	containerName := "ratchet-db"
-	existingContainerID, err := findRunningContainer(cli, ctx, containerName)
-	if err != nil {
-		return fmt.Errorf("failed to find running container: %v", err)
-	}
-	if existingContainerID != "" {
-		return nil
 	}
 
 	// Pull PostgreSQL image if not available
@@ -87,7 +82,7 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	}
 
 	// Check readiness with exponential backoff
-	if err := checkPostgresReady(ctx, c); err != nil {
+	if err := checkPostgresReady(ctx, c, 30); err != nil {
 		return fmt.Errorf("PostgreSQL readiness check failed: %v", err)
 	}
 
@@ -95,24 +90,8 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	return nil
 }
 
-// findRunningContainer checks if a container with the given name is already running and returns its ID.
-func findRunningContainer(cli *client.Client, ctx context.Context, containerName string) (string, error) {
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
-	if err != nil {
-		return "", fmt.Errorf("failed to list containers: %v", err)
-	}
-	for _, c := range containers {
-		for _, name := range c.Names {
-			if name == "/"+containerName && c.State == "running" {
-				return c.ID, nil
-			}
-		}
-	}
-	return "", nil
-}
-
 // checkPostgresReady checks if PostgreSQL is ready by pinging it.
-func checkPostgresReady(ctx context.Context, c DatabaseConfig) error {
+func checkPostgresReady(ctx context.Context, c DatabaseConfig, attempts int) error {
 	pool, err := pgxpool.New(ctx, c.URL())
 	if err != nil {
 		return fmt.Errorf("failed to create connection pool: %v", err)
@@ -120,7 +99,7 @@ func checkPostgresReady(ctx context.Context, c DatabaseConfig) error {
 	defer pool.Close()
 
 	var backoff time.Duration
-	for i := 0; i < 10; i++ {
+	for i := 0; i < attempts; i++ {
 		err = pool.Ping(ctx)
 		if err == nil {
 			return nil
