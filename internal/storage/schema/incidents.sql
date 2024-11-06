@@ -12,7 +12,7 @@ INSERT INTO incidents (
     @alert,
     @service,
     @priority,
-    now()
+    @start_timestamp
 )
 ON CONFLICT (channel_id, slack_ts)
 DO UPDATE SET
@@ -29,6 +29,6 @@ LIMIT 1;
 
 -- name: CloseIncident :one
 UPDATE incidents
-SET end_timestamp = now()
+SET end_timestamp = @end_timestamp
 WHERE incident_id = @incident_id::integer
 RETURNING incident_id;

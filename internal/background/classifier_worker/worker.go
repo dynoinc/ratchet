@@ -8,6 +8,7 @@ import (
 	"log"
 	"os/exec"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/riverqueue/river"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
@@ -145,20 +147,26 @@ func processIncidentAction(
 	msg schema.Message,
 	action *IncidentAction,
 ) error {
+	t, err := slack.TsToTime(msg.SlackTs)
+	if err != nil {
+		return fmt.Errorf("failed to parse Slack timestamp: %w", err)
+	}
+
 	switch action.Action {
 	case ActionOpenIncident:
 		_, err := bot.OpenIncident(ctx, schema.OpenIncidentParams{
-			ChannelID: msg.ChannelID,
-			SlackTs:   msg.SlackTs,
-			Alert:     action.Alert,
-			Service:   action.Service,
-			Priority:  string(action.Priority),
+			ChannelID:      msg.ChannelID,
+			SlackTs:        msg.SlackTs,
+			Alert:          action.Alert,
+			Service:        action.Service,
+			Priority:       string(action.Priority),
+			StartTimestamp: pgtype.Timestamptz{Time: t, Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to open incident: %w", err)
 		}
 	case ActionCloseIncident:
-		if err := bot.CloseIncident(ctx, action.Alert, action.Service); err != nil {
+		if err := bot.CloseIncident(ctx, action.Alert, action.Service, t); err != nil {
 			return fmt.Errorf("failed to close incident: %w", err)
 		}
 	}

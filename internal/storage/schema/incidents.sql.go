@@ -7,17 +7,24 @@ package schema
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const closeIncident = `-- name: CloseIncident :one
 UPDATE incidents
-SET end_timestamp = now()
-WHERE incident_id = $1::integer
+SET end_timestamp = $1
+WHERE incident_id = $2::integer
 RETURNING incident_id
 `
 
-func (q *Queries) CloseIncident(ctx context.Context, incidentID int32) (int32, error) {
-	row := q.db.QueryRow(ctx, closeIncident, incidentID)
+type CloseIncidentParams struct {
+	EndTimestamp pgtype.Timestamptz
+	IncidentID   int32
+}
+
+func (q *Queries) CloseIncident(ctx context.Context, arg CloseIncidentParams) (int32, error) {
+	row := q.db.QueryRow(ctx, closeIncident, arg.EndTimestamp, arg.IncidentID)
 	var incident_id int32
 	err := row.Scan(&incident_id)
 	return incident_id, err
@@ -58,7 +65,7 @@ INSERT INTO incidents (
     $3,
     $4,
     $5,
-    now()
+    $6
 )
 ON CONFLICT (channel_id, slack_ts)
 DO UPDATE SET
@@ -67,11 +74,12 @@ RETURNING incident_id
 `
 
 type OpenIncidentParams struct {
-	ChannelID string
-	SlackTs   string
-	Alert     string
-	Service   string
-	Priority  string
+	ChannelID      string
+	SlackTs        string
+	Alert          string
+	Service        string
+	Priority       string
+	StartTimestamp pgtype.Timestamptz
 }
 
 func (q *Queries) OpenIncident(ctx context.Context, arg OpenIncidentParams) (int32, error) {
@@ -81,6 +89,7 @@ func (q *Queries) OpenIncident(ctx context.Context, arg OpenIncidentParams) (int
 		arg.Alert,
 		arg.Service,
 		arg.Priority,
+		arg.StartTimestamp,
 	)
 	var incident_id int32
 	err := row.Scan(&incident_id)

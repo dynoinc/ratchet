@@ -3,7 +3,9 @@ package tests
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -27,12 +29,16 @@ func TestIncidents(t *testing.T) {
 			Alert:     "alert1",
 			Service:   "service1",
 			Priority:  "LOW",
+			StartTimestamp: pgtype.Timestamptz{
+				Time:  time.Now(),
+				Valid: true,
+			},
 		})
 		require.NoError(t, err)
 	})
 
 	t.Run("can close incident", func(t *testing.T) {
-		err := bot.CloseIncident(ctx, "alert1", "service1")
+		err := bot.CloseIncident(ctx, "alert1", "service1", time.Now())
 		require.NoError(t, err)
 	})
 }

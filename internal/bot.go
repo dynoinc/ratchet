@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
@@ -119,8 +120,9 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			return 0, nil
+			return id, nil
 		}
+
 		return 0, err
 	}
 
@@ -137,7 +139,7 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 	return 0, tx.Commit(ctx)
 }
 
-func (b *Bot) CloseIncident(ctx context.Context, alert string, service string) error {
+func (b *Bot) CloseIncident(ctx context.Context, alert string, service string, endTimestamp time.Time) error {
 	tx, err := b.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -153,7 +155,13 @@ func (b *Bot) CloseIncident(ctx context.Context, alert string, service string) e
 		return err
 	}
 
-	if _, err := qtx.CloseIncident(ctx, incidentID); err != nil {
+	if _, err := qtx.CloseIncident(ctx, schema.CloseIncidentParams{
+		EndTimestamp: pgtype.Timestamptz{
+			Time:  endTimestamp,
+			Valid: true,
+		},
+		IncidentID: incidentID,
+	}); err != nil {
 		return err
 	}
 
