@@ -23,7 +23,7 @@ import (
 type Config struct {
 	OpenAIAPIKey string `envconfig:"OPENAI_API_KEY" default:"fake-classifier-key"`
 	OpenAIURL    string `envconfig:"OPENAI_URL" default:"http://localhost:11434/v1/"`
-	OpenAIModel  string `envconfig:"OPENAI_MODEL" default:"mistral"`
+	OpenAIModel  string `envconfig:"OPENAI_MODEL"`
 
 	// In case it is possible to deterministically classify an incident (the alert bot always uses
 	// the same message format), we can use this to classify the incident without using the OpenAI API.
@@ -46,9 +46,12 @@ func New(ctx context.Context, c Config, bot *internal.Bot) (river.Worker[backgro
 		}
 	}
 
-	openaiClient := openai.NewClient(option.WithBaseURL(c.OpenAIURL), option.WithAPIKey(c.OpenAIAPIKey))
-	if _, err := openaiClient.Models.Get(ctx, c.OpenAIModel); err != nil {
-		return nil, err
+	var openaiClient *openai.Client
+	if c.OpenAIModel != "" {
+		openaiClient := openai.NewClient(option.WithBaseURL(c.OpenAIURL), option.WithAPIKey(c.OpenAIAPIKey))
+		if _, err := openaiClient.Models.Get(ctx, c.OpenAIModel); err != nil {
+			return nil, err
+		}
 	}
 
 	return &ClassifierWorker{
