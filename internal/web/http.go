@@ -27,7 +27,7 @@ type httpHandlers struct {
 	templates *template.Template
 }
 
-func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx], logger *slog.Logger) (http.Handler, error) {
+func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) (http.Handler, error) {
 	templates, err := template.ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 		Client: riverClient,
 		DB:     db,
 		Prefix: "/riverui",
-		Logger: logger,
+		Logger: slog.Default(),
 	}
 	riverServer, err := riverui.NewServer(opts)
 	if err != nil {

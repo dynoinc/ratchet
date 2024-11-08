@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -61,8 +60,6 @@ func main() {
 
 	wg, ctx := errgroup.WithContext(ctx)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
 
 	log.Println("Running version:", versioninfo.Short())
 	if err := godotenv.Load(); err != nil {
@@ -129,7 +126,7 @@ func main() {
 	bot.RiverClient = riverClient
 
 	// HTTP server setup
-	handler, err := web.New(ctx, db, riverClient, logger)
+	handler, err := web.New(ctx, db, riverClient)
 	if err != nil {
 		log.Fatalf("error setting up HTTP server: %v", err)
 	}
