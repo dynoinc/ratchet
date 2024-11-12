@@ -12,15 +12,31 @@ import (
 )
 
 func TestClassifierWorker(t *testing.T) {
-	expected := IncidentAction{
-		Action:   ActionOpenIncident,
-		Alert:    "fake-alert",
-		Service:  "fake-service",
-		Priority: PriorityHigh,
+	outputs := map[string]IncidentAction{
+		"OPEN_HIGH": {
+			Action:   ActionOpenIncident,
+			Alert:    "fake-alert",
+			Service:  "fake-service",
+			Priority: PriorityHigh,
+		},
+		"OPEN_LOW": {
+			Action:   ActionOpenIncident,
+			Alert:    "fake-alert",
+			Service:  "fake-service",
+			Priority: PriorityLow,
+		},
+		"CLOSE": {
+			Action:  ActionCloseIncident,
+			Alert:   "fake-alert",
+			Service: "fake-service",
+		},
+		"NONE": {
+			Action: ActionNone,
+		},
 	}
 
-	if os.Getenv("INCIDENT_BINARY_ACTION") == "OPEN" {
-		if err := json.NewEncoder(os.Stdout).Encode(&expected); err != nil {
+	if a, ok := outputs[os.Getenv("INCIDENT_BINARY_ACTION")]; ok {
+		if err := json.NewEncoder(os.Stdout).Encode(&a); err != nil {
 			log.Printf("Failed to encode incident action: %v", err)
 			os.Exit(1)
 		}
@@ -33,8 +49,12 @@ func TestClassifierWorker(t *testing.T) {
 		t.Fatalf("Failed to get executable path: %v", err)
 	}
 
-	t.Setenv("INCIDENT_BINARY_ACTION", "OPEN")
-	got, err := runIncidentBinary(executable, dto.MessageAttrs{})
-	require.NoError(t, err)
-	require.Equal(t, expected, *got)
+	for testCase, expected := range outputs {
+		t.Run(testCase, func(t *testing.T) {
+			t.Setenv("INCIDENT_BINARY_ACTION", testCase)
+			got, err := runIncidentBinary(executable, dto.MessageAttrs{})
+			require.NoError(t, err)
+			require.Equal(t, expected, *got)
+		})
+	}
 }

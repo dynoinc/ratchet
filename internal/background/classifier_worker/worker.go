@@ -66,6 +66,7 @@ type Action string
 type Priority string
 
 const (
+	ActionNone          Action = "none"
 	ActionOpenIncident  Action = "open_incident"
 	ActionCloseIncident Action = "close_incident"
 
@@ -80,6 +81,8 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 	}
 
 	switch s {
+	case "none":
+		*a = ActionNone
 	case "open_incident":
 		*a = ActionOpenIncident
 	case "close_incident":
@@ -130,13 +133,17 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 			log.Printf("failed to classify incident with binary: %v", err)
 		}
 
-		log.Printf("classified incident: %v\n", action)
-		if err := processIncidentAction(ctx, w.bot, msg, action); err != nil {
-			return fmt.Errorf("failed to process incident action: %w", err)
+		if action.Action != ActionNone {
+			if err := processIncidentAction(ctx, w.bot, msg, action); err != nil {
+				return fmt.Errorf("failed to process incident action: %w", err)
+			}
+
+			return nil
 		}
 	}
 
-	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions instead of this hard-coded behavior.
+	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions instead
+	// of this hard-coded behavior.
 	subType := ""
 	if msg.Attrs.Upstream != nil {
 		subType = msg.Attrs.Upstream.SubType
