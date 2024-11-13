@@ -37,7 +37,7 @@ func setupWeeklyReportJob(ctx context.Context, db *pgxpool.Pool, riverClient *ri
 		}
 
 		periodicJob := river.NewPeriodicJob(schedule, constructor, &river.PeriodicJobOpts{
-			RunOnStart: true,
+			RunOnStart: false,
 		})
 
 		riverClient.PeriodicJobs().Add(periodicJob)
