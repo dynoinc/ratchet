@@ -42,3 +42,32 @@ RETURNING incident_id;
 SELECT *
 FROM incidents
 WHERE end_timestamp IS NULL;
+
+-- name: GetIncidentStatsByPeriod :many
+SELECT 
+    priority as severity,
+    COUNT(*) as count,
+    AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds,
+    SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as total_duration_seconds
+FROM incidents 
+WHERE channel_id = $1 
+    AND start_timestamp >= $2 
+    AND start_timestamp <= $3
+    AND end_timestamp IS NOT NULL
+GROUP BY priority
+ORDER BY priority;
+
+-- name: GetTopAlerts :many
+SELECT 
+    alert,
+    COUNT(*) as count,
+    MAX(start_timestamp) as last_seen,
+    AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds
+FROM incidents
+WHERE channel_id = $1 
+    AND start_timestamp >= $2 
+    AND start_timestamp <= $3
+    AND end_timestamp IS NOT NULL
+GROUP BY alert
+ORDER BY count DESC
+LIMIT 5;
