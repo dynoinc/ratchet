@@ -24,6 +24,14 @@ func (m MessagesIngestionWorkerArgs) Kind() string {
 	return "ingest_messages"
 }
 
+type WeeklyReportJobArgs struct {
+	ChannelID string `json:"channel_id"`
+}
+
+func (w WeeklyReportJobArgs) Kind() string {
+	return "weekly_report"
+}
+
 func New(db *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error) {
 	return river.NewClient(riverpgxv5.New(db), &river.Config{
 		Queues: map[string]river.QueueConfig{
