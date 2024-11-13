@@ -31,6 +31,59 @@ func (q *Queries) CloseIncident(ctx context.Context, arg CloseIncidentParams) (i
 	return incident_id, err
 }
 
+const getIncidentStatsByPeriod = `-- name: GetIncidentStatsByPeriod :many
+SELECT 
+    priority as severity,
+    COUNT(*) as count,
+    AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds,
+    SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as total_duration_seconds
+FROM incidents 
+WHERE channel_id = $1 
+    AND start_timestamp >= $2 
+    AND start_timestamp <= $3
+    AND end_timestamp IS NOT NULL
+GROUP BY priority
+ORDER BY priority
+`
+
+type GetIncidentStatsByPeriodParams struct {
+	ChannelID        string
+	StartTimestamp   pgtype.Timestamptz
+	StartTimestamp_2 pgtype.Timestamptz
+}
+
+type GetIncidentStatsByPeriodRow struct {
+	Severity             string
+	Count                int64
+	AvgDurationSeconds   float64
+	TotalDurationSeconds int64
+}
+
+func (q *Queries) GetIncidentStatsByPeriod(ctx context.Context, arg GetIncidentStatsByPeriodParams) ([]GetIncidentStatsByPeriodRow, error) {
+	rows, err := q.db.Query(ctx, getIncidentStatsByPeriod, arg.ChannelID, arg.StartTimestamp, arg.StartTimestamp_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetIncidentStatsByPeriodRow
+	for rows.Next() {
+		var i GetIncidentStatsByPeriodRow
+		if err := rows.Scan(
+			&i.Severity,
+			&i.Count,
+			&i.AvgDurationSeconds,
+			&i.TotalDurationSeconds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLatestIncidentBeforeTimestamp = `-- name: GetLatestIncidentBeforeTimestamp :one
 SELECT incident_id, channel_id, slack_ts, alert, service, priority, attrs, start_timestamp, end_timestamp
 FROM incidents
@@ -97,6 +150,60 @@ func (q *Queries) GetOpenIncidents(ctx context.Context) ([]Incident, error) {
 			&i.Attrs,
 			&i.StartTimestamp,
 			&i.EndTimestamp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopAlerts = `-- name: GetTopAlerts :many
+SELECT 
+    alert,
+    COUNT(*) as count,
+    MAX(start_timestamp) as last_seen,
+    AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds
+FROM incidents
+WHERE channel_id = $1 
+    AND start_timestamp >= $2 
+    AND start_timestamp <= $3
+    AND end_timestamp IS NOT NULL
+GROUP BY alert
+ORDER BY count DESC
+LIMIT 5
+`
+
+type GetTopAlertsParams struct {
+	ChannelID        string
+	StartTimestamp   pgtype.Timestamptz
+	StartTimestamp_2 pgtype.Timestamptz
+}
+
+type GetTopAlertsRow struct {
+	Alert              string
+	Count              int64
+	LastSeen           interface{}
+	AvgDurationSeconds float64
+}
+
+func (q *Queries) GetTopAlerts(ctx context.Context, arg GetTopAlertsParams) ([]GetTopAlertsRow, error) {
+	rows, err := q.db.Query(ctx, getTopAlerts, arg.ChannelID, arg.StartTimestamp, arg.StartTimestamp_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTopAlertsRow
+	for rows.Next() {
+		var i GetTopAlertsRow
+		if err := rows.Scan(
+			&i.Alert,
+			&i.Count,
+			&i.LastSeen,
+			&i.AvgDurationSeconds,
 		); err != nil {
 			return nil, err
 		}
