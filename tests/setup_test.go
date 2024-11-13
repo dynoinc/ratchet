@@ -24,7 +24,14 @@ func SetupBot(t *testing.T) *internal.Bot {
 	db, err := storage.New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
 	require.NoError(t, err)
 
-	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{})
+	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {
+				MaxWorkers: 1,
+			},
+		},
+		Workers: river.NewWorkers(),
+	})
 	require.NoError(t, err)
 
 	bot := internal.New(db)

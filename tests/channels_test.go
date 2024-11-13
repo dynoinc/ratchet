@@ -32,7 +32,7 @@ func TestOnboardingFlow(t *testing.T) {
 	})
 
 	t.Run("listing channels works", func(t *testing.T) {
-		channels, err := schema.New(bot.DB).GetSlackChannels(ctx)
+		channels, err := schema.New(bot.DB).GetChannels(ctx)
 		require.NoError(t, err)
 		require.Len(t, channels, 3)
 		for _, id := range []string{"channel1", "channel2", "channel3"} {

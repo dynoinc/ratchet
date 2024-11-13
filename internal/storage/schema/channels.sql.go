@@ -9,26 +9,35 @@ import (
 	"context"
 )
 
-const addChannel = `-- name: AddChannel :one
+const addChannel = `-- name: AddChannel :exec
 INSERT INTO channels (channel_id)
 VALUES ($1)
-ON CONFLICT (channel_id) DO UPDATE SET channel_id = EXCLUDED.channel_id
-RETURNING channel_id, created_at
+ON CONFLICT DO NOTHING
 `
 
-func (q *Queries) AddChannel(ctx context.Context, channelID string) (Channel, error) {
-	row := q.db.QueryRow(ctx, addChannel, channelID)
+func (q *Queries) AddChannel(ctx context.Context, channelID string) error {
+	_, err := q.db.Exec(ctx, addChannel, channelID)
+	return err
+}
+
+const getChannel = `-- name: GetChannel :one
+SELECT channel_id, created_at, latest_slack_ts FROM channels
+WHERE channel_id = $1
+`
+
+func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, error) {
+	row := q.db.QueryRow(ctx, getChannel, channelID)
 	var i Channel
-	err := row.Scan(&i.ChannelID, &i.CreatedAt)
+	err := row.Scan(&i.ChannelID, &i.CreatedAt, &i.LatestSlackTs)
 	return i, err
 }
 
-const getSlackChannels = `-- name: GetSlackChannels :many
-SELECT channel_id, created_at FROM channels
+const getChannels = `-- name: GetChannels :many
+SELECT channel_id, created_at, latest_slack_ts FROM channels
 `
 
-func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
-	rows, err := q.db.Query(ctx, getSlackChannels)
+func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
+	rows, err := q.db.Query(ctx, getChannels)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +45,7 @@ func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
 	var items []Channel
 	for rows.Next() {
 		var i Channel
-		if err := rows.Scan(&i.ChannelID, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.ChannelID, &i.CreatedAt, &i.LatestSlackTs); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -45,4 +54,20 @@ func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateLatestSlackTs = `-- name: UpdateLatestSlackTs :exec
+UPDATE channels
+SET latest_slack_ts = $2
+WHERE channel_id = $1
+`
+
+type UpdateLatestSlackTsParams struct {
+	ChannelID     string
+	LatestSlackTs string
+}
+
+func (q *Queries) UpdateLatestSlackTs(ctx context.Context, arg UpdateLatestSlackTsParams) error {
+	_, err := q.db.Exec(ctx, updateLatestSlackTs, arg.ChannelID, arg.LatestSlackTs)
+	return err
 }

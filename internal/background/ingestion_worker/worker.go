@@ -10,11 +10,11 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type MessagesIngestionWorker struct {
 	river.WorkerDefaults[background.MessagesIngestionWorkerArgs]
+
 	bot         *internal.Bot
 	slackClient *slack.Client
 }
@@ -24,33 +24,34 @@ func New(bot *internal.Bot, slackClient *slack.Client) (*MessagesIngestionWorker
 }
 
 func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
+	channel, err := w.bot.GetChannel(ctx, j.Args.ChannelID)
+	if err != nil {
+		return fmt.Errorf("error getting channel: %w", err)
+	}
+
 	params := slack.GetConversationHistoryParameters{
 		ChannelID: j.Args.ChannelID,
 		Limit:     100,
-		Oldest:    fmt.Sprintf("%d", j.Args.StartTime.Unix()),
-		Latest:    fmt.Sprintf("%d", j.Args.EndTime.Unix()),
+		Oldest:    channel.LatestSlackTs,
 	}
 
-	for {
-		messages, err := w.slackClient.GetConversationHistory(&params)
-		if err != nil {
-			log.Printf("error getting conversation history: %v", err)
+	messages, err := w.slackClient.GetConversationHistory(&params)
+	if err != nil {
+		return fmt.Errorf("error getting conversation history: %w", err)
+	}
+
+	log.Printf("Processing %d messages from %s", len(messages.Messages), j.Args.ChannelID)
+	if err := w.bot.AddMessages(ctx, j.Args.ChannelID, messages.Messages); err != nil {
+		return fmt.Errorf("error adding messages: %w", err)
+	}
+
+	if messages.HasMore {
+		if _, err := w.bot.RiverClient.Insert(
+			ctx,
+			background.MessagesIngestionWorkerArgs{ChannelID: j.Args.ChannelID},
+			&river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}},
+		); err != nil {
 			return err
-		}
-		log.Printf("Processing %d messages from %s", len(messages.Messages), j.Args.ChannelID)
-
-		for _, msg := range messages.Messages {
-			// Attempt to add each message, ignoring duplicate errors
-			err := w.bot.AddMessage(ctx, j.Args.ChannelID, msg.Timestamp, dto.MessageAttrs{Message: &msg})
-			if err != nil {
-				return err
-			}
-		}
-
-		if messages.HasMore {
-			params.Cursor = messages.Messages[len(messages.Messages)-1].Timestamp
-		} else {
-			break
 		}
 	}
 

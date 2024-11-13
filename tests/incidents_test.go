@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 func TestIncidents(t *testing.T) {
@@ -37,7 +37,13 @@ func TestIncidents(t *testing.T) {
 		err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 
-		err = bot.AddMessage(ctx, "channel1", "ts1", dto.MessageAttrs{})
+		err = bot.AddMessages(ctx, "channel1", []slack.Message{
+			{
+				Msg: slack.Msg{
+					Timestamp: "ts1",
+				},
+			},
+		})
 		require.NoError(t, err)
 
 		_, err = bot.OpenIncident(ctx, schema.OpenIncidentParams{
@@ -57,7 +63,14 @@ func TestIncidents(t *testing.T) {
 	})
 
 	t.Run("closes the right incident if multiple incidents are open", func(t *testing.T) {
-		err := bot.AddMessage(ctx, "channel1", "ts2", dto.MessageAttrs{})
+		err := bot.AddMessages(ctx, "channel1",
+			[]slack.Message{
+				{
+					Msg: slack.Msg{
+						Timestamp: "ts2",
+					},
+				},
+			})
 		require.NoError(t, err)
 
 		stz1 := stz
@@ -72,7 +85,13 @@ func TestIncidents(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = bot.AddMessage(ctx, "channel1", "ts3", dto.MessageAttrs{})
+		err = bot.AddMessages(ctx, "channel1", []slack.Message{
+			{
+				Msg: slack.Msg{
+					Timestamp: "ts3",
+				},
+			},
+		})
 		require.NoError(t, err)
 
 		stz2 := stz
@@ -87,7 +106,13 @@ func TestIncidents(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = bot.AddMessage(ctx, "channel1", "ts4", dto.MessageAttrs{})
+		err = bot.AddMessages(ctx, "channel1", []slack.Message{
+			{
+				Msg: slack.Msg{
+					Timestamp: "ts4",
+				},
+			},
+		})
 		require.NoError(t, err)
 
 		err = bot.CloseIncident(ctx, "channel1", "ts4", "alert1", "service1", etz)
