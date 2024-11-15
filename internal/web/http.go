@@ -16,7 +16,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
-//go:embed templates/*.html
+//go:embed templates/* templates/components/*
 var templateFS embed.FS
 
 //go:embed static/*
@@ -28,7 +28,9 @@ type httpHandlers struct {
 }
 
 func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) (http.Handler, error) {
-	templates, err := template.ParseFS(templateFS, "templates/*.html")
+	templates, err := template.New("").
+		Funcs(templateFuncs).
+		ParseFS(templateFS, "templates/*.html", "templates/components/*.html")
 	if err != nil {
 		return nil, err
 	}

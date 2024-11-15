@@ -49,7 +49,7 @@
 
             <div class="report-section">
                 <h4><span>📈</span> Incidents by Severity</h4>
-                {{.IncidentsTable}}
+                {{template "incidents_table" .Incidents}}
             </div>
 
             <div class="mitigation-time">
@@ -58,7 +58,7 @@
 
             <div class="report-section">
                 <h4><span>🔥</span> Top Alerts</h4>
-                {{.TopAlertsTable}}
+                {{template "alerts_table" .TopAlerts}}
             </div>
         </div>
     </div>
