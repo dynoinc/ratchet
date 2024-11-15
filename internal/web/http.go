@@ -62,6 +62,7 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 	mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServerFS(staticFS)))
 	mux.HandleFunc("GET /{$}", handlers.root)
 	mux.HandleFunc("GET /team/{team}", handlers.team)
+	mux.HandleFunc("GET /team/{team}/report/{report}", handlers.reportDetail)
 
 	return mux, nil
 }
@@ -81,15 +82,6 @@ func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
 
 	writer.Header().Set("Content-Type", "text/html")
 	err = h.templates.ExecuteTemplate(writer, "root.html", data)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Content-Type", "text/html")
-	err := h.templates.ExecuteTemplate(writer, "team.html", nil)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return

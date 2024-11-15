@@ -1,38 +1,49 @@
-<!doctype html>
-<html lang="en">
-    {{template "header" .}}
-    <body>
-        <header class="container-fluid navbar">
-            <nav>
-                <ul>
-                    <li>
-                        <section>
-                            <a href="/" aria-label="Home">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="24"
-                                    height="24"
-                                    fill="red"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path d="M12 3l9 9h-3v9H6v-9H3l9-9z" />
-                                </svg>
-                            </a>
-                        </section>
-                    </li>
-                    <li>
-                        <section>
-                            <strong>Ratchet</strong>
-                        </section>
-                    </li>
-                </ul>
-            </nav>
-        </header>
-
-        <main class="container-fluid">
-            <section class="container-fluid" id="itemList">
-                <h3>Channel home page</h3>
-            </section>
-        </main>
-    </body>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Team Reports</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .report-list {
+            margin: 20px 0;
+        }
+        .report-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .report-item:hover {
+            background-color: #f8f9fa;
+        }
+        .report-meta {
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-4 mb-4">Reports for #{{.ChannelID}}</h1>
+        
+        <div class="report-list">
+            {{range .Reports}}
+            <div class="report-item">
+                <h3>
+                    <a href="/team/{{$.ChannelID}}/report/{{.ID}}" class="text-decoration-none">
+                        {{.WeekRange}}
+                    </a>
+                </h3>
+                <div class="report-meta">
+                    Generated: {{.CreatedAt.Format "Jan 02, 2006 15:04:05"}}
+                </div>
+            </div>
+            {{else}}
+            <div class="alert alert-info">
+                No reports available for this channel.
+            </div>
+            {{end}}
+        </div>
+    </div>
+</body>
 </html>
