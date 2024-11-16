@@ -1,7 +1,8 @@
--- name: AddChannel :exec
+-- name: AddChannel :one
 INSERT INTO channels (channel_id)
 VALUES ($1)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (channel_id) DO UPDATE SET channel_id = channels.channel_id
+RETURNING *;
 
 -- name: UpdateLatestSlackTs :exec
 UPDATE channels

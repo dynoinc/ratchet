@@ -17,7 +17,8 @@ func (c ClassifierArgs) Kind() string {
 }
 
 type MessagesIngestionWorkerArgs struct {
-	ChannelID string `json:"channel_id" river:"unique"`
+	ChannelID     string `json:"channel_id"`
+	OldestSlackTS string `json:"oldest_slack_ts"`
 }
 
 func (m MessagesIngestionWorkerArgs) Kind() string {

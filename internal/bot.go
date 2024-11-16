@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
@@ -37,24 +36,13 @@ func New(db *pgxpool.Pool) *Bot {
 
 /* Slack channels related methods */
 
-func (b *Bot) AddChannel(ctx context.Context, channelID string) error {
-	if err := schema.New(b.DB).AddChannel(ctx, channelID); err != nil {
-		return fmt.Errorf("error adding channel: %w", err)
+func (b *Bot) AddChannel(ctx context.Context, channelID string) (schema.Channel, error) {
+	channel, err := schema.New(b.DB).AddChannel(ctx, channelID)
+	if err != nil {
+		return schema.Channel{}, fmt.Errorf("error adding channel: %w", err)
 	}
 
-	b.RiverClient.PeriodicJobs().Add(river.NewPeriodicJob(
-		river.PeriodicInterval(time.Minute),
-		func() (river.JobArgs, *river.InsertOpts) {
-			return background.MessagesIngestionWorkerArgs{
-					ChannelID: channelID,
-				}, &river.InsertOpts{
-					UniqueOpts: river.UniqueOpts{ByArgs: true},
-				}
-		},
-		&river.PeriodicJobOpts{RunOnStart: true},
-	))
-
-	return nil
+	return channel, nil
 }
 
 func (b *Bot) GetChannel(ctx context.Context, channelID string) (schema.Channel, error) {
@@ -64,15 +52,18 @@ func (b *Bot) GetChannel(ctx context.Context, channelID string) (schema.Channel,
 /* Slack messages related methods */
 
 func (b *Bot) Notify(ctx context.Context, channelID string) error {
-	// Ensure channel is known and we are processing its messages.
-	if err := b.AddChannel(ctx, channelID); err != nil {
-		return err
+	channel, err := b.AddChannel(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("error adding channel: %w", err)
 	}
 
 	// Trigger ingestion job now to process the message.
 	if _, err := b.RiverClient.Insert(
 		ctx,
-		background.MessagesIngestionWorkerArgs{ChannelID: channelID},
+		background.MessagesIngestionWorkerArgs{
+			ChannelID:     channelID,
+			OldestSlackTS: channel.LatestSlackTs,
+		},
 		&river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}},
 	); err != nil {
 		return err
@@ -119,7 +110,7 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 
 	if err := qtx.UpdateLatestSlackTs(ctx, schema.UpdateLatestSlackTsParams{
 		ChannelID:     channelID,
-		LatestSlackTs: messages[len(messages)-1].Timestamp,
+		LatestSlackTs: messages[0].Timestamp,
 	}); err != nil {
 		return err
 	}

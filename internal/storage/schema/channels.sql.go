@@ -9,15 +9,18 @@ import (
 	"context"
 )
 
-const addChannel = `-- name: AddChannel :exec
+const addChannel = `-- name: AddChannel :one
 INSERT INTO channels (channel_id)
 VALUES ($1)
-ON CONFLICT DO NOTHING
+ON CONFLICT (channel_id) DO UPDATE SET channel_id = channels.channel_id
+RETURNING channel_id, created_at, latest_slack_ts
 `
 
-func (q *Queries) AddChannel(ctx context.Context, channelID string) error {
-	_, err := q.db.Exec(ctx, addChannel, channelID)
-	return err
+func (q *Queries) AddChannel(ctx context.Context, channelID string) (Channel, error) {
+	row := q.db.QueryRow(ctx, addChannel, channelID)
+	var i Channel
+	err := row.Scan(&i.ChannelID, &i.CreatedAt, &i.LatestSlackTs)
+	return i, err
 }
 
 const getChannel = `-- name: GetChannel :one
