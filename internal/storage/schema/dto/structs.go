@@ -2,12 +2,10 @@ package dto
 
 import (
 	"github.com/slack-go/slack"
-	"github.com/slack-go/slack/slackevents"
 )
 
 type MessageAttrs struct {
-	Upstream *slackevents.MessageEvent `json:"upstream,omitempty"` // from live update
-	Message  *slack.Message            `json:"message,omitempty"`  // from history
+	Message *slack.Message `json:"message,omitempty"`
 
 	// Set in case this is a incident open/close message
 	IncidentID int32  `json:"incident_id,omitempty"`

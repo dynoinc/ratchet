@@ -17,7 +17,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/slack"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type Config struct {
@@ -27,7 +26,7 @@ type Config struct {
 
 	// In case it is possible to deterministically classify an incident (the alert bot always uses
 	// the same message format), we can use this to classify the incident without using the OpenAI API.
-	IncidentBinary string `split_words:"true"`
+	IncidentClassificationBinary string `split_words:"true"`
 }
 
 type ClassifierWorker struct {
@@ -40,8 +39,8 @@ type ClassifierWorker struct {
 }
 
 func New(ctx context.Context, c Config, bot *internal.Bot) (river.Worker[background.ClassifierArgs], error) {
-	if c.IncidentBinary != "" {
-		if _, err := exec.LookPath(c.IncidentBinary); err != nil {
+	if c.IncidentClassificationBinary != "" {
+		if _, err := exec.LookPath(c.IncidentClassificationBinary); err != nil {
 			return nil, err
 		}
 	}
@@ -55,7 +54,7 @@ func New(ctx context.Context, c Config, bot *internal.Bot) (river.Worker[backgro
 	}
 
 	return &ClassifierWorker{
-		incidentBinary: c.IncidentBinary,
+		incidentBinary: c.IncidentClassificationBinary,
 		openaiClient:   openaiClient,
 		openaiModel:    c.OpenAIModel,
 		bot:            bot,
@@ -128,7 +127,9 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 	}
 
 	if w.incidentBinary != "" {
-		action, err := runIncidentBinary(w.incidentBinary, msg.Attrs)
+		username := msg.Attrs.Message.Username
+		text := msg.Attrs.Message.Text
+		action, err := runIncidentBinary(w.incidentBinary, username, text)
 		if err != nil {
 			log.Printf("failed to classify incident with binary: %v", err)
 		}
@@ -144,31 +145,13 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 
 	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions instead
 	// of this hard-coded behavior.
-	subType := ""
-	if msg.Attrs.Upstream != nil {
-		subType = msg.Attrs.Upstream.SubType
-	} else {
-		subType = msg.Attrs.Message.SubType
-	}
-
+	subType := msg.Attrs.Message.SubType
 	if subType == "bot_message" {
-		botName := ""
-		if msg.Attrs.Upstream != nil {
-			botName = msg.Attrs.Upstream.Username
-		} else {
-			botName = msg.Attrs.Message.Username
-		}
-
+		botName := msg.Attrs.Message.Username
 		return w.bot.TagAsBotNotification(ctx, msg.ChannelID, msg.SlackTs, botName)
 	}
 
-	userID := ""
-	if msg.Attrs.Upstream != nil {
-		userID = msg.Attrs.Upstream.User
-	} else {
-		userID = msg.Attrs.Message.User
-	}
-
+	userID := msg.Attrs.Message.User
 	return w.bot.TagAsUserMessage(ctx, msg.ChannelID, msg.SlackTs, userID)
 }
 
@@ -207,7 +190,17 @@ func processIncidentAction(
 	return nil
 }
 
-func runIncidentBinary(binaryPath string, input dto.MessageAttrs) (*IncidentAction, error) {
+type binaryInput struct {
+	Username string `json:"username"`
+	Text     string `json:"text"`
+}
+
+func runIncidentBinary(binaryPath string, username, text string) (*IncidentAction, error) {
+	input := binaryInput{
+		Username: username,
+		Text:     text,
+	}
+
 	inputJSON, err := json.Marshal(input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal input: %w", err)

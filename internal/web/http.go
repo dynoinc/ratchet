@@ -70,7 +70,7 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 }
 
 func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
-	channels, err := h.dbQueries.GetSlackChannels(request.Context())
+	channels, err := h.dbQueries.GetChannels(request.Context())
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return

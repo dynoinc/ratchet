@@ -5,28 +5,36 @@ import (
 	"testing"
 	"time"
 
+	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dynoinc/ratchet/internal"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
-func TestConversations(t *testing.T) {
+func TestMessages(t *testing.T) {
 	bot := SetupBot(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	t.Run("can add messages to known channel", func(t *testing.T) {
-		err := bot.AddChannel(ctx, "channel1")
+		_, err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 
-		err = bot.AddMessage(ctx, "channel1", "conv1", dto.MessageAttrs{})
+		err = bot.AddMessages(ctx, "channel1", []slack.Message{{
+			Msg: slack.Msg{
+				Timestamp: "ts1",
+			},
+		}})
 		require.NoError(t, err)
 	})
 
 	t.Run("fails to add message to unknown channel", func(t *testing.T) {
-		err := bot.AddMessage(ctx, "channel2", "conv2", dto.MessageAttrs{})
+		err := bot.AddMessages(ctx, "channel2", []slack.Message{{
+			Msg: slack.Msg{
+				Timestamp: "ts1",
+			},
+		}})
 		require.Error(t, err)
 		require.ErrorIs(t, err, internal.ErrChannelNotKnown)
 	})

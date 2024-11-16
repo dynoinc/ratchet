@@ -2,7 +2,6 @@ package slack
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"github.com/slack-go/slack/socketmode"
 
 	"github.com/dynoinc/ratchet/internal"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type Integration struct {
@@ -78,22 +76,11 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			if ev.ThreadTimeStamp != "" {
-				return
-			}
-
-			err := b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: ev})
-			if err != nil {
-				if errors.Is(err, internal.ErrChannelNotKnown) {
-					err = b.bot.AddChannel(ctx, ev.Channel)
-					if err == nil {
-						err = b.bot.AddMessage(ctx, ev.Channel, ev.TimeStamp, dto.MessageAttrs{Upstream: ev})
-					}
+			if ev.ThreadTimeStamp == "" {
+				err := b.bot.Notify(ctx, ev.Channel)
+				if err != nil {
+					log.Printf("Error notifying: %v", err)
 				}
-			}
-
-			if err != nil {
-				log.Printf("Error adding message: %v", err)
 			}
 		default:
 			log.Printf("Unhandled event: %v", ev)

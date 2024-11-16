@@ -10,6 +10,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/storage"
 )
 
@@ -24,10 +25,21 @@ func SetupBot(t *testing.T) *internal.Bot {
 	db, err := storage.New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
 	require.NoError(t, err)
 
-	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{})
+	bot := internal.New(db)
+
+	workers := river.NewWorkers()
+	river.AddWorker(workers, classifier_worker.NewDev(ctx, bot))
+
+	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {
+				MaxWorkers: 1,
+			},
+		},
+		Workers: workers,
+	})
 	require.NoError(t, err)
 
-	bot := internal.New(db)
 	bot.RiverClient = riverClient
 	return bot
 }

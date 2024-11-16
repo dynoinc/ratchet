@@ -26,42 +26,18 @@ func (w *DevClassifierWorker) Work(ctx context.Context, job *river.Job[backgroun
 		return err
 	}
 
-	var text string
-	if msg.Attrs.Upstream != nil {
-		text = msg.Attrs.Upstream.Text
-	} else {
-		text = msg.Attrs.Message.Text
-	}
-
 	var action IncidentAction
+	text := msg.Attrs.Message.Text
 	if err := json.Unmarshal([]byte(text), &action); err == nil {
 		return processIncidentAction(ctx, w.bot, msg, &action)
 	}
 
-	subType := ""
-	if msg.Attrs.Upstream != nil {
-		subType = msg.Attrs.Upstream.SubType
-	} else {
-		subType = msg.Attrs.Message.SubType
-	}
-
+	subType := msg.Attrs.Message.SubType
 	if subType == "bot_message" {
-		botName := ""
-		if msg.Attrs.Upstream != nil {
-			botName = msg.Attrs.Upstream.Username
-		} else {
-			botName = msg.Attrs.Message.Username
-		}
-
+		botName := msg.Attrs.Message.Username
 		return w.bot.TagAsBotNotification(ctx, msg.ChannelID, msg.SlackTs, botName)
-	}
-
-	userID := ""
-	if msg.Attrs.Upstream != nil {
-		userID = msg.Attrs.Upstream.User
 	} else {
-		userID = msg.Attrs.Message.User
+		userID := msg.Attrs.Message.User
+		return w.bot.TagAsUserMessage(ctx, msg.ChannelID, msg.SlackTs, userID)
 	}
-
-	return w.bot.TagAsUserMessage(ctx, msg.ChannelID, msg.SlackTs, userID)
 }
