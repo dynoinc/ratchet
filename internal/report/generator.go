@@ -5,32 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/olekukonko/tablewriter"
-
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/olekukonko/tablewriter"
 )
-
-type Report struct {
-	ChannelName       string
-	WeekRange         string
-	IncidentsByType   string
-	TopAlerts         string
-	AvgMitigationTime string
-}
-
-type IncidentStats struct {
-	Severity    string
-	Count       int
-	TotalTime   time.Duration
-	AverageTime time.Duration
-}
-
-type AlertStats struct {
-	AlertName   string
-	Count       int
-	LastSeen    time.Time
-	AverageTime time.Duration
-}
 
 type Generator struct{}
 
@@ -38,57 +15,74 @@ func NewGenerator() (*Generator, error) {
 	return &Generator{}, nil
 }
 
-// Convert database rows to our report structures
-func convertIncidentStats(dbStats []schema.GetIncidentStatsByPeriodRow) []IncidentStats {
-	stats := make([]IncidentStats, len(dbStats))
-	for i, stat := range dbStats {
+// GenerateReportData creates the core report data structure
+func (g *Generator) GenerateReportData(
+	channelName string,
+	startDate time.Time,
+	dbIncidentStats []schema.GetIncidentStatsByPeriodRow,
+	dbTopAlerts []schema.GetTopAlertsRow) (*ReportData, error) {
+
+	incidents := make([]Incident, len(dbIncidentStats))
+	for i, stat := range dbIncidentStats {
 		avgDuration := time.Duration(stat.AvgDurationSeconds) * time.Second
 		totalDuration := time.Duration(stat.TotalDurationSeconds) * time.Second
 
-		stats[i] = IncidentStats{
+		incidents[i] = Incident{
 			Severity:    stat.Severity,
 			Count:       int(stat.Count),
 			TotalTime:   totalDuration,
 			AverageTime: avgDuration,
 		}
 	}
-	return stats
-}
 
-func convertTopAlerts(dbAlerts []schema.GetTopAlertsRow) []AlertStats {
-	alerts := make([]AlertStats, len(dbAlerts))
-	for i, alert := range dbAlerts {
+	alerts := make([]Alert, len(dbTopAlerts))
+	for i, alert := range dbTopAlerts {
 		avgDuration := time.Duration(alert.AvgDurationSeconds) * time.Second
 
-		alerts[i] = AlertStats{
-			AlertName:   alert.Alert,
+		alerts[i] = Alert{
+			Name:        alert.Alert,
 			Count:       int(alert.Count),
 			LastSeen:    alert.LastSeen.(time.Time),
 			AverageTime: avgDuration,
 		}
 	}
-	return alerts
-}
 
-func (g *Generator) GenerateReport(
-	channelName string,
-	startDate time.Time,
-	dbIncidentStats []schema.GetIncidentStatsByPeriodRow,
-	dbTopAlerts []schema.GetTopAlertsRow) (Report, error) {
-	// Convert database rows to our structures
-	incidentStats := convertIncidentStats(dbIncidentStats)
-	topAlerts := convertTopAlerts(dbTopAlerts)
-
-	return Report{
-		ChannelName:       channelName,
-		WeekRange:         formatWeekRange(startDate),
-		IncidentsByType:   g.generateIncidentsTable(incidentStats),
-		TopAlerts:         g.generateTopAlertsTable(topAlerts),
-		AvgMitigationTime: formatDuration(calculateAverageMitigationTime(incidentStats)),
+	return &ReportData{
+		ChannelName: channelName,
+		WeekRange: DateRange{
+			Start: startDate,
+			End:   startDate.AddDate(0, 0, 6),
+		},
+		Incidents: incidents,
+		TopAlerts: alerts,
 	}, nil
 }
 
-func (g *Generator) generateIncidentsTable(stats []IncidentStats) string {
+// FormatForSlack formats the report data for Slack display
+func (g *Generator) FormatForSlack(data *ReportData) *SlackReport {
+	return &SlackReport{
+		ChannelName:       data.ChannelName,
+		WeekRange:         formatWeekRange(data.WeekRange),
+		IncidentsByType:   g.generateIncidentsTable(data.Incidents),
+		TopAlerts:         g.generateTopAlertsTable(data.TopAlerts),
+		AvgMitigationTime: calculateAvgMitigationTime(data.Incidents),
+	}
+}
+
+// FormatForWeb formats the report data for web display
+func (g *Generator) FormatForWeb(data *ReportData) *WebReport {
+	return &WebReport{
+		ChannelName:    data.ChannelName,
+		PeriodStart:    data.WeekRange.Start,
+		PeriodEnd:      data.WeekRange.End,
+		Incidents:      data.Incidents,
+		TopAlerts:      data.TopAlerts,
+		MitigationTime: calculateAvgMitigationTime(data.Incidents),
+	}
+}
+
+// Helper functions for Slack formatting
+func (g *Generator) generateIncidentsTable(incidents []Incident) string {
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
 
@@ -100,11 +94,11 @@ func (g *Generator) generateIncidentsTable(stats []IncidentStats) string {
 	table.SetAlignment(tablewriter.ALIGN_CENTER)
 	table.SetHeaderAlignment(tablewriter.ALIGN_CENTER)
 
-	for _, stat := range stats {
+	for _, incident := range incidents {
 		table.Append([]string{
-			stat.Severity,
-			fmt.Sprintf("%d", stat.Count),
-			formatDuration(stat.AverageTime),
+			incident.Severity,
+			fmt.Sprintf("%d", incident.Count),
+			FormatDuration(incident.AverageTime),
 		})
 	}
 
@@ -112,7 +106,7 @@ func (g *Generator) generateIncidentsTable(stats []IncidentStats) string {
 	return buf.String()
 }
 
-func (g *Generator) generateTopAlertsTable(alerts []AlertStats) string {
+func (g *Generator) generateTopAlertsTable(alerts []Alert) string {
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
 
@@ -132,10 +126,10 @@ func (g *Generator) generateTopAlertsTable(alerts []AlertStats) string {
 
 	for _, alert := range alerts {
 		table.Append([]string{
-			alert.AlertName,
+			alert.Name,
 			fmt.Sprintf("%d", alert.Count),
-			formatDuration(alert.AverageTime),
-			formatTimeAgo(alert.LastSeen),
+			FormatDuration(alert.AverageTime),
+			FormatTimeAgo(alert.LastSeen),
 		})
 	}
 
@@ -143,20 +137,26 @@ func (g *Generator) generateTopAlertsTable(alerts []AlertStats) string {
 	return buf.String()
 }
 
-func calculateAverageMitigationTime(stats []IncidentStats) time.Duration {
-	var totalTime time.Duration
-	var totalCount int
-	for _, stat := range stats {
-		totalTime += stat.TotalTime
-		totalCount += stat.Count
-	}
-	if totalCount == 0 {
-		return 0
-	}
-	return totalTime / time.Duration(totalCount)
+// Helper functions
+func formatWeekRange(dateRange DateRange) string {
+	return dateRange.Start.Format("Jan 2") + " - " + dateRange.End.Format("Jan 2, 2006")
 }
 
-func formatDuration(d time.Duration) string {
+func calculateAvgMitigationTime(incidents []Incident) string {
+	var totalTime time.Duration
+	var totalCount int
+	for _, incident := range incidents {
+		totalTime += incident.TotalTime
+		totalCount += incident.Count
+	}
+	if totalCount == 0 {
+		return "0m"
+	}
+	avgTime := totalTime / time.Duration(totalCount)
+	return FormatDuration(avgTime)
+}
+
+func FormatDuration(d time.Duration) string {
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60
 
@@ -166,7 +166,7 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
-func formatTimeAgo(t time.Time) string {
+func FormatTimeAgo(t time.Time) string {
 	duration := time.Since(t)
 	hours := int(duration.Hours())
 
@@ -175,9 +175,4 @@ func formatTimeAgo(t time.Time) string {
 	}
 	days := hours / 24
 	return fmt.Sprintf("%dd ago", days)
-}
-
-func formatWeekRange(startDate time.Time) string {
-	endDate := startDate.AddDate(0, 0, 6)
-	return startDate.Format("Jan 2") + " - " + endDate.Format("Jan 2, 2006")
 }

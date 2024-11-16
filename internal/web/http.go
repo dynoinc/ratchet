@@ -16,7 +16,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
-//go:embed templates/*.html
+//go:embed templates/* templates/components/*
 var templateFS embed.FS
 
 //go:embed static/*
@@ -28,7 +28,9 @@ type httpHandlers struct {
 }
 
 func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) (http.Handler, error) {
-	templates, err := template.ParseFS(templateFS, "templates/*.html")
+	templates, err := template.New("").
+		Funcs(templateFuncs).
+		ParseFS(templateFS, "templates/*.html", "templates/components/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +64,7 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 	mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServerFS(staticFS)))
 	mux.HandleFunc("GET /{$}", handlers.root)
 	mux.HandleFunc("GET /team/{team}", handlers.team)
+	mux.HandleFunc("GET /team/{team}/report/{report}", handlers.reportDetail)
 
 	return mux, nil
 }
@@ -81,15 +84,6 @@ func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
 
 	writer.Header().Set("Content-Type", "text/html")
 	err = h.templates.ExecuteTemplate(writer, "root.html", data)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Content-Type", "text/html")
-	err := h.templates.ExecuteTemplate(writer, "team.html", nil)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return

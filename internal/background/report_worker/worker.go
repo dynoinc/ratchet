@@ -2,6 +2,7 @@ package report_worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -84,13 +85,48 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.WeeklyRepor
 	}
 
 	// Generate the report using the database data
-	report, err := w.generator.GenerateReport(job.Args.ChannelID, startDate, incidentStats, topAlerts)
+	reportData, err := w.generator.GenerateReportData(job.Args.ChannelID, startDate, incidentStats, topAlerts)
 	if err != nil {
-		return fmt.Errorf("failed to generate report for channel %s: %w", job.Args.ChannelID, err)
+		return fmt.Errorf("failed to generate report data: %w", err)
 	}
 
-	// Create message blocks for better formatting
-	blocks := []slack.Block{
+	// Format for Slack
+	slackReport := w.generator.FormatForSlack(reportData)
+
+	// Create Slack blocks using slackReport
+	blocks := createSlackBlocks(slackReport)
+
+	// Store the structured report data
+	reportDataJSON, err := json.Marshal(reportData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal report data: %w", err)
+	}
+
+	// Store in database
+	_, err = schema.New(w.db).CreateReport(ctx, schema.CreateReportParams{
+		ChannelID:         job.Args.ChannelID,
+		ReportPeriodStart: pgtype.Timestamptz{Time: reportData.WeekRange.Start, Valid: true},
+		ReportPeriodEnd:   pgtype.Timestamptz{Time: reportData.WeekRange.End, Valid: true},
+		ReportData:        reportDataJSON,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to store report: %w", err)
+	}
+
+	// Post the report to Slack
+	_, _, err = w.slack.PostMessage(
+		job.Args.ChannelID,
+		slack.MsgOptionBlocks(blocks...),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to post report to channel %s: %w", job.Args.ChannelID, err)
+	}
+
+	return nil
+}
+
+func createSlackBlocks(report *report.SlackReport) []slack.Block {
+	return []slack.Block{
 		slack.NewHeaderBlock(
 			slack.NewTextBlockObject("plain_text", "📊 Weekly Operations Report", true, false),
 		),
@@ -140,14 +176,4 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.WeeklyRepor
 			),
 		),
 	}
-
-	_, _, err = w.slack.PostMessage(
-		job.Args.ChannelID,
-		slack.MsgOptionBlocks(blocks...),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to post report to channel %s: %w", job.Args.ChannelID, err)
-	}
-
-	return nil
 }

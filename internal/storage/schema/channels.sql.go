@@ -59,6 +59,7 @@ func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
 	return items, nil
 }
 
+<<<<<<< HEAD
 const updateLatestSlackTs = `-- name: UpdateLatestSlackTs :exec
 UPDATE channels
 SET latest_slack_ts = $2
@@ -72,5 +73,13 @@ type UpdateLatestSlackTsParams struct {
 
 func (q *Queries) UpdateLatestSlackTs(ctx context.Context, arg UpdateLatestSlackTsParams) error {
 	_, err := q.db.Exec(ctx, updateLatestSlackTs, arg.ChannelID, arg.LatestSlackTs)
+=======
+const removeChannel = `-- name: RemoveChannel :exec
+DELETE FROM channels WHERE channel_id = $1
+`
+
+func (q *Queries) RemoveChannel(ctx context.Context, channelID string) error {
+	_, err := q.db.Exec(ctx, removeChannel, channelID)
+>>>>>>> origin
 	return err
 }
