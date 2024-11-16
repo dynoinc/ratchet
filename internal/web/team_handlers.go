@@ -94,6 +94,11 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
+	if r.ChannelID != channelID {
+		http.Error(writer, "Not found", http.StatusNotFound)
+		return
+	}
+
 	var reportData report.ReportData
 	if err := json.Unmarshal(r.ReportData, &reportData); err != nil {
 		http.Error(writer, "Failed to parse report data", http.StatusInternalServerError)
