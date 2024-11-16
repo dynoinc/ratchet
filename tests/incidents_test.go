@@ -37,13 +37,18 @@ func TestIncidents(t *testing.T) {
 		_, err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 
-		err = bot.AddMessages(ctx, "channel1", []slack.Message{
-			{
-				Msg: slack.Msg{
-					Timestamp: "ts1",
+		err = bot.AddMessages(
+			ctx,
+			"channel1",
+			[]slack.Message{
+				{
+					Msg: slack.Msg{
+						Timestamp: "ts1",
+					},
 				},
 			},
-		})
+			"ts1",
+		)
 		require.NoError(t, err)
 
 		_, err = bot.OpenIncident(ctx, schema.OpenIncidentParams{
@@ -63,14 +68,18 @@ func TestIncidents(t *testing.T) {
 	})
 
 	t.Run("closes the right incident if multiple incidents are open", func(t *testing.T) {
-		err := bot.AddMessages(ctx, "channel1",
+		err := bot.AddMessages(
+			ctx,
+			"channel1",
 			[]slack.Message{
 				{
 					Msg: slack.Msg{
 						Timestamp: "ts2",
 					},
 				},
-			})
+			},
+			"ts2",
+		)
 		require.NoError(t, err)
 
 		stz1 := stz
@@ -85,13 +94,18 @@ func TestIncidents(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = bot.AddMessages(ctx, "channel1", []slack.Message{
-			{
-				Msg: slack.Msg{
-					Timestamp: "ts3",
+		err = bot.AddMessages(
+			ctx,
+			"channel1",
+			[]slack.Message{
+				{
+					Msg: slack.Msg{
+						Timestamp: "ts3",
+					},
 				},
 			},
-		})
+			"ts3",
+		)
 		require.NoError(t, err)
 
 		stz2 := stz
@@ -106,13 +120,18 @@ func TestIncidents(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = bot.AddMessages(ctx, "channel1", []slack.Message{
-			{
-				Msg: slack.Msg{
-					Timestamp: "ts4",
+		err = bot.AddMessages(
+			ctx,
+			"channel1",
+			[]slack.Message{
+				{
+					Msg: slack.Msg{
+						Timestamp: "ts4",
+					},
 				},
 			},
-		})
+			"ts4",
+		)
 		require.NoError(t, err)
 
 		err = bot.CloseIncident(ctx, "channel1", "ts4", "alert1", "service1", etz)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -25,48 +26,40 @@ func New(bot *internal.Bot, slackClient *slack.Client) (*MessagesIngestionWorker
 }
 
 func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
+	latest := fmt.Sprintf("%d.%09d", time.Now().Unix(), 0)
 	params := slack.GetConversationHistoryParameters{
 		ChannelID: j.Args.ChannelID,
-		Limit:     2,
-		Oldest:    j.Args.OldestSlackTS,
+		Oldest:    j.Args.SlackTSWatermark,
+		Latest:    latest,
 	}
 
-	messages, err := w.slackClient.GetConversationHistory(&params)
-	if err != nil {
-		return fmt.Errorf("error getting conversation history: %w", err)
+	var messages []slack.Message
+	for {
+		history, err := w.slackClient.GetConversationHistory(&params)
+		if err != nil {
+			return fmt.Errorf("error getting conversation history: %w", err)
+		}
+
+		messages = append(messages, history.Messages...)
+		if !history.HasMore {
+			break
+		}
+
+		params.Cursor = history.ResponseMetadata.Cursor
 	}
 
-	log.Printf("Processing %d messages from %s", len(messages.Messages), j.Args.ChannelID)
-	for _, message := range messages.Messages {
-		log.Printf("Processing message %s: %v", message.Timestamp, message.Text)
+	// Slack returns messages in reverse chronological order.
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Timestamp < messages[j].Timestamp
+	})
+
+	log.Printf("Adding %d messages from %s", len(messages), j.Args.ChannelID)
+	for _, message := range messages {
+		log.Printf("Adding message %s: %v", message.Timestamp, message.Text)
 	}
 
-	if err := w.bot.AddMessages(ctx, j.Args.ChannelID, messages.Messages); err != nil {
-		return fmt.Errorf("error adding messages: %w", err)
-	}
-
-	scheduledAt := time.Time{}
-	if !messages.HasMore {
-		scheduledAt = time.Now().Add(time.Minute)
-	}
-
-	oldestSlackTS := j.Args.OldestSlackTS
-	if len(messages.Messages) > 0 {
-		oldestSlackTS = messages.Messages[len(messages.Messages)-1].Timestamp
-	}
-
-	if _, err := w.bot.RiverClient.Insert(
-		ctx,
-		background.MessagesIngestionWorkerArgs{
-			ChannelID:     j.Args.ChannelID,
-			OldestSlackTS: oldestSlackTS,
-		},
-		&river.InsertOpts{
-			UniqueOpts:  river.UniqueOpts{ByArgs: true},
-			ScheduledAt: scheduledAt,
-		},
-	); err != nil {
-		return err
+	if err := w.bot.AddMessages(ctx, j.Args.ChannelID, messages, latest); err != nil {
+		return fmt.Errorf("error adding history: %w", err)
 	}
 
 	return nil

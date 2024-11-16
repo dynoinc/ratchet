@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
@@ -25,13 +26,18 @@ var (
 
 type Bot struct {
 	DB          *pgxpool.Pool
-	RiverClient *river.Client[pgx.Tx]
+	riverClient *river.Client[pgx.Tx]
 }
 
 func New(db *pgxpool.Pool) *Bot {
 	return &Bot{
 		DB: db,
 	}
+}
+
+func (b *Bot) Init(ctx context.Context, riverClient *river.Client[pgx.Tx]) error {
+	b.riverClient = riverClient
+	return nil
 }
 
 /* Slack channels related methods */
@@ -52,31 +58,35 @@ func (b *Bot) GetChannel(ctx context.Context, channelID string) (schema.Channel,
 /* Slack messages related methods */
 
 func (b *Bot) Notify(ctx context.Context, channelID string) error {
-	channel, err := b.AddChannel(ctx, channelID)
+	tx, err := b.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := schema.New(b.DB).WithTx(tx)
+	channel, err := qtx.AddChannel(ctx, channelID)
 	if err != nil {
 		return fmt.Errorf("error adding channel: %w", err)
 	}
 
-	// Trigger ingestion job now to process the message.
-	if _, err := b.RiverClient.Insert(
+	_, err = b.riverClient.InsertTx(
 		ctx,
+		tx,
 		background.MessagesIngestionWorkerArgs{
-			ChannelID:     channelID,
-			OldestSlackTS: channel.LatestSlackTs,
+			ChannelID:        channelID,
+			SlackTSWatermark: channel.SlackTsWatermark,
 		},
 		&river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}},
-	); err != nil {
+	)
+	if err != nil {
 		return err
 	}
 
-	return nil
+	return tx.Commit(ctx)
 }
 
-func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slack.Message) error {
-	if len(messages) == 0 {
-		return nil
-	}
-
+func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slack.Message, newWatermark string) error {
 	tx, err := b.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -93,7 +103,7 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		}); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.ForeignKeyViolation {
-				return ErrChannelNotKnown
+				return fmt.Errorf("error adding message to %s: %w", channelID, ErrChannelNotKnown)
 			}
 
 			return err
@@ -104,14 +114,37 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		})
 	}
 
-	if _, err = b.RiverClient.InsertManyTx(ctx, tx, jobs); err != nil {
+	if len(jobs) > 0 {
+		if _, err = b.riverClient.InsertManyTx(ctx, tx, jobs); err != nil {
+			return err
+		}
+	}
+
+	if err := qtx.UpdateSlackTSWatermark(ctx, schema.UpdateSlackTSWatermarkParams{
+		ChannelID:        channelID,
+		SlackTsWatermark: newWatermark,
+	}); err != nil {
 		return err
 	}
 
-	if err := qtx.UpdateLatestSlackTs(ctx, schema.UpdateLatestSlackTsParams{
-		ChannelID:     channelID,
-		LatestSlackTs: messages[0].Timestamp,
-	}); err != nil {
+	// If channel had activity, there is a high chance there is more to ingest.
+	scheduledAt := time.Time{}
+	if len(messages) == 0 {
+		scheduledAt = time.Now().Add(time.Minute)
+	}
+
+	if _, err := b.riverClient.InsertTx(
+		ctx,
+		tx,
+		background.MessagesIngestionWorkerArgs{
+			ChannelID:        channelID,
+			SlackTSWatermark: newWatermark,
+		},
+		&river.InsertOpts{
+			UniqueOpts:  river.UniqueOpts{ByArgs: true},
+			ScheduledAt: scheduledAt,
+		},
+	); err != nil {
 		return err
 	}
 

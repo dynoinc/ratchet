@@ -10,6 +10,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/storage"
 )
@@ -29,6 +30,9 @@ func SetupBot(t *testing.T) *internal.Bot {
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier_worker.NewDev(ctx, bot))
+	river.AddWorker(workers, river.WorkFunc(func(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
+		return nil
+	}))
 
 	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{
 		Queues: map[string]river.QueueConfig{
@@ -40,7 +44,7 @@ func SetupBot(t *testing.T) *internal.Bot {
 	})
 	require.NoError(t, err)
 
-	bot.RiverClient = riverClient
+	require.NoError(t, bot.Init(ctx, riverClient))
 	return bot
 }
 
