@@ -46,3 +46,12 @@ func (q *Queries) GetSlackChannels(ctx context.Context) ([]Channel, error) {
 	}
 	return items, nil
 }
+
+const removeChannel = `-- name: RemoveChannel :exec
+DELETE FROM channels WHERE channel_id = $1
+`
+
+func (q *Queries) RemoveChannel(ctx context.Context, channelID string) error {
+	_, err := q.db.Exec(ctx, removeChannel, channelID)
+	return err
+}

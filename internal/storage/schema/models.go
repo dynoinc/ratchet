@@ -31,3 +31,12 @@ type Message struct {
 	SlackTs   string
 	Attrs     dto.MessageAttrs
 }
+
+type Report struct {
+	ID                int32
+	ChannelID         string
+	ReportPeriodStart pgtype.Timestamptz
+	ReportPeriodEnd   pgtype.Timestamptz
+	ReportData        []byte
+	CreatedAt         pgtype.Timestamptz
+}
