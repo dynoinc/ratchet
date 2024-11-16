@@ -22,7 +22,7 @@ func TestReports(t *testing.T) {
 	t.Run("can store and retrieve reports", func(t *testing.T) {
 		// First create a channel
 		channelID := "test-channel"
-		err := bot.AddChannel(ctx, channelID)
+		_, err := bot.AddChannel(ctx, channelID)
 		require.NoError(t, err)
 
 		// Create test report data
@@ -97,7 +97,7 @@ func TestReports(t *testing.T) {
 
 	t.Run("enforces unique constraint on time period", func(t *testing.T) {
 		channelID := "test-channel-2"
-		err := bot.AddChannel(ctx, channelID)
+		_, err := bot.AddChannel(ctx, channelID)
 		require.NoError(t, err)
 
 		now := time.Now().UTC()
@@ -147,7 +147,7 @@ func TestReports(t *testing.T) {
 
 	t.Run("cascade deletes reports when channel is deleted", func(t *testing.T) {
 		channelID := "test-channel-3"
-		err := bot.AddChannel(ctx, channelID)
+		_, err := bot.AddChannel(ctx, channelID)
 		require.NoError(t, err)
 
 		now := time.Now().UTC()

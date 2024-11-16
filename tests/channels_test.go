@@ -15,19 +15,19 @@ func TestOnboardingFlow(t *testing.T) {
 
 	ctx := context.Background()
 	t.Run("can add channel", func(t *testing.T) {
-		err := bot.AddChannel(ctx, "channel1")
+		_, err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 	})
 
 	t.Run("inserting again works", func(t *testing.T) {
-		err := bot.AddChannel(ctx, "channel1")
+		_, err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 	})
 
 	t.Run("can add multiple channels", func(t *testing.T) {
-		err := bot.AddChannel(ctx, "channel2")
+		_, err := bot.AddChannel(ctx, "channel2")
 		require.NoError(t, err)
-		err = bot.AddChannel(ctx, "channel3")
+		_, err = bot.AddChannel(ctx, "channel3")
 		require.NoError(t, err)
 	})
 
