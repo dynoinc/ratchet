@@ -21,20 +21,30 @@ func TestMessages(t *testing.T) {
 		_, err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 
-		err = bot.AddMessages(ctx, "channel1", []slack.Message{{
-			Msg: slack.Msg{
-				Timestamp: "ts1",
-			},
-		}})
+		err = bot.AddMessages(
+			ctx,
+			"channel1",
+			[]slack.Message{{
+				Msg: slack.Msg{
+					Timestamp: "ts1",
+				},
+			}},
+			"watermark1",
+		)
 		require.NoError(t, err)
 	})
 
 	t.Run("fails to add message to unknown channel", func(t *testing.T) {
-		err := bot.AddMessages(ctx, "channel2", []slack.Message{{
-			Msg: slack.Msg{
-				Timestamp: "ts1",
-			},
-		}})
+		err := bot.AddMessages(
+			ctx,
+			"channel2",
+			[]slack.Message{{
+				Msg: slack.Msg{
+					Timestamp: "ts1",
+				},
+			}},
+			"watermark1",
+		)
 		require.Error(t, err)
 		require.ErrorIs(t, err, internal.ErrChannelNotKnown)
 	})

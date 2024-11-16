@@ -131,7 +131,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("error setting up background worker: %v", err)
 	}
-	bot.RiverClient = riverClient
+
+	if err := bot.Init(ctx, riverClient); err != nil {
+		log.Fatalf("error initializing bot: %v", err)
+	}
 
 	// Setup periodic jobs
 	if err := background.Setup(ctx, db, riverClient); err != nil {

@@ -4,9 +4,9 @@ VALUES ($1)
 ON CONFLICT (channel_id) DO UPDATE SET channel_id = channels.channel_id
 RETURNING *;
 
--- name: UpdateLatestSlackTs :exec
+-- name: UpdateSlackTSWatermark :exec
 UPDATE channels
-SET latest_slack_ts = $2
+SET slack_ts_watermark = $2
 WHERE channel_id = $1;
 
 -- name: GetChannel :one

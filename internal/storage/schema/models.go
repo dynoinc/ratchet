@@ -10,9 +10,9 @@ import (
 )
 
 type Channel struct {
-	ChannelID     string
-	CreatedAt     pgtype.Timestamptz
-	LatestSlackTs string
+	ChannelID        string
+	CreatedAt        pgtype.Timestamptz
+	SlackTsWatermark string
 }
 
 type Incident struct {

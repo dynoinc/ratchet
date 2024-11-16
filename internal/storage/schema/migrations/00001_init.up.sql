@@ -1,7 +1,7 @@
 CREATE TABLE channels (
     channel_id TEXT PRIMARY KEY,
     created_at TIMESTAMPTZ DEFAULT now(),
-    latest_slack_ts TEXT NOT NULL DEFAULT (
+    slack_ts_watermark TEXT NOT NULL DEFAULT (
         EXTRACT(EPOCH FROM now() - INTERVAL '14 days')::TEXT || '.000000'
     )
 );
