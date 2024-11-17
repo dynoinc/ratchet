@@ -11,11 +11,11 @@ import (
 
 	"github.com/dynoinc/ratchet/internal/report"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 func TestReports(t *testing.T) {
 	bot := SetupBot(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -23,7 +23,17 @@ func TestReports(t *testing.T) {
 		// First create a channel
 		channelID := "test-channel"
 		channelName := "test-channel-name"
-		_, err := bot.AddChannel(ctx, channelID, channelName)
+
+		// Create channel and set its name
+		queries := schema.New(bot.DB)
+		attrs := dto.ChannelAttrs{Name: channelName}
+		attrsJSON, err := json.Marshal(attrs)
+		require.NoError(t, err)
+
+		_, err = queries.AddChannel(ctx, schema.AddChannelParams{
+			ChannelID: channelID,
+			Attrs:     attrsJSON,
+		})
 		require.NoError(t, err)
 
 		// Create test report data
@@ -56,7 +66,6 @@ func TestReports(t *testing.T) {
 		require.NoError(t, err)
 
 		// Store the report
-		queries := schema.New(bot.DB)
 		storedReport, err := queries.CreateReport(ctx, schema.CreateReportParams{
 			ChannelID: channelID,
 			ReportPeriodStart: pgtype.Timestamptz{
@@ -101,7 +110,17 @@ func TestReports(t *testing.T) {
 	t.Run("enforces unique constraint on time period", func(t *testing.T) {
 		channelID := "test-channel-2"
 		channelName := "test-channel-2-name"
-		_, err := bot.AddChannel(ctx, channelID, channelName)
+
+		// Create channel with name
+		queries := schema.New(bot.DB)
+		attrs := dto.ChannelAttrs{Name: channelName}
+		attrsJSON, err := json.Marshal(attrs)
+		require.NoError(t, err)
+
+		_, err = queries.AddChannel(ctx, schema.AddChannelParams{
+			ChannelID: channelID,
+			Attrs:     attrsJSON,
+		})
 		require.NoError(t, err)
 
 		now := time.Now().UTC()
@@ -115,8 +134,6 @@ func TestReports(t *testing.T) {
 
 		reportDataJSON, err := json.Marshal(reportData)
 		require.NoError(t, err)
-
-		queries := schema.New(bot.DB)
 
 		// Store first report
 		_, err = queries.CreateReport(ctx, schema.CreateReportParams{
@@ -152,7 +169,17 @@ func TestReports(t *testing.T) {
 	t.Run("cascade deletes reports when channel is deleted", func(t *testing.T) {
 		channelID := "test-channel-3"
 		channelName := "test-channel-3-name"
-		_, err := bot.AddChannel(ctx, channelID, channelName)
+
+		// Create channel with name
+		queries := schema.New(bot.DB)
+		attrs := dto.ChannelAttrs{Name: channelName}
+		attrsJSON, err := json.Marshal(attrs)
+		require.NoError(t, err)
+
+		_, err = queries.AddChannel(ctx, schema.AddChannelParams{
+			ChannelID: channelID,
+			Attrs:     attrsJSON,
+		})
 		require.NoError(t, err)
 
 		now := time.Now().UTC()
@@ -166,8 +193,6 @@ func TestReports(t *testing.T) {
 
 		reportDataJSON, err := json.Marshal(reportData)
 		require.NoError(t, err)
-
-		queries := schema.New(bot.DB)
 
 		// Store a report
 		_, err = queries.CreateReport(ctx, schema.CreateReportParams{

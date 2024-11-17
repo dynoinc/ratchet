@@ -12,7 +12,7 @@ INSERT INTO reports (
 SELECT 
     r.id,
     r.channel_id,
-    c.channel_name,
+    c.attrs->>'name' as channel_name,
     r.report_period_start,
     r.report_period_end,
     r.created_at
@@ -25,7 +25,7 @@ LIMIT $2;
 -- name: GetReport :one
 SELECT 
     r.*,
-    c.channel_name
+    c.attrs->>'name' as channel_name
 FROM reports r
 JOIN channels c ON c.channel_id = r.channel_id
 WHERE r.id = $1;

@@ -77,16 +77,7 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
 			if ev.ThreadTimeStamp == "" {
-				// Get channel info before notifying
-				channelInfo, err := b.client.Client.GetConversationInfo(&slack.GetConversationInfoInput{
-					ChannelID: ev.Channel,
-				})
-				if err != nil {
-					log.Printf("Error getting channel info: %v", err)
-					return
-				}
-
-				err = b.bot.Notify(ctx, ev.Channel, channelInfo.Name)
+				err := b.bot.Notify(ctx, ev.Channel)
 				if err != nil {
 					log.Printf("Error notifying: %v", err)
 				}

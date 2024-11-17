@@ -2,8 +2,9 @@ package dto
 
 import (
 	"encoding/json"
-	"github.com/slack-go/slack"
 	"time"
+
+	"github.com/slack-go/slack"
 )
 
 type MessageAttrs struct {
@@ -31,4 +32,8 @@ type ReportView struct {
 	ReportPeriodEnd   time.Time       `json:"report_period_end"`
 	ReportData        json.RawMessage `json:"report_data"`
 	CreatedAt         time.Time       `json:"created_at"`
+}
+
+type ChannelAttrs struct {
+	Name string `json:"name,omitempty"`
 }

@@ -12,26 +12,26 @@ import (
 const addChannel = `-- name: AddChannel :one
 INSERT INTO channels (
     channel_id,
-    channel_name
+    attrs
 ) VALUES (
     $1, $2
 )
 ON CONFLICT (channel_id) DO UPDATE
-SET channel_name = EXCLUDED.channel_name
-RETURNING channel_id, channel_name, created_at, slack_ts_watermark
+SET attrs = COALESCE(EXCLUDED.attrs, channels.attrs)
+RETURNING channel_id, attrs, created_at, slack_ts_watermark
 `
 
 type AddChannelParams struct {
-	ChannelID   string
-	ChannelName string
+	ChannelID string
+	Attrs     []byte
 }
 
 func (q *Queries) AddChannel(ctx context.Context, arg AddChannelParams) (Channel, error) {
-	row := q.db.QueryRow(ctx, addChannel, arg.ChannelID, arg.ChannelName)
+	row := q.db.QueryRow(ctx, addChannel, arg.ChannelID, arg.Attrs)
 	var i Channel
 	err := row.Scan(
 		&i.ChannelID,
-		&i.ChannelName,
+		&i.Attrs,
 		&i.CreatedAt,
 		&i.SlackTsWatermark,
 	)
@@ -39,7 +39,7 @@ func (q *Queries) AddChannel(ctx context.Context, arg AddChannelParams) (Channel
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT channel_id, channel_name, created_at, slack_ts_watermark FROM channels
+SELECT channel_id, attrs, created_at, slack_ts_watermark FROM channels
 WHERE channel_id = $1
 `
 
@@ -48,7 +48,7 @@ func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, er
 	var i Channel
 	err := row.Scan(
 		&i.ChannelID,
-		&i.ChannelName,
+		&i.Attrs,
 		&i.CreatedAt,
 		&i.SlackTsWatermark,
 	)
@@ -56,16 +56,16 @@ func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, er
 }
 
 const getChannelByName = `-- name: GetChannelByName :one
-SELECT channel_id, channel_name, created_at, slack_ts_watermark FROM channels
-WHERE channel_name = $1
+SELECT channel_id, attrs, created_at, slack_ts_watermark FROM channels
+WHERE attrs->>'name' = $1
 `
 
-func (q *Queries) GetChannelByName(ctx context.Context, channelName string) (Channel, error) {
-	row := q.db.QueryRow(ctx, getChannelByName, channelName)
+func (q *Queries) GetChannelByName(ctx context.Context, attrs []byte) (Channel, error) {
+	row := q.db.QueryRow(ctx, getChannelByName, attrs)
 	var i Channel
 	err := row.Scan(
 		&i.ChannelID,
-		&i.ChannelName,
+		&i.Attrs,
 		&i.CreatedAt,
 		&i.SlackTsWatermark,
 	)
@@ -73,7 +73,7 @@ func (q *Queries) GetChannelByName(ctx context.Context, channelName string) (Cha
 }
 
 const getChannels = `-- name: GetChannels :many
-SELECT channel_id, channel_name, created_at, slack_ts_watermark FROM channels
+SELECT channel_id, attrs, created_at, slack_ts_watermark FROM channels
 `
 
 func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
@@ -87,7 +87,7 @@ func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
 		var i Channel
 		if err := rows.Scan(
 			&i.ChannelID,
-			&i.ChannelName,
+			&i.Attrs,
 			&i.CreatedAt,
 			&i.SlackTsWatermark,
 		); err != nil {

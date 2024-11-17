@@ -1,12 +1,12 @@
 -- name: AddChannel :one
 INSERT INTO channels (
     channel_id,
-    channel_name
+    attrs
 ) VALUES (
     $1, $2
 )
 ON CONFLICT (channel_id) DO UPDATE
-SET channel_name = EXCLUDED.channel_name
+SET attrs = COALESCE(EXCLUDED.attrs, channels.attrs)
 RETURNING *;
 
 -- name: GetChannel :one
@@ -15,7 +15,7 @@ WHERE channel_id = $1;
 
 -- name: GetChannelByName :one
 SELECT * FROM channels
-WHERE channel_name = $1;
+WHERE attrs->>'name' = $1;
 
 -- name: GetChannels :many
 SELECT * FROM channels;
