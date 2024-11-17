@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -77,13 +76,7 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.Weekl
 
 	// If there are no incidents or alerts, don't generate a report
 	if len(incidentStats) == 0 && len(topAlerts) == 0 {
-		// TODO: Remove this once we have real data
-		incidentStats = []schema.GetIncidentStatsByPeriodRow{
-			{Severity: "P0", Count: 0, AvgDurationSeconds: 0, TotalDurationSeconds: 0},
-		}
-		topAlerts = []schema.GetTopAlertsRow{
-			{Alert: "Test Alert", Count: 0, LastSeen: time.Now(), AvgDurationSeconds: 0},
-		}
+		return nil
 	}
 
 	// Get channel info
@@ -101,7 +94,6 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.Weekl
 		}
 	}
 
-	log.Printf("Generating report for channel %s", channelName)
 	// Generate the report using the database data
 	reportData, err := w.generator.GenerateReportData(channelName, startDate, incidentStats, topAlerts)
 	if err != nil {
