@@ -48,7 +48,7 @@ SELECT
     priority as severity,
     COUNT(*) as count,
     AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds,
-    SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as total_duration_seconds
+    SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp)))::float8 as total_duration_seconds
 FROM incidents 
 WHERE channel_id = $1 
     AND start_timestamp >= $2 

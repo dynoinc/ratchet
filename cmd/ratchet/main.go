@@ -136,9 +136,11 @@ func main() {
 		log.Fatalf("error initializing bot: %v", err)
 	}
 
-	// Setup periodic jobs
-	if err := background.Setup(ctx, db, riverClient); err != nil {
-		log.Fatalf("error setting up periodic jobs: %v", err)
+	// Setup periodic jobs (for now only in dev mode)
+	if c.DevMode {
+		if err := background.Setup(ctx, db, riverClient); err != nil {
+			log.Fatalf("error setting up periodic jobs: %v", err)
+		}
 	}
 
 	// HTTP server setup

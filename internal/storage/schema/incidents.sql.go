@@ -36,7 +36,7 @@ SELECT
     priority as severity,
     COUNT(*) as count,
     AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds,
-    SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as total_duration_seconds
+    SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp)))::float8 as total_duration_seconds
 FROM incidents 
 WHERE channel_id = $1 
     AND start_timestamp >= $2 
@@ -56,7 +56,7 @@ type GetIncidentStatsByPeriodRow struct {
 	Severity             string
 	Count                int64
 	AvgDurationSeconds   float64
-	TotalDurationSeconds int64
+	TotalDurationSeconds float64
 }
 
 func (q *Queries) GetIncidentStatsByPeriod(ctx context.Context, arg GetIncidentStatsByPeriodParams) ([]GetIncidentStatsByPeriodRow, error) {
