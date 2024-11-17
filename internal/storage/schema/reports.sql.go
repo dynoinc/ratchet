@@ -48,39 +48,48 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 	return i, err
 }
 
-const getChannelReportsList = `-- name: GetChannelReportsList :many
-SELECT id, channel_id, report_period_start, report_period_end, created_at
-FROM reports
-WHERE channel_id = $1
-ORDER BY created_at DESC
+const getChannelReports = `-- name: GetChannelReports :many
+SELECT 
+    r.id,
+    r.channel_id,
+    c.channel_name,
+    r.report_period_start,
+    r.report_period_end,
+    r.created_at
+FROM reports r
+JOIN channels c ON c.channel_id = r.channel_id
+WHERE r.channel_id = $1
+ORDER BY r.created_at DESC
 LIMIT $2
 `
 
-type GetChannelReportsListParams struct {
+type GetChannelReportsParams struct {
 	ChannelID string
 	Limit     int32
 }
 
-type GetChannelReportsListRow struct {
+type GetChannelReportsRow struct {
 	ID                int32
 	ChannelID         string
+	ChannelName       string
 	ReportPeriodStart pgtype.Timestamptz
 	ReportPeriodEnd   pgtype.Timestamptz
 	CreatedAt         pgtype.Timestamptz
 }
 
-func (q *Queries) GetChannelReportsList(ctx context.Context, arg GetChannelReportsListParams) ([]GetChannelReportsListRow, error) {
-	rows, err := q.db.Query(ctx, getChannelReportsList, arg.ChannelID, arg.Limit)
+func (q *Queries) GetChannelReports(ctx context.Context, arg GetChannelReportsParams) ([]GetChannelReportsRow, error) {
+	rows, err := q.db.Query(ctx, getChannelReports, arg.ChannelID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetChannelReportsListRow
+	var items []GetChannelReportsRow
 	for rows.Next() {
-		var i GetChannelReportsListRow
+		var i GetChannelReportsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ChannelID,
+			&i.ChannelName,
 			&i.ReportPeriodStart,
 			&i.ReportPeriodEnd,
 			&i.CreatedAt,
@@ -96,14 +105,27 @@ func (q *Queries) GetChannelReportsList(ctx context.Context, arg GetChannelRepor
 }
 
 const getReport = `-- name: GetReport :one
-SELECT id, channel_id, report_period_start, report_period_end, report_data, created_at
-FROM reports
-WHERE id = $1
+SELECT 
+    r.id, r.channel_id, r.report_period_start, r.report_period_end, r.report_data, r.created_at,
+    c.channel_name
+FROM reports r
+JOIN channels c ON c.channel_id = r.channel_id
+WHERE r.id = $1
 `
 
-func (q *Queries) GetReport(ctx context.Context, id int32) (Report, error) {
+type GetReportRow struct {
+	ID                int32
+	ChannelID         string
+	ReportPeriodStart pgtype.Timestamptz
+	ReportPeriodEnd   pgtype.Timestamptz
+	ReportData        []byte
+	CreatedAt         pgtype.Timestamptz
+	ChannelName       string
+}
+
+func (q *Queries) GetReport(ctx context.Context, id int32) (GetReportRow, error) {
 	row := q.db.QueryRow(ctx, getReport, id)
-	var i Report
+	var i GetReportRow
 	err := row.Scan(
 		&i.ID,
 		&i.ChannelID,
@@ -111,6 +133,7 @@ func (q *Queries) GetReport(ctx context.Context, id int32) (Report, error) {
 		&i.ReportPeriodEnd,
 		&i.ReportData,
 		&i.CreatedAt,
+		&i.ChannelName,
 	)
 	return i, err
 }

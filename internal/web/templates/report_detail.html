@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <title>Report Details</title>
@@ -13,32 +14,38 @@
             border-radius: 8px;
             background-color: #fff;
         }
+
         .report-meta {
             color: #666;
             font-size: 0.9em;
             margin-bottom: 15px;
         }
+
         .table {
             margin-top: 15px;
         }
+
         .report-section {
             margin: 20px 0;
         }
+
         .mitigation-time {
             background: #f8f9fa;
             padding: 10px;
             border-radius: 4px;
             margin: 10px 0;
         }
+
         .back-link {
             margin-bottom: 20px;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="back-link mt-4">
-            <a href="/team/{{.ChannelID}}" class="text-decoration-none">← Back to Reports List</a>
+            <a href="/team/{{.ChannelName}}" class="text-decoration-none">← Back to Reports List</a>
         </div>
 
         <div class="report-card">
@@ -63,4 +70,5 @@
         </div>
     </div>
 </body>
-</html> 
+
+</html>

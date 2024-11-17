@@ -7,7 +7,7 @@
         <link href="/static/bootstrap.min.css" rel="stylesheet">
         <title>Ratchet</title>
     </head>
-    <body>
+<body>
         <nav class="navbar navbar-light bg-light shadow-sm p-3">
             <div class="container-fluid">
                 <a class="navbar-brand d-flex align-items-center" href="#">
@@ -36,32 +36,33 @@
                     </tr>
                     </thead>
                     <tbody>
-                    {{range .Channels}}
+                {{range .Channels}}
                     <tr class="item">
                         <td><a href="/team/{{.ChannelID}}">{{.ChannelID}}</a></td>
                     </tr>
-                    {{end}}
+                {{end}}
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <script>
-            function filterItems() {
-                const searchInput = document
-                    .getElementById("searchBox")
-                    .value.toLowerCase();
+    <script>
+        function filterItems() {
+            const searchInput = document
+                .getElementById("searchBox")
+                .value.toLowerCase();
 
-                const items = document.querySelectorAll("#itemList .item");
-                items.forEach((item) => {
-                    const text = item.textContent.toLowerCase();
-                    if (text.includes(searchInput)) {
-                        item.style.display = "block";
-                    } else {
-                        item.style.display = "none";
-                    }
-                });
-            }
-        </script>
-    </body>
+            const items = document.querySelectorAll("#itemList .item");
+            items.forEach((item) => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchInput)) {
+                    item.style.display = "block";
+                } else {
+                    item.style.display = "none";
+                }
+            });
+        }
+    </script>
+</body>
+
 </html>

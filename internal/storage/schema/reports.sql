@@ -8,14 +8,24 @@ INSERT INTO reports (
     $1, $2, $3, $4
 ) RETURNING *;
 
--- name: GetChannelReportsList :many
-SELECT id, channel_id, report_period_start, report_period_end, created_at
-FROM reports
-WHERE channel_id = $1
-ORDER BY created_at DESC
+-- name: GetChannelReports :many
+SELECT 
+    r.id,
+    r.channel_id,
+    c.channel_name,
+    r.report_period_start,
+    r.report_period_end,
+    r.created_at
+FROM reports r
+JOIN channels c ON c.channel_id = r.channel_id
+WHERE r.channel_id = $1
+ORDER BY r.created_at DESC
 LIMIT $2;
 
 -- name: GetReport :one
-SELECT *
-FROM reports
-WHERE id = $1;
+SELECT 
+    r.*,
+    c.channel_name
+FROM reports r
+JOIN channels c ON c.channel_id = r.channel_id
+WHERE r.id = $1;
