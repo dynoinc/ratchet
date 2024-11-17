@@ -1,67 +1,64 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="color-scheme" content="light dark" />
-        <link href="/static/bootstrap.min.css" rel="stylesheet">
-        <title>Ratchet</title>
-    </head>
-    <body>
-        <nav class="navbar navbar-light bg-light shadow-sm p-3">
-            <div class="container-fluid">
-                <a class="navbar-brand d-flex align-items-center" href="#">
-                    <div class="rounded-circle bg-primary" style="width: 40px; height: 40px;"></div>
-                    <span class="ms-2 fw-bold">Ratchet</span>
-                </a>
-                <form class="d-flex w-50">
-                    <input
-                            class="form-control me-2"
-                            type="search"
-                            placeholder="Search..."
-                            aria-label="Search"
-                            id="searchBox"
-                            onkeyup="filterItems()"
-                    />
-                </form>
-            </div>
-        </nav>
 
-        <div class="container my-4">
-            <div class="table-responsive">
-                <table id="itemList" class="table table-striped table-bordered">
-                    <thead class="table-light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark" />
+    <link href="/static/bootstrap.min.css" rel="stylesheet">
+    <title>Ratchet</title>
+</head>
+
+<body>
+    <nav class="navbar navbar-light bg-light shadow-sm p-3">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <div class="rounded-circle bg-primary" style="width: 40px; height: 40px;"></div>
+                <span class="ms-2 fw-bold">Ratchet</span>
+            </a>
+            <form class="d-flex w-50">
+                <input class="form-control me-2" type="search" placeholder="Search..." aria-label="Search"
+                    id="searchBox" onkeyup="filterItems()" />
+            </form>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+        <div class="table-responsive">
+            <table id="itemList" class="table table-striped table-bordered">
+                <thead class="table-light">
                     <tr>
                         <th scope="col">Channel ID</th>
                     </tr>
-                    </thead>
-                    <tbody>
+                </thead>
+                <tbody>
                     {{range .Channels}}
                     <tr class="item">
-                        <td><a href="/team/{{.ChannelID}}">{{.ChannelID}}</a></td>
+                        <td><a href="/team/{{.ChannelName}}">{{.ChannelName}}</a></td>
                     </tr>
                     {{end}}
-                    </tbody>
-                </table>
-            </div>
+                </tbody>
+            </table>
         </div>
+    </div>
 
-        <script>
-            function filterItems() {
-                const searchInput = document
-                    .getElementById("searchBox")
-                    .value.toLowerCase();
+    <script>
+        function filterItems() {
+            const searchInput = document
+                .getElementById("searchBox")
+                .value.toLowerCase();
 
-                const items = document.querySelectorAll("#itemList .item");
-                items.forEach((item) => {
-                    const text = item.textContent.toLowerCase();
-                    if (text.includes(searchInput)) {
-                        item.style.display = "block";
-                    } else {
-                        item.style.display = "none";
-                    }
-                });
-            }
-        </script>
-    </body>
+            const items = document.querySelectorAll("#itemList .item");
+            items.forEach((item) => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchInput)) {
+                    item.style.display = "block";
+                } else {
+                    item.style.display = "none";
+                }
+            });
+        }
+    </script>
+</body>
+
 </html>

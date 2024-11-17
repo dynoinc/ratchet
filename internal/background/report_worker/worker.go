@@ -84,8 +84,14 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.WeeklyRepor
 		}
 	}
 
+	// Get channel info so we can use the channel name in the report
+	channel, err := schema.New(w.db).GetChannel(ctx, job.Args.ChannelID)
+	if err != nil {
+		return fmt.Errorf("failed to get channel name: %w", err)
+	}
+
 	// Generate the report using the database data
-	reportData, err := w.generator.GenerateReportData(job.Args.ChannelID, startDate, incidentStats, topAlerts)
+	reportData, err := w.generator.GenerateReportData(channel.ChannelName, startDate, incidentStats, topAlerts)
 	if err != nil {
 		return fmt.Errorf("failed to generate report data: %w", err)
 	}

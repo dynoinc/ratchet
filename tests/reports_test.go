@@ -22,13 +22,14 @@ func TestReports(t *testing.T) {
 	t.Run("can store and retrieve reports", func(t *testing.T) {
 		// First create a channel
 		channelID := "test-channel"
-		_, err := bot.AddChannel(ctx, channelID)
+		channelName := "test-channel-name"
+		_, err := bot.AddChannel(ctx, channelID, channelName)
 		require.NoError(t, err)
 
 		// Create test report data
 		now := time.Now().UTC()
 		reportData := report.ReportData{
-			ChannelName: "test-channel",
+			ChannelName: channelName,
 			WeekRange: report.DateRange{
 				Start: now.AddDate(0, 0, -7),
 				End:   now,
@@ -72,19 +73,21 @@ func TestReports(t *testing.T) {
 		require.NotNil(t, storedReport)
 
 		// Test list view retrieval
-		reportsList, err := queries.GetChannelReportsList(ctx, schema.GetChannelReportsListParams{
+		reportsList, err := queries.GetChannelReports(ctx, schema.GetChannelReportsParams{
 			ChannelID: channelID,
 			Limit:     10,
 		})
 		require.NoError(t, err)
 		require.Len(t, reportsList, 1)
 		require.Equal(t, channelID, reportsList[0].ChannelID)
+		require.Equal(t, channelName, reportsList[0].ChannelName)
 		require.Equal(t, reportData.WeekRange.Start.Unix(), reportsList[0].ReportPeriodStart.Time.Unix())
 		require.Equal(t, reportData.WeekRange.End.Unix(), reportsList[0].ReportPeriodEnd.Time.Unix())
 
 		// Test detailed view retrieval
 		detailedReport, err := queries.GetReport(ctx, reportsList[0].ID)
 		require.NoError(t, err)
+		require.Equal(t, channelName, detailedReport.ChannelName)
 		var retrievedData report.ReportData
 		err = json.Unmarshal(detailedReport.ReportData, &retrievedData)
 		require.NoError(t, err)
@@ -97,12 +100,13 @@ func TestReports(t *testing.T) {
 
 	t.Run("enforces unique constraint on time period", func(t *testing.T) {
 		channelID := "test-channel-2"
-		_, err := bot.AddChannel(ctx, channelID)
+		channelName := "test-channel-2-name"
+		_, err := bot.AddChannel(ctx, channelID, channelName)
 		require.NoError(t, err)
 
 		now := time.Now().UTC()
 		reportData := report.ReportData{
-			ChannelName: channelID,
+			ChannelName: channelName,
 			WeekRange: report.DateRange{
 				Start: now.AddDate(0, 0, -7),
 				End:   now,
@@ -147,12 +151,13 @@ func TestReports(t *testing.T) {
 
 	t.Run("cascade deletes reports when channel is deleted", func(t *testing.T) {
 		channelID := "test-channel-3"
-		_, err := bot.AddChannel(ctx, channelID)
+		channelName := "test-channel-3-name"
+		_, err := bot.AddChannel(ctx, channelID, channelName)
 		require.NoError(t, err)
 
 		now := time.Now().UTC()
 		reportData := report.ReportData{
-			ChannelName: channelID,
+			ChannelName: channelName,
 			WeekRange: report.DateRange{
 				Start: now.AddDate(0, 0, -7),
 				End:   now,
@@ -184,7 +189,7 @@ func TestReports(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify reports were deleted
-		reports, err := queries.GetChannelReportsList(ctx, schema.GetChannelReportsListParams{
+		reports, err := queries.GetChannelReports(ctx, schema.GetChannelReportsParams{
 			ChannelID: channelID,
 			Limit:     10,
 		})

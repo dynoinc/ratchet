@@ -15,19 +15,19 @@ func TestOnboardingFlow(t *testing.T) {
 
 	ctx := context.Background()
 	t.Run("can add channel", func(t *testing.T) {
-		_, err := bot.AddChannel(ctx, "channel1")
+		_, err := bot.AddChannel(ctx, "channel1", "channel1")
 		require.NoError(t, err)
 	})
 
 	t.Run("inserting again works", func(t *testing.T) {
-		_, err := bot.AddChannel(ctx, "channel1")
+		_, err := bot.AddChannel(ctx, "channel1", "channel1")
 		require.NoError(t, err)
 	})
 
 	t.Run("can add multiple channels", func(t *testing.T) {
-		_, err := bot.AddChannel(ctx, "channel2")
+		_, err := bot.AddChannel(ctx, "channel2", "channel2")
 		require.NoError(t, err)
-		_, err = bot.AddChannel(ctx, "channel3")
+		_, err = bot.AddChannel(ctx, "channel3", "channel3")
 		require.NoError(t, err)
 	})
 
@@ -37,7 +37,7 @@ func TestOnboardingFlow(t *testing.T) {
 		require.Len(t, channels, 3)
 		for _, id := range []string{"channel1", "channel2", "channel3"} {
 			require.True(t, slices.ContainsFunc(channels, func(c schema.Channel) bool {
-				return c.ChannelID == id
+				return c.ChannelID == id && c.ChannelName == id
 			}))
 		}
 	})
