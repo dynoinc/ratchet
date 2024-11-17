@@ -26,7 +26,14 @@ func New(bot *internal.Bot, slackClient *slack.Client) (*MessagesIngestionWorker
 }
 
 func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
-	latest := fmt.Sprintf("%d.%09d", time.Now().Unix(), 0)
+	// Need to make sure we advance watermark everytime otherwise we will fail to enqueue
+	// new insertion job since job at this watermark would be marked done.
+	latest := j.Args.SlackTSWatermark
+	for latest == j.Args.SlackTSWatermark {
+		now := time.Now()
+		latest = fmt.Sprintf("%d.%06d", now.Unix(), now.Nanosecond()/1000)
+	}
+
 	params := slack.GetConversationHistoryParameters{
 		ChannelID: j.Args.ChannelID,
 		Oldest:    j.Args.SlackTSWatermark,
