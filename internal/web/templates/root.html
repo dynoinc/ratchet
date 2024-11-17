@@ -1,80 +1,68 @@
 <!doctype html>
 <html lang="en">
-    {{template "header" .}}
-    <body>
-        <header class="container-fluid navbar">
-            <nav>
-                <ul>
-                    <li>
-                        <section>
-                            <a href="/" aria-label="Home">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="24"
-                                    height="24"
-                                    fill="red"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path d="M12 3l9 9h-3v9H6v-9H3l9-9z" />
-                                </svg>
-                            </a>
-                        </section>
-                    </li>
-                    <li>
-                        <section>
-                            <strong>Ratchet</strong>
-                        </section>
-                    </li>
-                </ul>
-                <ul style="margin-left: auto">
-                    <li>
-                        <section class="container">
-                            <input
-                                type="search"
-                                name="search"
-                                id="searchBox"
-                                onkeyup="filterItems()"
-                                placeholder="Search"
-                                aria-label="Search"
-                            />
-                        </section>
-                    </li>
-                </ul>
-            </nav>
-        </header>
+{{template "header" .}}
 
-        <main class="container-fluid">
-            <section class="container-fluid" id="itemList">
-                <div
-                    class="grid"
-                    style="--columns: 5; display: flex; flex-wrap: wrap"
-                >
-                    {{range .Channels}}
-                    <article class="item card" style="width: 10rem">
-                        <a href="/team/{{.ChannelID}}">{{.ChannelID}}</a>
-                    </article>
-                    {{end}}
-                </div>
-            </section>
-        </main>
+<body>
+    <header class="container-fluid navbar">
+        <nav>
+            <ul>
+                <li>
+                    <section>
+                        <a href="/" aria-label="Home">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="red"
+                                viewBox="0 0 24 24">
+                                <path d="M12 3l9 9h-3v9H6v-9H3l9-9z" />
+                            </svg>
+                        </a>
+                    </section>
+                </li>
+                <li>
+                    <section>
+                        <strong>Ratchet</strong>
+                    </section>
+                </li>
+            </ul>
+            <ul style="margin-left: auto">
+                <li>
+                    <section class="container">
+                        <input type="search" name="search" id="searchBox" onkeyup="filterItems()" placeholder="Search"
+                            aria-label="Search" />
+                    </section>
+                </li>
+            </ul>
+        </nav>
+    </header>
 
-        <script>
-            // Function to filter items based on search input
-            function filterItems() {
-                const searchInput = document
-                    .getElementById("searchBox")
-                    .value.toLowerCase();
+    <main class="container-fluid">
+        <section class="container-fluid" id="itemList">
+            <div class="grid" style="--columns: 5; display: flex; flex-wrap: wrap">
+                {{range .Channels}}
+                <article class="item card" style="width: 10rem">
+                    <a href="/team/{{.ChannelName}}">{{.ChannelName}}</a>
+                </article>
+                {{end}}
+            </div>
+        </section>
+    </main>
 
-                const items = document.querySelectorAll("#itemList .item");
-                items.forEach((item) => {
-                    const text = item.textContent.toLowerCase();
-                    if (text.includes(searchInput)) {
-                        item.style.display = "block";
-                    } else {
-                        item.style.display = "none";
-                    }
-                });
-            }
-        </script>
-    </body>
+    <script>
+        // Function to filter items based on search input
+        function filterItems() {
+            const searchInput = document
+                .getElementById("searchBox")
+                .value.toLowerCase();
+
+            const items = document.querySelectorAll("#itemList .item");
+            items.forEach((item) => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchInput)) {
+                    item.style.display = "block";
+                } else {
+                    item.style.display = "none";
+                }
+            });
+        }
+    </script>
+</body>
+
 </html>

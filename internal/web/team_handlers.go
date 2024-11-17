@@ -19,12 +19,14 @@ var templateFuncs = template.FuncMap{
 }
 
 type TeamPageData struct {
-	ChannelID string
-	Reports   []ReportListItem
+	ChannelID   string
+	ChannelName string
+	Reports     []ReportListItem
 }
 
 type ReportListItem struct {
 	ID          int64
+	ChannelName string
 	PeriodStart time.Time
 	PeriodEnd   time.Time
 	CreatedAt   time.Time
@@ -33,19 +35,25 @@ type ReportListItem struct {
 
 type ReportDetailData struct {
 	ChannelID      string
+	ChannelName    string
 	WeekRange      string
 	CreatedAt      time.Time
-	ChannelName    string
 	Incidents      []report.Incident
 	TopAlerts      []report.Alert
 	MitigationTime string
 }
 
 func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("team")
+	channelName := request.PathValue("team")
 
-	reports, err := h.dbQueries.GetChannelReportsList(request.Context(), schema.GetChannelReportsListParams{
-		ChannelID: channelID,
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), channelName)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	reports, err := h.dbQueries.GetChannelReports(request.Context(), schema.GetChannelReportsParams{
+		ChannelID: channel.ChannelID,
 		Limit:     50,
 	})
 	if err != nil {
@@ -57,6 +65,7 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	for _, r := range reports {
 		reportItems = append(reportItems, ReportListItem{
 			ID:          int64(r.ID),
+			ChannelName: r.ChannelName,
 			PeriodStart: r.ReportPeriodStart.Time,
 			PeriodEnd:   r.ReportPeriodEnd.Time,
 			CreatedAt:   r.CreatedAt.Time,
@@ -65,8 +74,9 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	data := TeamPageData{
-		ChannelID: channelID,
-		Reports:   reportItems,
+		ChannelID:   channel.ChannelID,
+		ChannelName: channel.ChannelName,
+		Reports:     reportItems,
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -78,8 +88,14 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("team")
+	channelName := request.PathValue("team")
 	reportIDStr := request.PathValue("report")
+
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), channelName)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	reportID64, err := strconv.ParseInt(reportIDStr, 10, 32)
 	if err != nil {
@@ -94,7 +110,7 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
-	if r.ChannelID != channelID {
+	if r.ChannelID != channel.ChannelID {
 		http.Error(writer, "Not found", http.StatusNotFound)
 		return
 	}
@@ -114,10 +130,10 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 	webReport := generator.FormatForWeb(&reportData)
 
 	data := ReportDetailData{
-		ChannelID:      channelID,
+		ChannelID:      channel.ChannelID,
+		ChannelName:    r.ChannelName,
 		WeekRange:      formatWeekRange(reportData.WeekRange),
 		CreatedAt:      r.CreatedAt.Time,
-		ChannelName:    webReport.ChannelName,
 		Incidents:      webReport.Incidents,
 		TopAlerts:      webReport.TopAlerts,
 		MitigationTime: webReport.MitigationTime,

@@ -121,7 +121,13 @@ type IncidentAction struct {
 }
 
 func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
-	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
+	if job == nil || job.Args.ChannelID == "" || job.Args.SlackTS == "" {
+		return fmt.Errorf("invalid job arguments")
+	}
+
+	args := job.Args
+
+	msg, err := w.bot.GetMessage(ctx, args.ChannelID, args.SlackTS)
 	if err != nil {
 		return err
 	}
