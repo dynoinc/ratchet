@@ -39,11 +39,11 @@ func TestOnboardingFlow(t *testing.T) {
 	t.Run("listing channels works", func(t *testing.T) {
 		channels, err := schema.New(bot.DB).GetChannels(ctx)
 		require.NoError(t, err)
-		// GetChannels only returns channels with names
-		require.Len(t, channels, 3)
-		for _, id := range []string{"channel1", "channel2", "channel3"} {
+		// GetChannels  returns all channels
+		require.Len(t, channels, 4)
+		for _, id := range []string{"channel_no_name", "channel1", "channel2", "channel3"} {
 			require.True(t, slices.ContainsFunc(channels, func(c schema.Channel) bool {
-				return c.ChannelID == id && c.ChannelName.String == id
+				return c.ChannelID == id
 			}))
 		}
 	})
