@@ -18,9 +18,7 @@ SELECT * FROM channels
 WHERE attrs->>'name' = $1;
 
 -- name: GetChannels :many
-SELECT * FROM channels
-WHERE attrs->>'name' IS NOT NULL
-ORDER BY attrs->>'name';
+SELECT * FROM channels;
 
 -- name: RemoveChannel :exec
 DELETE FROM channels WHERE channel_id = $1;

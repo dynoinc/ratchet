@@ -35,8 +35,8 @@ func TestOnboardingFlow(t *testing.T) {
 	t.Run("listing channels works", func(t *testing.T) {
 		channels, err := schema.New(bot.DB).GetChannels(ctx)
 		require.NoError(t, err)
-		// GetChannels only returns channels with names
-		require.Len(t, channels, 0) // Initially 0 because no channels have names yet
+		// GetChannels should return all channels, even if they don't have names yet
+		require.Len(t, channels, 3)
 	})
 
 	t.Run("can get channel without name", func(t *testing.T) {
@@ -48,7 +48,7 @@ func TestOnboardingFlow(t *testing.T) {
 
 	t.Run("can get channel by name after attrs are set", func(t *testing.T) {
 		queries := schema.New(bot.DB)
-		
+
 		// Manually set channel attrs to simulate the async worker
 		attrs := dto.ChannelAttrs{Name: "test-channel"}
 		attrsJSON, err := json.Marshal(attrs)

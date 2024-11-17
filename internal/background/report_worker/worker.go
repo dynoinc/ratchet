@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -100,6 +101,7 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.Weekl
 		}
 	}
 
+	log.Printf("Generating report for channel %s", channelName)
 	// Generate the report using the database data
 	reportData, err := w.generator.GenerateReportData(channelName, startDate, incidentStats, topAlerts)
 	if err != nil {

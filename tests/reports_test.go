@@ -23,7 +23,7 @@ func TestReports(t *testing.T) {
 		// First create a channel
 		channelID := "test-channel"
 		channelName := "test-channel-name"
-		
+
 		// Create channel and set its name
 		queries := schema.New(bot.DB)
 		attrs := dto.ChannelAttrs{Name: channelName}
@@ -110,7 +110,7 @@ func TestReports(t *testing.T) {
 	t.Run("enforces unique constraint on time period", func(t *testing.T) {
 		channelID := "test-channel-2"
 		channelName := "test-channel-2-name"
-		
+
 		// Create channel with name
 		queries := schema.New(bot.DB)
 		attrs := dto.ChannelAttrs{Name: channelName}
@@ -169,7 +169,7 @@ func TestReports(t *testing.T) {
 	t.Run("cascade deletes reports when channel is deleted", func(t *testing.T) {
 		channelID := "test-channel-3"
 		channelName := "test-channel-3-name"
-		
+
 		// Create channel with name
 		queries := schema.New(bot.DB)
 		attrs := dto.ChannelAttrs{Name: channelName}
