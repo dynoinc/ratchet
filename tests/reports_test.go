@@ -80,14 +80,14 @@ func TestReports(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, reportsList, 1)
 		require.Equal(t, channelID, reportsList[0].ChannelID)
-		require.Equal(t, channelName, reportsList[0].ChannelName)
+		require.Equal(t, channelName, reportsList[0].ChannelName.String)
 		require.Equal(t, reportData.WeekRange.Start.Unix(), reportsList[0].ReportPeriodStart.Time.Unix())
 		require.Equal(t, reportData.WeekRange.End.Unix(), reportsList[0].ReportPeriodEnd.Time.Unix())
 
 		// Test detailed view retrieval
 		detailedReport, err := queries.GetReport(ctx, reportsList[0].ID)
 		require.NoError(t, err)
-		require.Equal(t, channelName, detailedReport.ChannelName)
+		require.Equal(t, channelName, detailedReport.ChannelName.String)
 		var retrievedData report.ReportData
 		err = json.Unmarshal(detailedReport.ReportData, &retrievedData)
 		require.NoError(t, err)

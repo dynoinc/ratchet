@@ -1,14 +1,13 @@
 CREATE TABLE channels (
     channel_id TEXT PRIMARY KEY,
-    channel_name TEXT NOT NULL,
+    channel_name TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
     slack_ts_watermark TEXT NOT NULL DEFAULT (
         EXTRACT(EPOCH FROM now() - INTERVAL '14 days')::TEXT || '.000000'
     )
 );
 
--- Add unique index on channel_name
-CREATE UNIQUE INDEX channels_name_idx ON channels(channel_name);
+CREATE UNIQUE INDEX channels_name_idx ON channels(channel_name) WHERE channel_name IS NOT NULL;
 
 CREATE TABLE messages (
     channel_id TEXT REFERENCES channels(channel_id) ON DELETE CASCADE,

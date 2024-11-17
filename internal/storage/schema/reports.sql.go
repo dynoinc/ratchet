@@ -71,7 +71,7 @@ type GetChannelReportsParams struct {
 type GetChannelReportsRow struct {
 	ID                int32
 	ChannelID         string
-	ChannelName       string
+	ChannelName       pgtype.Text
 	ReportPeriodStart pgtype.Timestamptz
 	ReportPeriodEnd   pgtype.Timestamptz
 	CreatedAt         pgtype.Timestamptz
@@ -120,7 +120,7 @@ type GetReportRow struct {
 	ReportPeriodEnd   pgtype.Timestamptz
 	ReportData        []byte
 	CreatedAt         pgtype.Timestamptz
-	ChannelName       string
+	ChannelName       pgtype.Text
 }
 
 func (q *Queries) GetReport(ctx context.Context, id int32) (GetReportRow, error) {

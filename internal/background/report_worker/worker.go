@@ -91,7 +91,7 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.WeeklyRepor
 	}
 
 	// Generate the report using the database data
-	reportData, err := w.generator.GenerateReportData(channel.ChannelName, startDate, incidentStats, topAlerts)
+	reportData, err := w.generator.GenerateReportData(channel.ChannelName.String, startDate, incidentStats, topAlerts)
 	if err != nil {
 		return fmt.Errorf("failed to generate report data: %w", err)
 	}

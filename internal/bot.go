@@ -44,13 +44,15 @@ func (b *Bot) Init(ctx context.Context, riverClient *river.Client[pgx.Tx]) error
 
 func (b *Bot) AddChannel(ctx context.Context, channelID string, channelName string) (schema.Channel, error) {
 	channel, err := schema.New(b.DB).AddChannel(ctx, schema.AddChannelParams{
-		ChannelID:   channelID,
-		ChannelName: channelName,
+		ChannelID: channelID,
+		ChannelName: pgtype.Text{
+			String: channelName,
+			Valid:  channelName != "",
+		},
 	})
 	if err != nil {
 		return schema.Channel{}, fmt.Errorf("error adding channel: %w", err)
 	}
-
 	return channel, nil
 }
 
@@ -60,7 +62,7 @@ func (b *Bot) GetChannel(ctx context.Context, channelID string) (schema.Channel,
 
 /* Slack messages related methods */
 
-func (b *Bot) Notify(ctx context.Context, channelID string, channelName string) error {
+func (b *Bot) Notify(ctx context.Context, channelID string) error {
 	tx, err := b.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -69,8 +71,7 @@ func (b *Bot) Notify(ctx context.Context, channelID string, channelName string) 
 
 	qtx := schema.New(b.DB).WithTx(tx)
 	channel, err := qtx.AddChannel(ctx, schema.AddChannelParams{
-		ChannelID:   channelID,
-		ChannelName: channelName,
+		ChannelID: channelID,
 	})
 	if err != nil {
 		return fmt.Errorf("error adding channel: %w", err)

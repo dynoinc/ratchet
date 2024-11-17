@@ -9,6 +9,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal/report"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // Template functions map
@@ -46,7 +47,10 @@ type ReportDetailData struct {
 func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	channelName := request.PathValue("team")
 
-	channel, err := h.dbQueries.GetChannelByName(request.Context(), channelName)
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), pgtype.Text{
+		String: channelName,
+		Valid:  true,
+	})
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -65,7 +69,7 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	for _, r := range reports {
 		reportItems = append(reportItems, ReportListItem{
 			ID:          int64(r.ID),
-			ChannelName: r.ChannelName,
+			ChannelName: r.ChannelName.String,
 			PeriodStart: r.ReportPeriodStart.Time,
 			PeriodEnd:   r.ReportPeriodEnd.Time,
 			CreatedAt:   r.CreatedAt.Time,
@@ -75,7 +79,7 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 
 	data := TeamPageData{
 		ChannelID:   channel.ChannelID,
-		ChannelName: channel.ChannelName,
+		ChannelName: channel.ChannelName.String,
 		Reports:     reportItems,
 	}
 
@@ -91,7 +95,10 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 	channelName := request.PathValue("team")
 	reportIDStr := request.PathValue("report")
 
-	channel, err := h.dbQueries.GetChannelByName(request.Context(), channelName)
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), pgtype.Text{
+		String: channelName,
+		Valid:  true,
+	})
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -131,7 +138,7 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 
 	data := ReportDetailData{
 		ChannelID:      channel.ChannelID,
-		ChannelName:    r.ChannelName,
+		ChannelName:    r.ChannelName.String,
 		WeekRange:      formatWeekRange(reportData.WeekRange),
 		CreatedAt:      r.CreatedAt.Time,
 		Incidents:      webReport.Incidents,

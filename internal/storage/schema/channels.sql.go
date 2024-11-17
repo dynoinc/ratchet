@@ -7,6 +7,8 @@ package schema
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addChannel = `-- name: AddChannel :one
@@ -23,7 +25,7 @@ RETURNING channel_id, channel_name, created_at, slack_ts_watermark
 
 type AddChannelParams struct {
 	ChannelID   string
-	ChannelName string
+	ChannelName pgtype.Text
 }
 
 func (q *Queries) AddChannel(ctx context.Context, arg AddChannelParams) (Channel, error) {
@@ -60,7 +62,7 @@ SELECT channel_id, channel_name, created_at, slack_ts_watermark FROM channels
 WHERE channel_name = $1
 `
 
-func (q *Queries) GetChannelByName(ctx context.Context, channelName string) (Channel, error) {
+func (q *Queries) GetChannelByName(ctx context.Context, channelName pgtype.Text) (Channel, error) {
 	row := q.db.QueryRow(ctx, getChannelByName, channelName)
 	var i Channel
 	err := row.Scan(
@@ -74,6 +76,8 @@ func (q *Queries) GetChannelByName(ctx context.Context, channelName string) (Cha
 
 const getChannels = `-- name: GetChannels :many
 SELECT channel_id, channel_name, created_at, slack_ts_watermark FROM channels
+WHERE channel_name IS NOT NULL
+ORDER BY channel_name
 `
 
 func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
