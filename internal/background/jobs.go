@@ -26,7 +26,7 @@ func Setup(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.
 
 	for _, channel := range channels {
 		constructor := func() (river.JobArgs, *river.InsertOpts) {
-			return &WeeklyReportJobArgs{ChannelID: channel.ChannelID}, nil
+			return &MessagesIngestionWorkerArgs{ChannelID: channel.ChannelID}, nil
 		}
 
 		periodicJob := river.NewPeriodicJob(schedule, constructor, &river.PeriodicJobOpts{

@@ -9,13 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 
 	"github.com/dynoinc/ratchet/internal"
-	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
 type Integration struct {
@@ -79,46 +77,13 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
 			if ev.ThreadTimeStamp == "" {
-				// First, notify immediately with just the channel ID
 				err := b.bot.Notify(ctx, ev.Channel)
 				if err != nil {
 					log.Printf("Error notifying: %v", err)
 				}
-
-				// Then, trigger background channel info fetch if needed
-				go b.ensureChannelInfo(ctx, ev.Channel)
 			}
 		default:
 			log.Printf("Unhandled event: %v", ev)
-		}
-	}
-}
-
-func (b *Integration) ensureChannelInfo(ctx context.Context, channelID string) {
-	channel, err := schema.New(b.bot.DB).GetChannel(ctx, channelID)
-	if err != nil {
-		log.Printf("Error checking channel info: %v", err)
-		return
-	}
-
-	if channel.ChannelName.String == "" {
-		channelInfo, err := b.client.Client.GetConversationInfo(&slack.GetConversationInfoInput{
-			ChannelID: channelID,
-		})
-		if err != nil {
-			log.Printf("Error getting channel info: %v", err)
-			return
-		}
-
-		_, err = schema.New(b.bot.DB).AddChannel(ctx, schema.AddChannelParams{
-			ChannelID: channelID,
-			ChannelName: pgtype.Text{
-				String: channelInfo.Name,
-				Valid:  true,
-			},
-		})
-		if err != nil {
-			log.Printf("Error storing channel info: %v", err)
 		}
 	}
 }

@@ -9,7 +9,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal/report"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 // Template functions map
@@ -17,6 +17,13 @@ var templateFuncs = template.FuncMap{
 	"FormatDuration":  report.FormatDuration,
 	"FormatTimeAgo":   report.FormatTimeAgo,
 	"formatDateRange": formatDateRange,
+	"unmarshalAttrs": func(attrsJSON []byte) *dto.ChannelAttrs {
+		var attrs dto.ChannelAttrs
+		if err := json.Unmarshal(attrsJSON, &attrs); err != nil {
+			return nil
+		}
+		return &attrs
+	},
 }
 
 type TeamPageData struct {
@@ -47,12 +54,17 @@ type ReportDetailData struct {
 func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	channelName := request.PathValue("team")
 
-	channel, err := h.dbQueries.GetChannelByName(request.Context(), pgtype.Text{
-		String: channelName,
-		Valid:  true,
-	})
+	// Get channel by name using the JSONB attrs
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), []byte(channelName))
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get channel name from attrs
+	var channelAttrs dto.ChannelAttrs
+	if err := json.Unmarshal(channel.Attrs, &channelAttrs); err != nil {
+		http.Error(writer, "Invalid channel attributes", http.StatusInternalServerError)
 		return
 	}
 
@@ -69,7 +81,7 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	for _, r := range reports {
 		reportItems = append(reportItems, ReportListItem{
 			ID:          int64(r.ID),
-			ChannelName: r.ChannelName.String,
+			ChannelName: channelAttrs.Name,
 			PeriodStart: r.ReportPeriodStart.Time,
 			PeriodEnd:   r.ReportPeriodEnd.Time,
 			CreatedAt:   r.CreatedAt.Time,
@@ -79,7 +91,7 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 
 	data := TeamPageData{
 		ChannelID:   channel.ChannelID,
-		ChannelName: channel.ChannelName.String,
+		ChannelName: channelAttrs.Name,
 		Reports:     reportItems,
 	}
 
@@ -95,12 +107,15 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 	channelName := request.PathValue("team")
 	reportIDStr := request.PathValue("report")
 
-	channel, err := h.dbQueries.GetChannelByName(request.Context(), pgtype.Text{
-		String: channelName,
-		Valid:  true,
-	})
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), []byte(channelName))
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var channelAttrs dto.ChannelAttrs
+	if err := json.Unmarshal(channel.Attrs, &channelAttrs); err != nil {
+		http.Error(writer, "Invalid channel attributes", http.StatusInternalServerError)
 		return
 	}
 
@@ -138,7 +153,7 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 
 	data := ReportDetailData{
 		ChannelID:      channel.ChannelID,
-		ChannelName:    r.ChannelName.String,
+		ChannelName:    channelAttrs.Name,
 		WeekRange:      formatWeekRange(reportData.WeekRange),
 		CreatedAt:      r.CreatedAt.Time,
 		Incidents:      webReport.Incidents,

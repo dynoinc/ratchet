@@ -40,27 +40,17 @@ func (b *Bot) Init(ctx context.Context, riverClient *river.Client[pgx.Tx]) error
 	return nil
 }
 
-/* Slack channels related methods */
-
-func (b *Bot) AddChannel(ctx context.Context, channelID string, channelName string) (schema.Channel, error) {
+// AddChannel adds a channel to the database. Primarily used for testing.
+func (b *Bot) AddChannel(ctx context.Context, channelID string) (schema.Channel, error) {
 	channel, err := schema.New(b.DB).AddChannel(ctx, schema.AddChannelParams{
 		ChannelID: channelID,
-		ChannelName: pgtype.Text{
-			String: channelName,
-			Valid:  channelName != "",
-		},
 	})
 	if err != nil {
 		return schema.Channel{}, fmt.Errorf("error adding channel: %w", err)
 	}
+
 	return channel, nil
 }
-
-func (b *Bot) GetChannel(ctx context.Context, channelID string) (schema.Channel, error) {
-	return schema.New(b.DB).GetChannel(ctx, channelID)
-}
-
-/* Slack messages related methods */
 
 func (b *Bot) Notify(ctx context.Context, channelID string) error {
 	tx, err := b.DB.Begin(ctx)
@@ -75,6 +65,18 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("error adding channel: %w", err)
+	}
+
+	// If this is a new channel without attributes, schedule a job to fetch info
+	if len(channel.Attrs) == 0 {
+		_, err = b.riverClient.InsertTx(ctx, tx, background.ChannelInfoWorkerArgs{
+			ChannelID: channelID,
+		}, &river.InsertOpts{
+			UniqueOpts: river.UniqueOpts{ByArgs: true},
+		})
+		if err != nil {
+			return fmt.Errorf("error scheduling channel info fetch: %w", err)
+		}
 	}
 
 	_, err = b.riverClient.InsertTx(

@@ -14,29 +14,30 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/report"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
-type Worker struct {
+type ReportWorker struct {
 	river.WorkerDefaults[background.WeeklyReportJobArgs]
 	slack     *slack.Client
 	generator *report.Generator
 	db        *pgxpool.Pool
 }
 
-func New(slackClient *slack.Client, db *pgxpool.Pool) (*Worker, error) {
+func New(slackClient *slack.Client, db *pgxpool.Pool) (*ReportWorker, error) {
 	generator, err := report.NewGenerator()
 	if err != nil {
 		return nil, err
 	}
 
-	return &Worker{
+	return &ReportWorker{
 		slack:     slackClient,
 		generator: generator,
 		db:        db,
 	}, nil
 }
 
-func (w *Worker) Work(ctx context.Context, job *river.Job[background.WeeklyReportJobArgs]) error {
+func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.WeeklyReportJobArgs]) error {
 	// Calculate the time range for the report
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, 0, -7) // Last 7 days
@@ -84,14 +85,23 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.WeeklyRepor
 		}
 	}
 
-	// Get channel info so we can use the channel name in the report
+	// Get channel info
 	channel, err := schema.New(w.db).GetChannel(ctx, job.Args.ChannelID)
 	if err != nil {
-		return fmt.Errorf("failed to get channel name: %w", err)
+		return fmt.Errorf("failed to get channel info: %w", err)
+	}
+
+	// Get channel name from attrs, fallback to channel ID if not found
+	channelName := job.Args.ChannelID
+	if len(channel.Attrs) > 0 {
+		var attrs dto.ChannelAttrs
+		if err := json.Unmarshal(channel.Attrs, &attrs); err == nil && attrs.Name != "" {
+			channelName = attrs.Name
+		}
 	}
 
 	// Generate the report using the database data
-	reportData, err := w.generator.GenerateReportData(channel.ChannelName.String, startDate, incidentStats, topAlerts)
+	reportData, err := w.generator.GenerateReportData(channelName, startDate, incidentStats, topAlerts)
 	if err != nil {
 		return fmt.Errorf("failed to generate report data: %w", err)
 	}

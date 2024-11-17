@@ -52,7 +52,7 @@ const getChannelReports = `-- name: GetChannelReports :many
 SELECT 
     r.id,
     r.channel_id,
-    c.channel_name,
+    c.attrs->>'name' as channel_name,
     r.report_period_start,
     r.report_period_end,
     r.created_at
@@ -71,7 +71,7 @@ type GetChannelReportsParams struct {
 type GetChannelReportsRow struct {
 	ID                int32
 	ChannelID         string
-	ChannelName       pgtype.Text
+	ChannelName       interface{}
 	ReportPeriodStart pgtype.Timestamptz
 	ReportPeriodEnd   pgtype.Timestamptz
 	CreatedAt         pgtype.Timestamptz
@@ -107,7 +107,7 @@ func (q *Queries) GetChannelReports(ctx context.Context, arg GetChannelReportsPa
 const getReport = `-- name: GetReport :one
 SELECT 
     r.id, r.channel_id, r.report_period_start, r.report_period_end, r.report_data, r.created_at,
-    c.channel_name
+    c.attrs->>'name' as channel_name
 FROM reports r
 JOIN channels c ON c.channel_id = r.channel_id
 WHERE r.id = $1
@@ -120,7 +120,7 @@ type GetReportRow struct {
 	ReportPeriodEnd   pgtype.Timestamptz
 	ReportData        []byte
 	CreatedAt         pgtype.Timestamptz
-	ChannelName       pgtype.Text
+	ChannelName       interface{}
 }
 
 func (q *Queries) GetReport(ctx context.Context, id int32) (GetReportRow, error) {

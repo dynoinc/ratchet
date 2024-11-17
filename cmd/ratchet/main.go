@@ -21,6 +21,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/background/channel_info_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/ingestion_worker"
 	"github.com/dynoinc/ratchet/internal/background/report_worker"
@@ -122,11 +123,15 @@ func main() {
 		log.Fatalf("error setting up report worker: %v", err)
 	}
 
+	// Channel info worker setup
+	channelInfoWorker := channel_info_worker.New(slackIntegration.SlackClient(), db)
+
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
 	river.AddWorker(workers, ingestionWorker)
 	river.AddWorker(workers, reportWorker)
+	river.AddWorker(workers, channelInfoWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		log.Fatalf("error setting up background worker: %v", err)

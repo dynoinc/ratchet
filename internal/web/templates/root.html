@@ -33,9 +33,11 @@
                 </thead>
                 <tbody>
                     {{range .Channels}}
+                    {{with $attrs := unmarshalAttrs .Attrs}}
                     <tr class="item">
-                        <td><a href="/team/{{.ChannelName.String}}">{{.ChannelName.String}}</a></td>
+                        <td><a href="/team/{{$attrs.Name}}">{{$attrs.Name}}</a></td>
                     </tr>
+                    {{end}}
                     {{end}}
                 </tbody>
             </table>

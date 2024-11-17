@@ -34,7 +34,7 @@ func TestIncidents(t *testing.T) {
 	})
 
 	t.Run("can open incident", func(t *testing.T) {
-		_, err := bot.AddChannel(ctx, "channel1", "channel1")
+		_, err := bot.AddChannel(ctx, "channel1")
 		require.NoError(t, err)
 
 		err = bot.AddMessages(
