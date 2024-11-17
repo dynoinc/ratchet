@@ -15,7 +15,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
-	"github.com/dynoinc/ratchet/internal/slack"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
@@ -161,7 +161,7 @@ func processIncidentAction(
 	msg schema.Message,
 	action *IncidentAction,
 ) error {
-	t, err := slack.TsToTime(msg.SlackTs)
+	t, err := slack_integration.TsToTime(msg.SlackTs)
 	if err != nil {
 		return fmt.Errorf("failed to parse Slack timestamp: %w", err)
 	}

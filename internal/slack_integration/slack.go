@@ -1,4 +1,4 @@
-package slack
+package slack_integration
 
 import (
 	"context"

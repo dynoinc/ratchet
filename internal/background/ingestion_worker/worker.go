@@ -12,6 +12,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
 )
 
 type MessagesIngestionWorker struct {
@@ -26,11 +27,16 @@ func New(bot *internal.Bot, slackClient *slack.Client) (*MessagesIngestionWorker
 }
 
 func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
-	// Need to make sure we advance watermark everytime otherwise we will fail to enqueue
-	// new insertion job since job at this watermark would be marked done.
-	latest := j.Args.SlackTSWatermark
-	for latest == j.Args.SlackTSWatermark {
-		now := time.Now()
+	// Need to make sure we watermark always advances forward.
+	now := time.Now()
+	latest := fmt.Sprintf("%d.%06d", now.Unix(), now.Nanosecond()/1000)
+	if latest <= j.Args.SlackTSWatermark {
+		watermarkTS, err := slack_integration.TsToTime(j.Args.SlackTSWatermark)
+		if err != nil {
+			return fmt.Errorf("error converting slack timestamp to time: %w", err)
+		}
+
+		now = watermarkTS.Add(time.Millisecond)
 		latest = fmt.Sprintf("%d.%06d", now.Unix(), now.Nanosecond()/1000)
 	}
 

@@ -25,7 +25,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/ingestion_worker"
 	"github.com/dynoinc/ratchet/internal/background/report_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
-	"github.com/dynoinc/ratchet/internal/slack"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
 )
@@ -94,7 +94,7 @@ func main() {
 	bot := internal.New(db)
 
 	// Slack integration setup
-	slackIntegration, err := slack.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
+	slackIntegration, err := slack_integration.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
 	if err != nil {
 		log.Fatalf("error setting up Slack: %v", err)
 	}
