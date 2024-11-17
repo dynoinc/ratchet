@@ -1,65 +1,52 @@
 <!doctype html>
 <html lang="en">
-    {{template "header" .}}
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="color-scheme" content="light dark" />
+        <link href="/static/bootstrap.min.css" rel="stylesheet">
+        <title>Ratchet</title>
+    </head>
     <body>
-        <header class="container-fluid navbar">
-            <nav>
-                <ul>
-                    <li>
-                        <section>
-                            <a href="/" aria-label="Home">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="24"
-                                    height="24"
-                                    fill="red"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path d="M12 3l9 9h-3v9H6v-9H3l9-9z" />
-                                </svg>
-                            </a>
-                        </section>
-                    </li>
-                    <li>
-                        <section>
-                            <strong>Ratchet</strong>
-                        </section>
-                    </li>
-                </ul>
-                <ul style="margin-left: auto">
-                    <li>
-                        <section class="container">
-                            <input
-                                type="search"
-                                name="search"
-                                id="searchBox"
-                                onkeyup="filterItems()"
-                                placeholder="Search"
-                                aria-label="Search"
-                            />
-                        </section>
-                    </li>
-                </ul>
-            </nav>
-        </header>
+        <nav class="navbar navbar-light bg-light shadow-sm p-3">
+            <div class="container-fluid">
+                <a class="navbar-brand d-flex align-items-center" href="#">
+                    <div class="rounded-circle bg-primary" style="width: 40px; height: 40px;"></div>
+                    <span class="ms-2 fw-bold">Ratchet</span>
+                </a>
+                <form class="d-flex w-50">
+                    <input
+                            class="form-control me-2"
+                            type="search"
+                            placeholder="Search..."
+                            aria-label="Search"
+                            id="searchBox"
+                            onkeyup="filterItems()"
+                    />
+                </form>
+            </div>
+        </nav>
 
-        <main class="container-fluid">
-            <section class="container-fluid" id="itemList">
-                <div
-                    class="grid"
-                    style="--columns: 5; display: flex; flex-wrap: wrap"
-                >
+        <div class="container my-4">
+            <div class="table-responsive">
+                <table id="itemList" class="table table-striped table-bordered">
+                    <thead class="table-light">
+                    <tr>
+                        <th scope="col">Channel ID</th>
+                    </tr>
+                    </thead>
+                    <tbody>
                     {{range .Channels}}
-                    <article class="item card" style="width: 10rem">
-                        <a href="/team/{{.ChannelID}}">{{.ChannelID}}</a>
-                    </article>
+                    <tr class="item">
+                        <td><a href="/team/{{.ChannelID}}">{{.ChannelID}}</a></td>
+                    </tr>
                     {{end}}
-                </div>
-            </section>
-        </main>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
         <script>
-            // Function to filter items based on search input
             function filterItems() {
                 const searchInput = document
                     .getElementById("searchBox")
