@@ -76,8 +76,6 @@ func (q *Queries) GetChannelByName(ctx context.Context, channelName pgtype.Text)
 
 const getChannels = `-- name: GetChannels :many
 SELECT channel_id, channel_name, created_at, slack_ts_watermark FROM channels
-WHERE channel_name IS NOT NULL
-ORDER BY channel_name
 `
 
 func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
