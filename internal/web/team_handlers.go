@@ -46,8 +46,8 @@ type ReportDetailData struct {
 	ChannelName    string
 	WeekRange      string
 	CreatedAt      time.Time
-	Incidents      []report.Incident
-	TopAlerts      []report.Alert
+	Incidents      []dto.Incident
+	TopAlerts      []dto.Alert
 	MitigationTime string
 }
 
@@ -124,24 +124,18 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
-	var reportData report.ReportData
-	if err := json.Unmarshal(r.ReportData, &reportData); err != nil {
-		http.Error(writer, "Failed to parse report data", http.StatusInternalServerError)
-		return
-	}
-
 	generator, err := report.NewGenerator()
 	if err != nil {
 		http.Error(writer, "Failed to create report generator", http.StatusInternalServerError)
 		return
 	}
 
-	webReport := generator.FormatForWeb(&reportData)
+	webReport := generator.FormatForWeb(&r.ReportData)
 
 	data := ReportDetailData{
 		ChannelID:      channel.ChannelID,
 		ChannelName:    channel.Attrs.Name,
-		WeekRange:      formatWeekRange(reportData.WeekRange),
+		WeekRange:      formatWeekRange(r.ReportData.WeekRange),
 		CreatedAt:      r.CreatedAt.Time,
 		Incidents:      webReport.Incidents,
 		TopAlerts:      webReport.TopAlerts,
@@ -162,6 +156,6 @@ func formatDateRange(start, end time.Time) string {
 }
 
 // Helper function to format week range from DateRange
-func formatWeekRange(dateRange report.DateRange) string {
+func formatWeekRange(dateRange dto.DateRange) string {
 	return formatDateRange(dateRange.Start, dateRange.End)
 }

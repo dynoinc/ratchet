@@ -2,14 +2,12 @@ package tests
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dynoinc/ratchet/internal/report"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
@@ -34,13 +32,13 @@ func TestReports(t *testing.T) {
 
 		// Create test report data
 		now := time.Now().UTC()
-		reportData := report.ReportData{
+		reportData := dto.ReportData{
 			ChannelName: channelName,
-			WeekRange: report.DateRange{
+			WeekRange: dto.DateRange{
 				Start: now.AddDate(0, 0, -7),
 				End:   now,
 			},
-			Incidents: []report.Incident{
+			Incidents: []dto.Incident{
 				{
 					Severity:    "P0",
 					Count:       1,
@@ -48,7 +46,7 @@ func TestReports(t *testing.T) {
 					AverageTime: time.Hour,
 				},
 			},
-			TopAlerts: []report.Alert{
+			TopAlerts: []dto.Alert{
 				{
 					Name:        "Test Alert",
 					Count:       1,
@@ -57,10 +55,6 @@ func TestReports(t *testing.T) {
 				},
 			},
 		}
-
-		reportDataJSON, err := json.Marshal(reportData)
-		require.NoError(t, err)
-
 		// Store the report
 		storedReport, err := queries.CreateReport(ctx, schema.CreateReportParams{
 			ChannelID: channelID,
@@ -72,7 +66,7 @@ func TestReports(t *testing.T) {
 				Time:  reportData.WeekRange.End,
 				Valid: true,
 			},
-			ReportData: reportDataJSON,
+			ReportData: reportData,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, storedReport)
@@ -93,14 +87,11 @@ func TestReports(t *testing.T) {
 		detailedReport, err := queries.GetReport(ctx, reportsList[0].ID)
 		require.NoError(t, err)
 		require.Equal(t, channelName, detailedReport.ChannelName)
-		var retrievedData report.ReportData
-		err = json.Unmarshal(detailedReport.ReportData, &retrievedData)
-		require.NoError(t, err)
-		require.Equal(t, reportData.ChannelName, retrievedData.ChannelName)
-		require.Equal(t, reportData.WeekRange.Start.Unix(), retrievedData.WeekRange.Start.Unix())
-		require.Equal(t, reportData.WeekRange.End.Unix(), retrievedData.WeekRange.End.Unix())
-		require.Equal(t, len(reportData.Incidents), len(retrievedData.Incidents))
-		require.Equal(t, len(reportData.TopAlerts), len(retrievedData.TopAlerts))
+		require.Equal(t, reportData.ChannelName, detailedReport.ReportData.ChannelName)
+		require.Equal(t, reportData.WeekRange.Start.Unix(), detailedReport.ReportData.WeekRange.Start.Unix())
+		require.Equal(t, reportData.WeekRange.End.Unix(), detailedReport.ReportData.WeekRange.End.Unix())
+		require.Equal(t, len(reportData.Incidents), len(detailedReport.ReportData.Incidents))
+		require.Equal(t, len(reportData.TopAlerts), len(detailedReport.ReportData.TopAlerts))
 	})
 
 	t.Run("enforces unique constraint on time period", func(t *testing.T) {
@@ -116,16 +107,13 @@ func TestReports(t *testing.T) {
 		require.NoError(t, err)
 
 		now := time.Now().UTC()
-		reportData := report.ReportData{
+		reportData := dto.ReportData{
 			ChannelName: channelName,
-			WeekRange: report.DateRange{
+			WeekRange: dto.DateRange{
 				Start: now.AddDate(0, 0, -7),
 				End:   now,
 			},
 		}
-
-		reportDataJSON, err := json.Marshal(reportData)
-		require.NoError(t, err)
 
 		// Store first report
 		_, err = queries.CreateReport(ctx, schema.CreateReportParams{
@@ -138,7 +126,7 @@ func TestReports(t *testing.T) {
 				Time:  reportData.WeekRange.End,
 				Valid: true,
 			},
-			ReportData: reportDataJSON,
+			ReportData: reportData,
 		})
 		require.NoError(t, err)
 
@@ -153,7 +141,7 @@ func TestReports(t *testing.T) {
 				Time:  reportData.WeekRange.End,
 				Valid: true,
 			},
-			ReportData: reportDataJSON,
+			ReportData: reportData,
 		})
 		require.Error(t, err) // Should fail due to unique constraint
 	})
@@ -171,16 +159,13 @@ func TestReports(t *testing.T) {
 		require.NoError(t, err)
 
 		now := time.Now().UTC()
-		reportData := report.ReportData{
+		reportData := dto.ReportData{
 			ChannelName: channelName,
-			WeekRange: report.DateRange{
+			WeekRange: dto.DateRange{
 				Start: now.AddDate(0, 0, -7),
 				End:   now,
 			},
 		}
-
-		reportDataJSON, err := json.Marshal(reportData)
-		require.NoError(t, err)
 
 		// Store a report
 		_, err = queries.CreateReport(ctx, schema.CreateReportParams{
@@ -193,7 +178,7 @@ func TestReports(t *testing.T) {
 				Time:  reportData.WeekRange.End,
 				Valid: true,
 			},
-			ReportData: reportDataJSON,
+			ReportData: reportData,
 		})
 		require.NoError(t, err)
 

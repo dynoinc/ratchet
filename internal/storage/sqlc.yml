@@ -24,3 +24,8 @@ sql:
               import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
               package: "dto"
               type: "ChannelAttrs"
+          - column: reports.report_data
+            go_type:
+              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+              package: "dto"
+              type: "ReportData"

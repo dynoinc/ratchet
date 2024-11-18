@@ -2,7 +2,6 @@ package report_worker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -102,18 +101,12 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.Weekl
 	// Create Slack blocks using slackReport
 	blocks := createSlackBlocks(slackReport)
 
-	// Store the structured report data
-	reportDataJSON, err := json.Marshal(reportData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal report data: %w", err)
-	}
-
 	// Store in database
 	_, err = schema.New(w.db).CreateReport(ctx, schema.CreateReportParams{
 		ChannelID:         job.Args.ChannelID,
 		ReportPeriodStart: pgtype.Timestamptz{Time: reportData.WeekRange.Start, Valid: true},
 		ReportPeriodEnd:   pgtype.Timestamptz{Time: reportData.WeekRange.End, Valid: true},
-		ReportData:        reportDataJSON,
+		ReportData:        *reportData,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to store report: %w", err)

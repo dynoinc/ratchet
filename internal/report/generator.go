@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -20,14 +21,14 @@ func (g *Generator) GenerateReportData(
 	channelName string,
 	startDate time.Time,
 	dbIncidentStats []schema.GetIncidentStatsByPeriodRow,
-	dbTopAlerts []schema.GetTopAlertsRow) (*ReportData, error) {
+	dbTopAlerts []schema.GetTopAlertsRow) (*dto.ReportData, error) {
 
-	incidents := make([]Incident, len(dbIncidentStats))
+	incidents := make([]dto.Incident, len(dbIncidentStats))
 	for i, stat := range dbIncidentStats {
 		avgDuration := time.Duration(stat.AvgDurationSeconds) * time.Second
 		totalDuration := time.Duration(stat.TotalDurationSeconds) * time.Second
 
-		incidents[i] = Incident{
+		incidents[i] = dto.Incident{
 			Severity:    stat.Severity,
 			Count:       int(stat.Count),
 			TotalTime:   totalDuration,
@@ -35,11 +36,11 @@ func (g *Generator) GenerateReportData(
 		}
 	}
 
-	alerts := make([]Alert, len(dbTopAlerts))
+	alerts := make([]dto.Alert, len(dbTopAlerts))
 	for i, alert := range dbTopAlerts {
 		avgDuration := time.Duration(alert.AvgDurationSeconds) * time.Second
 
-		alerts[i] = Alert{
+		alerts[i] = dto.Alert{
 			Name:        alert.Alert,
 			Count:       int(alert.Count),
 			LastSeen:    alert.LastSeen.(time.Time),
@@ -47,9 +48,9 @@ func (g *Generator) GenerateReportData(
 		}
 	}
 
-	return &ReportData{
+	return &dto.ReportData{
 		ChannelName: channelName,
-		WeekRange: DateRange{
+		WeekRange: dto.DateRange{
 			Start: startDate,
 			End:   startDate.AddDate(0, 0, 6),
 		},
@@ -59,7 +60,7 @@ func (g *Generator) GenerateReportData(
 }
 
 // FormatForSlack formats the report data for Slack display
-func (g *Generator) FormatForSlack(data *ReportData) *SlackReport {
+func (g *Generator) FormatForSlack(data *dto.ReportData) *SlackReport {
 	return &SlackReport{
 		ChannelName:       data.ChannelName,
 		WeekRange:         formatWeekRange(data.WeekRange),
@@ -70,7 +71,7 @@ func (g *Generator) FormatForSlack(data *ReportData) *SlackReport {
 }
 
 // FormatForWeb formats the report data for web display
-func (g *Generator) FormatForWeb(data *ReportData) *WebReport {
+func (g *Generator) FormatForWeb(data *dto.ReportData) *WebReport {
 	return &WebReport{
 		ChannelName:    data.ChannelName,
 		PeriodStart:    data.WeekRange.Start,
@@ -82,7 +83,7 @@ func (g *Generator) FormatForWeb(data *ReportData) *WebReport {
 }
 
 // Helper functions for Slack formatting
-func (g *Generator) generateIncidentsTable(incidents []Incident) string {
+func (g *Generator) generateIncidentsTable(incidents []dto.Incident) string {
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
 
@@ -106,7 +107,7 @@ func (g *Generator) generateIncidentsTable(incidents []Incident) string {
 	return buf.String()
 }
 
-func (g *Generator) generateTopAlertsTable(alerts []Alert) string {
+func (g *Generator) generateTopAlertsTable(alerts []dto.Alert) string {
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
 
@@ -138,11 +139,11 @@ func (g *Generator) generateTopAlertsTable(alerts []Alert) string {
 }
 
 // Helper functions
-func formatWeekRange(dateRange DateRange) string {
+func formatWeekRange(dateRange dto.DateRange) string {
 	return dateRange.Start.Format("Jan 2") + " - " + dateRange.End.Format("Jan 2, 2006")
 }
 
-func calculateAvgMitigationTime(incidents []Incident) string {
+func calculateAvgMitigationTime(incidents []dto.Incident) string {
 	var totalTime time.Duration
 	var totalCount int
 	for _, incident := range incidents {
