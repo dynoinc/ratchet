@@ -2,7 +2,6 @@ package channel_info_worker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,14 +38,10 @@ func (w *ChannelInfoWorker) Work(ctx context.Context, job *river.Job[background.
 	attrs := dto.ChannelAttrs{
 		Name: channelInfo.Name,
 	}
-	attrsJSON, err := json.Marshal(attrs)
-	if err != nil {
-		return fmt.Errorf("error marshaling channel attrs: %w", err)
-	}
 
 	_, err = schema.New(w.db).AddChannel(ctx, schema.AddChannelParams{
 		ChannelID: job.Args.ChannelID,
-		Attrs:     attrsJSON,
+		Attrs:     attrs,
 	})
 	if err != nil {
 		return fmt.Errorf("error updating channel info: %w", err)

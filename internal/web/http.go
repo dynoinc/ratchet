@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -15,7 +14,6 @@ import (
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 //go:embed templates/* templates/components/*
@@ -80,11 +78,7 @@ func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
 
 	var channelsWithNames []schema.Channel
 	for _, ch := range channels {
-		var attrs dto.ChannelAttrs
-		if err := json.Unmarshal(ch.Attrs, &attrs); err != nil {
-			continue // Skip channels with invalid attrs
-		}
-		if attrs.Name != "" {
+		if ch.Attrs.Name != "" {
 			channelsWithNames = append(channelsWithNames, ch)
 		}
 	}

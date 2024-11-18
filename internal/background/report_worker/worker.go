@@ -14,7 +14,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/report"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type ReportWorker struct {
@@ -87,11 +86,8 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.Weekl
 
 	// Get channel name from attrs, fallback to channel ID if not found
 	channelName := job.Args.ChannelID
-	if len(channel.Attrs) > 0 {
-		var attrs dto.ChannelAttrs
-		if err := json.Unmarshal(channel.Attrs, &attrs); err == nil && attrs.Name != "" {
-			channelName = attrs.Name
-		}
+	if len(channel.Attrs.Name) > 0 {
+		channelName = channel.Attrs.Name
 	}
 
 	// Generate the report using the database data

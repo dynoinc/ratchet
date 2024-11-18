@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,25 +48,16 @@ func TestOnboardingFlow(t *testing.T) {
 	t.Run("can get channel by name after attrs are set", func(t *testing.T) {
 		queries := schema.New(bot.DB)
 
-		// Manually set channel attrs to simulate the async worker
-		attrs := dto.ChannelAttrs{Name: "test-channel"}
-		attrsJSON, err := json.Marshal(attrs)
-		require.NoError(t, err)
-
-		_, err = queries.AddChannel(ctx, schema.AddChannelParams{
+		_, err := queries.AddChannel(ctx, schema.AddChannelParams{
 			ChannelID: "channel1",
-			Attrs:     attrsJSON,
+			Attrs:     dto.ChannelAttrs{Name: "test-channel"},
 		})
 		require.NoError(t, err)
 
 		// Now we should be able to find it by name
-		channel, err := queries.GetChannelByName(ctx, []byte("test-channel"))
+		channel, err := queries.GetChannelByName(ctx, "test-channel")
 		require.NoError(t, err)
 		require.Equal(t, "channel1", channel.ChannelID)
-
-		var retrievedAttrs dto.ChannelAttrs
-		err = json.Unmarshal(channel.Attrs, &retrievedAttrs)
-		require.NoError(t, err)
-		require.Equal(t, "test-channel", retrievedAttrs.Name)
+		require.Equal(t, "test-channel", channel.Attrs.Name)
 	})
 }

@@ -15,7 +15,7 @@ WHERE channel_id = $1;
 
 -- name: GetChannelByName :one
 SELECT * FROM channels
-WHERE attrs->>'name' = $1;
+WHERE attrs->>'name' = $1::text;
 
 -- name: GetChannels :many
 SELECT * FROM channels;
