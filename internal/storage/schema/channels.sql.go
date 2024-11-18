@@ -7,6 +7,8 @@ package schema
 
 import (
 	"context"
+
+	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 const addChannel = `-- name: AddChannel :one
@@ -23,7 +25,7 @@ RETURNING channel_id, attrs, created_at, slack_ts_watermark
 
 type AddChannelParams struct {
 	ChannelID string
-	Attrs     []byte
+	Attrs     dto.ChannelAttrs
 }
 
 func (q *Queries) AddChannel(ctx context.Context, arg AddChannelParams) (Channel, error) {
@@ -57,11 +59,11 @@ func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, er
 
 const getChannelByName = `-- name: GetChannelByName :one
 SELECT channel_id, attrs, created_at, slack_ts_watermark FROM channels
-WHERE attrs->>'name' = $1
+WHERE attrs->>'name' = $1::text
 `
 
-func (q *Queries) GetChannelByName(ctx context.Context, attrs []byte) (Channel, error) {
-	row := q.db.QueryRow(ctx, getChannelByName, attrs)
+func (q *Queries) GetChannelByName(ctx context.Context, dollar_1 string) (Channel, error) {
+	row := q.db.QueryRow(ctx, getChannelByName, dollar_1)
 	var i Channel
 	err := row.Scan(
 		&i.ChannelID,

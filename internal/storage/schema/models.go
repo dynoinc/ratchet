@@ -11,7 +11,7 @@ import (
 
 type Channel struct {
 	ChannelID        string
-	Attrs            []byte
+	Attrs            dto.ChannelAttrs
 	CreatedAt        pgtype.Timestamptz
 	SlackTsWatermark string
 }

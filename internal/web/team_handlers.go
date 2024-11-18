@@ -55,16 +55,9 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	channelName := request.PathValue("team")
 
 	// Get channel by name using the JSONB attrs
-	channel, err := h.dbQueries.GetChannelByName(request.Context(), []byte(channelName))
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), channelName)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Get channel name from attrs
-	var channelAttrs dto.ChannelAttrs
-	if err := json.Unmarshal(channel.Attrs, &channelAttrs); err != nil {
-		http.Error(writer, "Invalid channel attributes", http.StatusInternalServerError)
 		return
 	}
 
@@ -81,7 +74,7 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 	for _, r := range reports {
 		reportItems = append(reportItems, ReportListItem{
 			ID:          int64(r.ID),
-			ChannelName: channelAttrs.Name,
+			ChannelName: channel.Attrs.Name,
 			PeriodStart: r.ReportPeriodStart.Time,
 			PeriodEnd:   r.ReportPeriodEnd.Time,
 			CreatedAt:   r.CreatedAt.Time,
@@ -91,7 +84,7 @@ func (h *httpHandlers) team(writer http.ResponseWriter, request *http.Request) {
 
 	data := TeamPageData{
 		ChannelID:   channel.ChannelID,
-		ChannelName: channelAttrs.Name,
+		ChannelName: channel.Attrs.Name,
 		Reports:     reportItems,
 	}
 
@@ -107,15 +100,9 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 	channelName := request.PathValue("team")
 	reportIDStr := request.PathValue("report")
 
-	channel, err := h.dbQueries.GetChannelByName(request.Context(), []byte(channelName))
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), channelName)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var channelAttrs dto.ChannelAttrs
-	if err := json.Unmarshal(channel.Attrs, &channelAttrs); err != nil {
-		http.Error(writer, "Invalid channel attributes", http.StatusInternalServerError)
 		return
 	}
 
@@ -153,7 +140,7 @@ func (h *httpHandlers) reportDetail(writer http.ResponseWriter, request *http.Re
 
 	data := ReportDetailData{
 		ChannelID:      channel.ChannelID,
-		ChannelName:    channelAttrs.Name,
+		ChannelName:    channel.Attrs.Name,
 		WeekRange:      formatWeekRange(reportData.WeekRange),
 		CreatedAt:      r.CreatedAt.Time,
 		Incidents:      webReport.Incidents,
