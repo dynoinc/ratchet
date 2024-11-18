@@ -26,13 +26,9 @@ func TestReports(t *testing.T) {
 
 		// Create channel and set its name
 		queries := schema.New(bot.DB)
-		attrs := dto.ChannelAttrs{Name: channelName}
-		attrsJSON, err := json.Marshal(attrs)
-		require.NoError(t, err)
-
-		_, err = queries.AddChannel(ctx, schema.AddChannelParams{
+		_, err := queries.AddChannel(ctx, schema.AddChannelParams{
 			ChannelID: channelID,
-			Attrs:     attrsJSON,
+			Attrs:     dto.ChannelAttrs{Name: channelName},
 		})
 		require.NoError(t, err)
 
@@ -113,13 +109,9 @@ func TestReports(t *testing.T) {
 
 		// Create channel with name
 		queries := schema.New(bot.DB)
-		attrs := dto.ChannelAttrs{Name: channelName}
-		attrsJSON, err := json.Marshal(attrs)
-		require.NoError(t, err)
-
-		_, err = queries.AddChannel(ctx, schema.AddChannelParams{
+		_, err := queries.AddChannel(ctx, schema.AddChannelParams{
 			ChannelID: channelID,
-			Attrs:     attrsJSON,
+			Attrs:     dto.ChannelAttrs{Name: channelName},
 		})
 		require.NoError(t, err)
 
@@ -172,13 +164,9 @@ func TestReports(t *testing.T) {
 
 		// Create channel with name
 		queries := schema.New(bot.DB)
-		attrs := dto.ChannelAttrs{Name: channelName}
-		attrsJSON, err := json.Marshal(attrs)
-		require.NoError(t, err)
-
-		_, err = queries.AddChannel(ctx, schema.AddChannelParams{
+		_, err := queries.AddChannel(ctx, schema.AddChannelParams{
 			ChannelID: channelID,
-			Attrs:     attrsJSON,
+			Attrs:     dto.ChannelAttrs{Name: channelName},
 		})
 		require.NoError(t, err)
 
