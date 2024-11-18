@@ -39,6 +39,6 @@ type Report struct {
 	ChannelID         string
 	ReportPeriodStart pgtype.Timestamptz
 	ReportPeriodEnd   pgtype.Timestamptz
-	ReportData        []byte
+	ReportData        dto.ReportData
 	CreatedAt         pgtype.Timestamptz
 }

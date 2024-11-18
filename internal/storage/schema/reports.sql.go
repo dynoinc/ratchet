@@ -8,6 +8,7 @@ package schema
 import (
 	"context"
 
+	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -26,7 +27,7 @@ type CreateReportParams struct {
 	ChannelID         string
 	ReportPeriodStart pgtype.Timestamptz
 	ReportPeriodEnd   pgtype.Timestamptz
-	ReportData        []byte
+	ReportData        dto.ReportData
 }
 
 func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Report, error) {
@@ -118,7 +119,7 @@ type GetReportRow struct {
 	ChannelID         string
 	ReportPeriodStart pgtype.Timestamptz
 	ReportPeriodEnd   pgtype.Timestamptz
-	ReportData        []byte
+	ReportData        dto.ReportData
 	CreatedAt         pgtype.Timestamptz
 	ChannelName       interface{}
 }

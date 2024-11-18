@@ -1,7 +1,6 @@
 package dto
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -24,16 +23,32 @@ type MessageAttrs struct {
 type IncidentAttrs struct {
 }
 
-type ReportView struct {
-	ID                int32           `json:"id"`
-	ChannelID         string          `json:"channel_id"`
-	ChannelName       string          `json:"channel_name"`
-	ReportPeriodStart time.Time       `json:"report_period_start"`
-	ReportPeriodEnd   time.Time       `json:"report_period_end"`
-	ReportData        json.RawMessage `json:"report_data"`
-	CreatedAt         time.Time       `json:"created_at"`
-}
-
 type ChannelAttrs struct {
 	Name string `json:"name,omitempty"`
+}
+
+type ReportData struct {
+	ChannelName string     `json:"channel_name"`
+	WeekRange   DateRange  `json:"week_range"`
+	Incidents   []Incident `json:"incidents"`
+	TopAlerts   []Alert    `json:"top_alerts"`
+}
+
+type DateRange struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+type Incident struct {
+	Severity    string        `json:"severity"`
+	Count       int           `json:"count"`
+	TotalTime   time.Duration `json:"total_time"`
+	AverageTime time.Duration `json:"average_time"`
+}
+
+type Alert struct {
+	Name        string        `json:"name"`
+	Count       int           `json:"count"`
+	LastSeen    time.Time     `json:"last_seen"`
+	AverageTime time.Duration `json:"average_time"`
 }
