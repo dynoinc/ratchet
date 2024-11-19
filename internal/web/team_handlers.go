@@ -10,6 +10,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/report"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // Template functions map
@@ -158,4 +159,105 @@ func formatDateRange(start, end time.Time) string {
 // Helper function to format week range from DateRange
 func formatWeekRange(dateRange dto.DateRange) string {
 	return formatDateRange(dateRange.Start, dateRange.End)
+}
+
+func (h *httpHandlers) instantReport(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	channelName := request.PathValue("team")
+
+	// Get channel by name
+	channel, err := h.dbQueries.GetChannelByName(request.Context(), channelName)
+	if err != nil {
+		http.Error(writer, "Channel not found", http.StatusNotFound)
+		return
+	}
+
+	// Calculate the date range for the current week
+	now := time.Now()
+	weekStart := now.AddDate(0, 0, -7) // Last 7 days
+	ctx := request.Context()
+	// Get incident statistics from database
+	incidentStats, err := h.dbQueries.GetIncidentStatsByPeriod(ctx, schema.GetIncidentStatsByPeriodParams{
+		ChannelID: channel.ChannelID,
+		StartTimestamp: pgtype.Timestamptz{
+			Time:  weekStart,
+			Valid: true,
+		},
+		StartTimestamp_2: pgtype.Timestamptz{
+			Time:  now,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		http.Error(writer, "Failed to get incident stats", http.StatusInternalServerError)
+		return
+	}
+
+	// Get top alerts from database
+	topAlerts, err := h.dbQueries.GetTopAlerts(ctx, schema.GetTopAlertsParams{
+		ChannelID: channel.ChannelID,
+		StartTimestamp: pgtype.Timestamptz{
+			Time:  weekStart,
+			Valid: true,
+		},
+		StartTimestamp_2: pgtype.Timestamptz{
+			Time:  now,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		http.Error(writer, "Failed to get top alerts", http.StatusInternalServerError)
+		return
+	}
+
+	// If there are no incidents or alerts, don't generate a report
+	if len(incidentStats) == 0 && len(topAlerts) == 0 {
+		http.Error(writer, "No incidents or alerts found", http.StatusNotFound)
+		return
+	}
+
+	// Create report generator
+	generator, err := report.NewGenerator()
+	if err != nil {
+		http.Error(writer, "Failed to create report generator", http.StatusInternalServerError)
+		return
+	}
+
+	dateRange := dto.DateRange{
+		Start: weekStart,
+		End:   now,
+	}
+
+	/// Generate the report using the database data
+	reportData, err := generator.GenerateReportData(channelName, weekStart, incidentStats, topAlerts)
+	if err != nil {
+		http.Error(writer, "Failed to generate report", http.StatusInternalServerError)
+		return
+	}
+
+	// Format the report for web display
+	webReport := generator.FormatForWeb(reportData)
+
+	// Use the same structure as ReportDetailData
+	data := ReportDetailData{
+		ChannelID:      channel.ChannelID,
+		ChannelName:    channel.Attrs.Name,
+		WeekRange:      formatDateRange(dateRange.Start, dateRange.End),
+		CreatedAt:      time.Now(),
+		Incidents:      webReport.Incidents,
+		TopAlerts:      webReport.TopAlerts,
+		MitigationTime: webReport.MitigationTime,
+	}
+
+	// Return HTML instead of JSON
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	err = h.templates.ExecuteTemplate(writer, "report_detail.html", data)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }

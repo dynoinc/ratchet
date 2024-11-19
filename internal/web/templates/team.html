@@ -25,6 +25,30 @@
             color: #666;
             font-size: 0.9em;
         }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 800px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
     </style>
 </head>
 
@@ -34,7 +58,12 @@
             <a href="/" class="text-decoration-none">← Back to Teams List</a>
         </div>
 
-        <h1 class="mt-4 mb-4">Reports for #{{.ChannelName}}</h1>
+        <div class="d-flex justify-content-between align-items-center mt-4 mb-4">
+            <h1>Reports for #{{.ChannelName}}</h1>
+            <button onclick="generateInstantReport('{{.ChannelName}}')" class="btn btn-primary">
+                Generate Report
+            </button>
+        </div>
 
         <div class="report-list">
             {{range .Reports}}
@@ -55,6 +84,51 @@
             {{end}}
         </div>
     </div>
+
+    <div id="reportModal" class="modal">
+        <div class="modal-content">
+            <div class="d-flex justify-content-between mb-3">
+                <h3>Team Report</h3>
+                <button onclick="closeModal()" class="btn btn-close"></button>
+            </div>
+            <div id="reportContent"></div>
+        </div>
+    </div>
+
+    <script>
+        function generateInstantReport(channelName) {
+            const reportContent = document.getElementById('reportContent');
+            
+            // Show modal with loading state
+            const modal = document.getElementById('reportModal');
+            modal.style.display = 'block';
+            reportContent.innerHTML = '<div class="loading">Generating report...</div>';
+
+            fetch(`/team/${channelName}/instant-report`, {
+                method: 'POST',
+            })
+            .then(response => response.text())
+            .then(html => {
+                reportContent.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                reportContent.innerHTML = '<div class="alert alert-danger">Error generating report</div>';
+            });
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('reportModal');
+            modal.style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('reportModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
 </body>
 
 </html>
