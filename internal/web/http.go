@@ -65,7 +65,7 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 	mux.HandleFunc("GET /{$}", handlers.root)
 	mux.HandleFunc("GET /team/{team}", handlers.team)
 	mux.HandleFunc("GET /team/{team}/report/{report}", handlers.reportDetail)
-
+	mux.HandleFunc("POST /team/{team}/instant-report", handlers.instantReport)
 	return mux, nil
 }
 
