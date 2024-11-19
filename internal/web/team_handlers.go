@@ -176,19 +176,19 @@ func (h *httpHandlers) instantReport(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	// Calculate the date range for the current week
-	now := time.Now()
-	weekStart := now.AddDate(0, 0, -7) // Last 7 days
-	ctx := request.Context()
+	// Calculate the time range for the report
+	endDate := time.Now()
+	startDate := endDate.AddDate(0, 0, -7) // Last 7 days
+
 	// Get incident statistics from database
-	incidentStats, err := h.dbQueries.GetIncidentStatsByPeriod(ctx, schema.GetIncidentStatsByPeriodParams{
+	incidentStats, err := h.dbQueries.GetIncidentStatsByPeriod(request.Context(), schema.GetIncidentStatsByPeriodParams{
 		ChannelID: channel.ChannelID,
 		StartTimestamp: pgtype.Timestamptz{
-			Time:  weekStart,
+			Time:  startDate,
 			Valid: true,
 		},
 		StartTimestamp_2: pgtype.Timestamptz{
-			Time:  now,
+			Time:  endDate,
 			Valid: true,
 		},
 	})
@@ -198,25 +198,19 @@ func (h *httpHandlers) instantReport(writer http.ResponseWriter, request *http.R
 	}
 
 	// Get top alerts from database
-	topAlerts, err := h.dbQueries.GetTopAlerts(ctx, schema.GetTopAlertsParams{
+	topAlerts, err := h.dbQueries.GetTopAlerts(request.Context(), schema.GetTopAlertsParams{
 		ChannelID: channel.ChannelID,
 		StartTimestamp: pgtype.Timestamptz{
-			Time:  weekStart,
+			Time:  startDate,
 			Valid: true,
 		},
 		StartTimestamp_2: pgtype.Timestamptz{
-			Time:  now,
+			Time:  endDate,
 			Valid: true,
 		},
 	})
 	if err != nil {
 		http.Error(writer, "Failed to get top alerts", http.StatusInternalServerError)
-		return
-	}
-
-	// If there are no incidents or alerts, don't generate a report
-	if len(incidentStats) == 0 && len(topAlerts) == 0 {
-		http.Error(writer, "No incidents or alerts found", http.StatusNotFound)
 		return
 	}
 
@@ -227,13 +221,8 @@ func (h *httpHandlers) instantReport(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	dateRange := dto.DateRange{
-		Start: weekStart,
-		End:   now,
-	}
-
-	/// Generate the report using the database data
-	reportData, err := generator.GenerateReportData(channelName, weekStart, incidentStats, topAlerts)
+	// Generate the report using the database data
+	reportData, err := generator.GenerateReportData(channelName, startDate, incidentStats, topAlerts)
 	if err != nil {
 		http.Error(writer, "Failed to generate report", http.StatusInternalServerError)
 		return
@@ -245,15 +234,15 @@ func (h *httpHandlers) instantReport(writer http.ResponseWriter, request *http.R
 	// Use the same structure as ReportDetailData
 	data := ReportDetailData{
 		ChannelID:      channel.ChannelID,
-		ChannelName:    channel.Attrs.Name,
-		WeekRange:      formatDateRange(dateRange.Start, dateRange.End),
+		ChannelName:    channelName,
+		WeekRange:      formatDateRange(startDate, endDate),
 		CreatedAt:      time.Now(),
 		Incidents:      webReport.Incidents,
 		TopAlerts:      webReport.TopAlerts,
 		MitigationTime: webReport.MitigationTime,
 	}
 
-	// Return HTML instead of JSON
+	// Render the report detail template
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err = h.templates.ExecuteTemplate(writer, "report_detail.html", data)
 	if err != nil {
