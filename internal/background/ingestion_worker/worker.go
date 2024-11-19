@@ -54,7 +54,7 @@ func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[backgro
 		}
 
 		messages = append(messages, history.Messages...)
-		if !history.HasMore {
+		if !history.HasMore || len(messages) >= 1000 {
 			break
 		}
 
