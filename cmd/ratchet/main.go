@@ -62,10 +62,12 @@ func main() {
 
 	wg, ctx := errgroup.WithContext(ctx)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
 	log.Println("Running version:", versioninfo.Short())
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+
+	if _, err := os.Stat(".env"); err == nil {
+		if err := godotenv.Load(); err != nil {
+			log.Fatal("Error loading .env file")
+		}
 	}
 
 	var c Config

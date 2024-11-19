@@ -24,7 +24,7 @@ RUN apt install -y ca-certificates
 RUN update-ca-certificates
 
 # Set the working directory inside the container
-WORKDIR /app
+WORKDIR /
 
 # Copy the built binary from the builder stage
 COPY --from=builder /app/ratchet .
