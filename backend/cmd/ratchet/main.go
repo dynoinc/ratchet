@@ -45,7 +45,7 @@ type Config struct {
 	SlackAppToken string `split_words:"true" required:"true"`
 
 	// HTTP configuration
-	HTTPAddr string `split_words:"true" default:"0.0.0.0:5001"`
+	HTTPAddr string `split_words:"true" default:"127.0.0.1:5001"`
 	// CORS configuration
 	CORSAllowedOrigins string `split_words:"true" default:"http://localhost:8080"`
 }

@@ -5,6 +5,9 @@ services:
     build:
       context: frontend/.
       dockerfile: Dockerfile
+    env_file:
+      - frontend/.env.local
+      - .env
     ports:
       - "8080:8080"
     networks:
@@ -17,12 +20,8 @@ services:
       context: backend/.
     ports:
       - "5001:5001"
-    environment:
-      - RATCHET_DEV_MODE=${RATCHET_DEV_MODE}
-      - RATCHET_SLACK_APP_TOKEN=${RATCHET_SLACK_APP_TOKEN}
-      - RATCHET_SLACK_BOT_TOKEN=${RATCHET_SLACK_BOT_TOKEN}
-      - RATCHET_DATABASE_HOST=${RATCHET_DATABASE_HOST}
-      - CORS_ALLOWED_ORIGINS=http://localhost:8080
+    env_file:
+      - .env
     depends_on:
       - ratchet-db
     networks:
