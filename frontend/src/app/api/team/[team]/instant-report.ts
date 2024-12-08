@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(
   req: NextApiRequest, 
-  res: NextApiResponse<{data: any | null, error?: string}>
+  res: NextApiResponse<{data: Record<string, unknown> | null, error?: string}>
 ) {
   if (req.method !== 'POST') {
     return res.status(405).json({ 

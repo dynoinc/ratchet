@@ -3,13 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Layout from '../../../components/Layout';
-
-interface Report {
-  id: string;
-  channelId: string;
-  content: string;
-  createdAt: string;
-}
+import { Channel, Report } from '../../../types/index';
 
 export default function TeamPage() {
   const params = useParams();
@@ -29,7 +23,7 @@ export default function TeamPage() {
         throw new Error('Failed to fetch channel information');
       }
       const channels = await channelResponse.json();
-      const channel = channels.find((c: any) => c.name === params.team);
+      const channel = channels.find((c: Channel) => c.name === params.team);
       
       if (!channel) {
         setError('Channel not found');
@@ -74,7 +68,7 @@ export default function TeamPage() {
       }
       
       const channels = await channelResponse.json();
-      const channel = channels.find((c: any) => c.name === params.team);
+      const channel = channels.find((c: Channel) => c.name === params.team);
       
       if (!channel) {
         setError('Channel not found');
