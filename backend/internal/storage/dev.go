@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	PostgresImage = "postgres:12.19"
+	PostgresImage = "postgres"
 	containerName = "ratchet-db"
 )
 

@@ -74,6 +74,7 @@ require (
 	github.com/riverqueue/river/rivershared v0.14.0 // indirect
 	github.com/riverqueue/river/rivertype v0.14.0 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/rs/cors v1.11.1 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.12 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect

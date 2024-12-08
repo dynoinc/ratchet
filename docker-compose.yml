@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  frontend:
+    build:
+      context: frontend/.
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+    depends_on:
+      - app
+
+  app:
+    build:
+      context: backend/.
+    ports:
+      - "5001:5001"
+    environment:
+      - RATCHET_DEV_MODE=${RATCHET_DEV_MODE}
+      - RATCHET_SLACK_APP_TOKEN=${RATCHET_SLACK_APP_TOKEN}
+      - RATCHET_SLACK_BOT_TOKEN=${RATCHET_SLACK_BOT_TOKEN}
+      - RATCHET_DATABASE_HOST=${RATCHET_DATABASE_HOST}
+      - CORS_ALLOWED_ORIGINS=http://localhost:8080
+    depends_on:
+      - ratchet-db
+    networks:
+      - app-network
+
+  ratchet-db:
+    image: postgres:latest
+    container_name: ratchet-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
