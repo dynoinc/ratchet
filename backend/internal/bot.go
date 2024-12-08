@@ -157,6 +157,19 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		return err
 	}
 
+	// Get Channel and schedule job to populate channel attributes if not already populated.
+	ch, err := qtx.GetChannel(ctx, channelID)
+	if err != nil {
+		return err
+	}
+	if len(ch.Attrs.Name) == 0 {
+		_, err = b.riverClient.InsertTx(ctx, tx, background.ChannelInfoWorkerArgs{
+			ChannelID: channelID,
+		}, &river.InsertOpts{
+			UniqueOpts: river.UniqueOpts{ByArgs: true},
+		})
+	}
+
 	return tx.Commit(ctx)
 }
 

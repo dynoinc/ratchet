@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dynoinc/ratchet/internal/report"
@@ -162,11 +163,6 @@ func formatWeekRange(dateRange dto.DateRange) string {
 }
 
 func (h *httpHandlers) instantReport(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPost {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	channelName := request.PathValue("team")
 
 	// Get channel by name
@@ -228,21 +224,45 @@ func (h *httpHandlers) instantReport(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	// Format the report for web display
-	webReport := generator.FormatForWeb(reportData)
+	// If it's an API request (from frontend), return JSON
+	if strings.HasPrefix(request.URL.Path, "/api/") {
+		webReport := generator.FormatForWeb(reportData)
+		response := struct {
+			ChannelID      string         `json:"channelId"`
+			ChannelName    string         `json:"channelName"`
+			WeekRange      string         `json:"weekRange"`
+			CreatedAt      time.Time      `json:"createdAt"`
+			Incidents      []dto.Incident `json:"incidents"`
+			TopAlerts      []dto.Alert    `json:"topAlerts"`
+			MitigationTime string         `json:"mitigationTime"`
+		}{
+			ChannelID:      channel.ChannelID,
+			ChannelName:    channelName,
+			WeekRange:      formatDateRange(startDate, endDate),
+			CreatedAt:      time.Now(),
+			Incidents:      webReport.Incidents,
+			TopAlerts:      webReport.TopAlerts,
+			MitigationTime: webReport.MitigationTime,
+		}
 
-	// Use the same structure as ReportDetailData
+		writer.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(writer).Encode(response); err != nil {
+			http.Error(writer, "Failed to encode response", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// For web requests, render the HTML template
 	data := ReportDetailData{
 		ChannelID:      channel.ChannelID,
 		ChannelName:    channelName,
 		WeekRange:      formatDateRange(startDate, endDate),
 		CreatedAt:      time.Now(),
-		Incidents:      webReport.Incidents,
-		TopAlerts:      webReport.TopAlerts,
-		MitigationTime: webReport.MitigationTime,
+		Incidents:      generator.FormatForWeb(reportData).Incidents,
+		TopAlerts:      generator.FormatForWeb(reportData).TopAlerts,
+		MitigationTime: generator.FormatForWeb(reportData).MitigationTime,
 	}
 
-	// Render the report detail template
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err = h.templates.ExecuteTemplate(writer, "report_detail.html", data)
 	if err != nil {

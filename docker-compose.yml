@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  frontend:
+    build:
+      context: frontend/.
+      dockerfile: Dockerfile
+    env_file:
+      - frontend/.env.local
+      - .env
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+    depends_on:
+      - app
+
+  app:
+    build:
+      context: backend/.
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    depends_on:
+      - ratchet-db
+    networks:
+      - app-network
+
+  ratchet-db:
+    image: postgres:latest
+    container_name: ratchet-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
