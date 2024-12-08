@@ -12,6 +12,9 @@ jobs:
     name: Backend Build
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
       - name: Checkout Code
@@ -20,7 +23,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: 'go.mod'
+          go-version-file: 'backend/go.mod'
           cache: true
 
       - name: Go Format
@@ -54,6 +57,9 @@ jobs:
     name: Frontend Build
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: frontend
 
     steps:
       - name: Checkout Code
@@ -67,21 +73,16 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install Dependencies
-        working-directory: frontend
         run: npm ci
 
       - name: Type Check
-        working-directory: frontend
         run: npm run type-check
 
       - name: Lint
-        working-directory: frontend
         run: npm run lint
 
       - name: Build
-        working-directory: frontend
         run: npm run build
 
       - name: Test
-        working-directory: frontend
         run: npm run test --if-present
