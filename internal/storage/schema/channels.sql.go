@@ -19,7 +19,11 @@ INSERT INTO channels (
     $1, $2
 )
 ON CONFLICT (channel_id) DO UPDATE
-SET attrs = COALESCE(EXCLUDED.attrs, channels.attrs)
+SET attrs = CASE
+    WHEN EXCLUDED.attrs IS NULL OR EXCLUDED.attrs = '{}'::jsonb
+    THEN channels.attrs
+    ELSE EXCLUDED.attrs
+END
 RETURNING channel_id, attrs, created_at, slack_ts_watermark
 `
 
