@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -68,11 +69,11 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 	}
 
 	// If this is a new channel without attributes, schedule a job to fetch info
-	if len(channel.Attrs.Name) == 0 {
+	if channel.Attrs == (dto.ChannelAttrs{}) || channel.Attrs.Name == "" {
 		_, err = b.riverClient.InsertTx(ctx, tx, background.ChannelInfoWorkerArgs{
 			ChannelID: channelID,
 		}, &river.InsertOpts{
-			UniqueOpts: river.UniqueOpts{ByArgs: true},
+			UniqueOpts: river.UniqueOpts{ByArgs: false},
 		})
 		if err != nil {
 			return fmt.Errorf("error scheduling channel info fetch: %w", err)
@@ -155,6 +156,25 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		},
 	); err != nil {
 		return err
+	}
+
+	// If we don't have any attributes, add a job to fetch them
+	channel, err := qtx.GetChannel(ctx, channelID)
+	if err != nil {
+		return err
+	}
+
+	if channel.Attrs == (dto.ChannelAttrs{}) || channel.Attrs.Name == "" {
+		_, err = b.riverClient.InsertTx(ctx, tx, background.ChannelInfoWorkerArgs{
+			ChannelID: channelID,
+		}, &river.InsertOpts{
+			UniqueOpts: river.UniqueOpts{ByArgs: false},
+		})
+		// Suppress error, we don't want to block from adding messages if we can't schedule a job
+		// This is a best effort to fetch channel info.
+		if err != nil {
+			log.Printf("error adding channel info worker for %s: %v", channelID, err)
+		}
 	}
 
 	return tx.Commit(ctx)
