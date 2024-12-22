@@ -31,6 +31,40 @@ func (q *Queries) CloseIncident(ctx context.Context, arg CloseIncidentParams) (i
 	return incident_id, err
 }
 
+const getAllIncidents = `-- name: GetAllIncidents :many
+SELECT incident_id, channel_id, slack_ts, alert, service, priority, attrs, start_timestamp, end_timestamp FROM incidents WHERE channel_id = $1 ORDER BY start_timestamp DESC
+`
+
+func (q *Queries) GetAllIncidents(ctx context.Context, channelID string) ([]Incident, error) {
+	rows, err := q.db.Query(ctx, getAllIncidents, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Incident
+	for rows.Next() {
+		var i Incident
+		if err := rows.Scan(
+			&i.IncidentID,
+			&i.ChannelID,
+			&i.SlackTs,
+			&i.Alert,
+			&i.Service,
+			&i.Priority,
+			&i.Attrs,
+			&i.StartTimestamp,
+			&i.EndTimestamp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getIncidentStatsByPeriod = `-- name: GetIncidentStatsByPeriod :many
 SELECT 
     priority as severity,

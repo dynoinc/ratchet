@@ -126,15 +126,10 @@ func main() {
 	}
 
 	// Classifier setup
-	var classifier river.Worker[background.ClassifierArgs]
-	if c.DevMode {
-		classifier = classifier_worker.NewDev(ctx, bot)
-	} else {
-		classifier, err = classifier_worker.New(ctx, c.Classifier, bot)
-		if err != nil {
-			slog.ErrorContext(ctx, "error setting up classifier", "error", err)
-			os.Exit(1)
-		}
+	classifier, err := classifier_worker.New(ctx, c.Classifier, bot)
+	if err != nil {
+		slog.ErrorContext(ctx, "error setting up classifier", "error", err)
+		os.Exit(1)
 	}
 
 	// Ingestion worker setup

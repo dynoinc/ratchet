@@ -6,6 +6,9 @@ ON CONFLICT (channel_id, slack_ts) DO NOTHING;
 -- name: GetMessage :one
 SELECT * FROM messages WHERE channel_id = @channel_id AND slack_ts = @slack_ts;
 
+-- name: GetAllMessages :many
+SELECT * FROM messages WHERE channel_id = @channel_id;
+
 -- name: SetIncidentID :exec
 UPDATE messages
 SET attrs = attrs || jsonb_build_object('incident_id', @incident_id::integer, 'action', @action::text)

@@ -71,3 +71,6 @@ WHERE channel_id = $1
 GROUP BY alert
 ORDER BY count DESC
 LIMIT 5;
+
+-- name: GetAllIncidents :many
+SELECT * FROM incidents WHERE channel_id = $1 ORDER BY start_timestamp DESC;

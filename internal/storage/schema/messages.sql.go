@@ -28,6 +28,30 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 	return err
 }
 
+const getAllMessages = `-- name: GetAllMessages :many
+SELECT channel_id, slack_ts, attrs FROM messages WHERE channel_id = $1
+`
+
+func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]Message, error) {
+	rows, err := q.db.Query(ctx, getAllMessages, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(&i.ChannelID, &i.SlackTs, &i.Attrs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMessage = `-- name: GetMessage :one
 SELECT channel_id, slack_ts, attrs FROM messages WHERE channel_id = $1 AND slack_ts = $2
 `

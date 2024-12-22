@@ -11,7 +11,6 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
-	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/storage"
 )
 
@@ -29,7 +28,9 @@ func SetupBot(t *testing.T) *internal.Bot {
 	bot := internal.New(db)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, classifier_worker.NewDev(ctx, bot))
+	river.AddWorker(workers, river.WorkFunc(func(ctx context.Context, j *river.Job[background.ClassifierArgs]) error {
+		return nil
+	}))
 	river.AddWorker(workers, river.WorkFunc(func(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
 		return nil
 	}))

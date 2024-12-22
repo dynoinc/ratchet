@@ -50,7 +50,7 @@ func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[backgro
 	for {
 		history, err := w.slackClient.GetConversationHistory(&params)
 		if err != nil {
-			return fmt.Errorf("error getting conversation history: %w", err)
+			return fmt.Errorf("error getting conversation history for channel %s: %w", j.Args.ChannelID, err)
 		}
 
 		messages = append(messages, history.Messages...)
@@ -59,6 +59,7 @@ func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[backgro
 		}
 
 		params.Cursor = history.ResponseMetadata.Cursor
+		params.Latest = history.Messages[len(history.Messages)-1].Timestamp
 	}
 
 	// Slack returns messages in reverse chronological order.

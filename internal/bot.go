@@ -72,9 +72,7 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 	if channel.Attrs == (dto.ChannelAttrs{}) || channel.Attrs.Name == "" {
 		_, err = b.riverClient.InsertTx(ctx, tx, background.ChannelInfoWorkerArgs{
 			ChannelID: channelID,
-		}, &river.InsertOpts{
-			UniqueOpts: river.UniqueOpts{ByArgs: false},
-		})
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("error scheduling channel info fetch: %w", err)
 		}

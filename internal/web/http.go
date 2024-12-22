@@ -2,9 +2,7 @@ package web
 
 import (
 	"context"
-	"embed"
-	"html/template"
-	"io/fs"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -13,38 +11,22 @@ import (
 	"github.com/riverqueue/river"
 	"riverqueue.com/riverui"
 
+	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
-//go:embed templates/* templates/components/*
-var templateFS embed.FS
-
-//go:embed static/*
-var staticFS embed.FS
-
 type httpHandlers struct {
-	dbQueries *schema.Queries
-	templates *template.Template
+	db          *pgxpool.Pool
+	riverClient *river.Client[pgx.Tx]
 }
 
 func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) (http.Handler, error) {
-	templates, err := template.New("").
-		Funcs(templateFuncs).
-		ParseFS(templateFS, "templates/*.html", "templates/components/*.html")
-	if err != nil {
-		return nil, err
-	}
-
-	staticFS, err := fs.Sub(staticFS, "static")
-	if err != nil {
-		return nil, err
-	}
-
 	handlers := &httpHandlers{
-		dbQueries: schema.New(db),
-		templates: templates,
+		db:          db,
+		riverClient: riverClient,
 	}
 
+	// River UI
 	opts := &riverui.ServerOpts{
 		Client: riverClient,
 		DB:     db,
@@ -59,39 +41,87 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 		return nil, err
 	}
 
+	// API
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("GET /channels", handlers.listChannels)
+	apiMux.HandleFunc("POST /channels/{channelID}/refresh_channel_info", handlers.refreshChannelInfo)
+	apiMux.HandleFunc("POST /channels/{channelID}/reingest_messages", handlers.reingestMessages)
+	apiMux.HandleFunc("GET /channels/{channelID}/messages", handlers.listMessages)
+	apiMux.HandleFunc("GET /channels/{channelID}/incidents", handlers.listIncidents)
+
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
-	mux.Handle("GET /static/", http.StripPrefix("/static", http.FileServerFS(staticFS)))
-	mux.HandleFunc("GET /{$}", handlers.root)
-	mux.HandleFunc("GET /team/{team}", handlers.team)
-	mux.HandleFunc("GET /team/{team}/report/{report}", handlers.reportDetail)
-	mux.HandleFunc("POST /team/{team}/instant-report", handlers.instantReport)
+	mux.Handle("/api/", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		apiMux.ServeHTTP(w, r)
+	})))
 	return mux, nil
 }
 
-func (h *httpHandlers) root(writer http.ResponseWriter, request *http.Request) {
-	channels, err := h.dbQueries.GetChannels(request.Context())
+func (h *httpHandlers) listChannels(writer http.ResponseWriter, request *http.Request) {
+	channels, err := schema.New(h.db).GetChannels(request.Context())
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	var channelsWithNames []schema.Channel
-	for _, ch := range channels {
-		if ch.Attrs.Name != "" {
-			channelsWithNames = append(channelsWithNames, ch)
-		}
+	if err := json.NewEncoder(writer).Encode(channels); err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
 	}
+}
 
-	data := struct {
-		Channels []schema.Channel
-	}{
-		Channels: channelsWithNames,
-	}
+func (h *httpHandlers) refreshChannelInfo(writer http.ResponseWriter, request *http.Request) {
+	channelID := request.PathValue("channelID")
 
-	writer.Header().Set("Content-Type", "text/html")
-	err = h.templates.ExecuteTemplate(writer, "root.html", data)
+	_, err := h.riverClient.Insert(request.Context(), background.ChannelInfoWorkerArgs{
+		ChannelID: channelID,
+	}, nil)
 	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+	}
+
+	json.NewEncoder(writer).Encode(map[string]interface{}{})
+}
+
+func (h *httpHandlers) reingestMessages(writer http.ResponseWriter, request *http.Request) {
+	channelID := request.PathValue("channelID")
+
+	_, err := h.riverClient.Insert(request.Context(), background.MessagesIngestionWorkerArgs{
+		ChannelID: channelID,
+	}, &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}})
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+	}
+
+	json.NewEncoder(writer).Encode(map[string]interface{}{})
+}
+
+func (h *httpHandlers) listMessages(writer http.ResponseWriter, request *http.Request) {
+	channelID := request.PathValue("channelID")
+
+	messages, err := schema.New(h.db).GetAllMessages(request.Context(), channelID)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(writer).Encode(messages); err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *httpHandlers) listIncidents(writer http.ResponseWriter, request *http.Request) {
+	channelID := request.PathValue("channelID")
+
+	incidents, err := schema.New(h.db).GetAllIncidents(request.Context(), channelID)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(writer).Encode(incidents); err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}

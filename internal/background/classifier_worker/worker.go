@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -140,8 +141,15 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 			slog.ErrorContext(ctx, "failed to classify incident with binary", "error", err)
 		}
 
+		slog.InfoContext(ctx, "classified incident", "text", text, "action", action)
 		if action.Action != ActionNone {
 			if err := processIncidentAction(ctx, w.bot, msg, action); err != nil {
+				if errors.Is(err, internal.ErrNoOpenIncident) {
+					// Ignore errors when closing incidents that are not open.
+					slog.WarnContext(ctx, "failed to process incident action", "error", err)
+					return nil
+				}
+
 				return fmt.Errorf("failed to process incident action: %w", err)
 			}
 
