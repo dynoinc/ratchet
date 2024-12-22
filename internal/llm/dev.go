@@ -3,7 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"time"
@@ -23,7 +23,7 @@ const (
 
 func StartOllamaContainer(ctx context.Context) error {
 	// If local ollama is running, just use that.
-	if checkHealth(ollamaURL, 1) == nil {
+	if checkHealth(ctx, ollamaURL, 1) == nil {
 		return nil
 	}
 
@@ -59,14 +59,14 @@ func StartOllamaContainer(ctx context.Context) error {
 		return fmt.Errorf("failed to start container: %v", err)
 	}
 
-	if err := checkHealth(ollamaURL, 30); err != nil {
+	if err := checkHealth(ctx, ollamaURL, 30); err != nil {
 		return fmt.Errorf("failed to check Ollama health: %v", err)
 	}
 
 	return nil
 }
 
-func checkHealth(url string, attempts int) error {
+func checkHealth(ctx context.Context, url string, attempts int) error {
 	var backoff time.Duration
 	for retries := 0; retries < attempts; retries++ {
 		resp, err := http.Get(url)
@@ -75,12 +75,12 @@ func checkHealth(url string, attempts int) error {
 		}
 
 		if err == nil && resp.StatusCode == http.StatusOK {
-			log.Println("Ollama health check passed.")
+			slog.InfoContext(ctx, "Ollama health check passed")
 			return nil
 		}
 
 		backoff = time.Duration(math.Pow(2, float64(retries))) * 100 * time.Millisecond
-		log.Printf("Ollama is not ready, retrying in %v: %v", backoff, err)
+		slog.InfoContext(ctx, "Ollama is not ready, retrying", "backoff", backoff, "error", err)
 		time.Sleep(backoff)
 	}
 

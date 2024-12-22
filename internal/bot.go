@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -173,7 +173,9 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		// Suppress error, we don't want to block from adding messages if we can't schedule a job
 		// This is a best effort to fetch channel info.
 		if err != nil {
-			log.Printf("error adding channel info worker for %s: %v", channelID, err)
+			slog.Error("error adding channel info worker",
+				"channel_id", channelID,
+				"error", err)
 		}
 	}
 

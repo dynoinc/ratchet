@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os/exec"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -137,7 +137,7 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		text := msg.Attrs.Message.Text
 		action, err := runIncidentBinary(w.incidentBinary, username, text)
 		if err != nil {
-			log.Printf("failed to classify incident with binary: %v", err)
+			slog.ErrorContext(ctx, "failed to classify incident with binary", "error", err)
 		}
 
 		if action.Action != ActionNone {

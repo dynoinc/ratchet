@@ -5,11 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 
 	"github.com/carlmjohnson/versioninfo"
@@ -61,35 +62,56 @@ func main() {
 	defer cancel()
 
 	wg, ctx := errgroup.WithContext(ctx)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Println("Running version:", versioninfo.Short())
 
 	if _, err := os.Stat(".env"); err == nil {
 		if err := godotenv.Load(); err != nil {
-			log.Fatal("Error loading .env file")
+			slog.ErrorContext(ctx, "error loading .env file", "error", err)
+			os.Exit(1)
 		}
 	}
 
 	var c Config
 	if err := envconfig.Process("ratchet", &c); err != nil {
-		log.Fatalf("error loading configuration: %v", err)
+		slog.ErrorContext(ctx, "error processing environment variables", "error", err)
+		os.Exit(1)
 	}
+
+	// Logging setup
+	handlerOpts := &slog.HandlerOptions{
+		AddSource: true,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.SourceKey {
+				s := a.Value.Any().(*slog.Source)
+				s.File = path.Base(s.File)
+			}
+			return a
+		},
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, handlerOpts))
+	if c.DevMode {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, handlerOpts))
+	}
+	slog.SetDefault(logger)
+	slog.InfoContext(ctx, "Starting ratchet", "version", versioninfo.Short())
 
 	// Database setup
 	if c.DevMode {
 		if err := storage.StartPostgresContainer(ctx, c.Database); err != nil {
-			log.Fatalf("error setting up dev database: %v", err)
+			slog.ErrorContext(ctx, "error setting up dev database", "error", err)
+			os.Exit(1)
 		}
 	}
 	db, err := storage.New(ctx, c.Database.URL())
 	if err != nil {
-		log.Fatalf("error setting up database: %v", err)
+		slog.ErrorContext(ctx, "error setting up database", "error", err)
+		os.Exit(1)
 	}
 
 	// LLM setup
 	if c.DevMode {
 		if err := llm.StartOllamaContainer(ctx); err != nil {
-			log.Fatalf("error setting up ollama: %v", err)
+			slog.ErrorContext(ctx, "error setting up ollama", "error", err)
+			os.Exit(1)
 		}
 	}
 
@@ -99,7 +121,8 @@ func main() {
 	// Slack integration setup
 	slackIntegration, err := slack_integration.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
 	if err != nil {
-		log.Fatalf("error setting up Slack: %v", err)
+		slog.ErrorContext(ctx, "error setting up Slack", "error", err)
+		os.Exit(1)
 	}
 
 	// Classifier setup
@@ -109,20 +132,23 @@ func main() {
 	} else {
 		classifier, err = classifier_worker.New(ctx, c.Classifier, bot)
 		if err != nil {
-			log.Fatalf("error setting up classifier: %v", err)
+			slog.ErrorContext(ctx, "error setting up classifier", "error", err)
+			os.Exit(1)
 		}
 	}
 
 	// Ingestion worker setup
 	ingestionWorker, err := ingestion_worker.New(bot, slackIntegration.SlackClient())
 	if err != nil {
-		log.Fatalf("error setting up ingestion worker: %v", err)
+		slog.ErrorContext(ctx, "error setting up ingestion worker", "error", err)
+		os.Exit(1)
 	}
 
 	// Report worker setup
 	reportWorker, err := report_worker.New(slackIntegration.SlackClient(), db)
 	if err != nil {
-		log.Fatalf("error setting up report worker: %v", err)
+		slog.ErrorContext(ctx, "error setting up report worker", "error", err)
+		os.Exit(1)
 	}
 
 	// Channel info worker setup
@@ -136,24 +162,28 @@ func main() {
 	river.AddWorker(workers, channelInfoWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
-		log.Fatalf("error setting up background worker: %v", err)
+		slog.ErrorContext(ctx, "error setting up background worker", "error", err)
+		os.Exit(1)
 	}
 
 	if err := bot.Init(ctx, riverClient); err != nil {
-		log.Fatalf("error initializing bot: %v", err)
+		slog.ErrorContext(ctx, "error initializing bot", "error", err)
+		os.Exit(1)
 	}
 
 	// Setup periodic jobs (for now only in dev mode)
 	if c.DevMode {
 		if err := background.Setup(ctx, db, riverClient); err != nil {
-			log.Fatalf("error setting up periodic jobs: %v", err)
+			slog.ErrorContext(ctx, "error setting up periodic jobs", "error", err)
+			os.Exit(1)
 		}
 	}
 
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient)
 	if err != nil {
-		log.Fatalf("error setting up HTTP server: %v", err)
+		slog.ErrorContext(ctx, "error setting up HTTP server", "error", err)
+		os.Exit(1)
 	}
 
 	server := &http.Server{
@@ -163,11 +193,11 @@ func main() {
 	}
 
 	wg.Go(func() error {
-		log.Printf("Starting river client")
+		slog.InfoContext(ctx, "Starting river client")
 		return riverClient.Start(ctx)
 	})
 	wg.Go(func() error {
-		log.Printf("Starting HTTP server on %s", c.HTTPAddr)
+		slog.InfoContext(ctx, "Starting HTTP server", "addr", c.HTTPAddr)
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("HTTP server error: %w", err)
 		}
@@ -176,7 +206,7 @@ func main() {
 	})
 
 	wg.Go(func() error {
-		log.Printf("Starting bot with ID %s", slackIntegration.BotUserID)
+		slog.InfoContext(ctx, "Starting Slack integration", "bot_user_id", slackIntegration.BotUserID)
 		return slackIntegration.Run(ctx)
 	})
 	wg.Go(func() error {
@@ -186,7 +216,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 		case <-c:
-			log.Println("Shutting down")
+			slog.InfoContext(ctx, "Shutting down")
 			cancel()
 
 			if err := server.Shutdown(ctx); err != nil {
@@ -198,6 +228,7 @@ func main() {
 	})
 
 	if err := wg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("error running server: %v\n", err)
+		slog.ErrorContext(ctx, "error running server", "error", err)
+		os.Exit(1)
 	}
 }

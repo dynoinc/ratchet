@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"time"
 
@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -74,7 +75,9 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	// Create and start the PostgreSQL container
 	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 	if err != nil {
-		return fmt.Errorf("failed to create container: %v", err)
+		if !errdefs.IsConflict(err) {
+			return fmt.Errorf("failed to create container: %v", err)
+		}
 	}
 
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
@@ -106,7 +109,7 @@ func checkPostgresReady(ctx context.Context, c DatabaseConfig, attempts int) err
 		}
 
 		backoff = time.Duration(math.Pow(2, float64(i))) * 100 * time.Millisecond
-		log.Printf("PostgreSQL is not ready, retrying in %v: %v", backoff, err)
+		slog.Info("PostgreSQL is not ready, retrying", "backoff", backoff, "error", err)
 		time.Sleep(backoff)
 	}
 

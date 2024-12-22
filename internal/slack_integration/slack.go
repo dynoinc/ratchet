@@ -3,8 +3,7 @@ package slack_integration
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -24,21 +23,14 @@ type Integration struct {
 }
 
 func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*Integration, error) {
-	api := slack.New(
-		botToken,
-		slack.OptionAppLevelToken(appToken),
-		slack.OptionLog(log.New(os.Stdout, "slack: ", log.Lshortfile|log.LstdFlags)),
-	)
+	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
 
 	authTest, err := api.AuthTestContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("slack API test failed: %v", err)
 	}
 
-	socketClient := socketmode.New(
-		api,
-		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
-	)
+	socketClient := socketmode.New(api)
 
 	return &Integration{
 		BotUserID: authTest.UserID,
@@ -79,11 +71,11 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 			if ev.ThreadTimeStamp == "" {
 				err := b.bot.Notify(ctx, ev.Channel)
 				if err != nil {
-					log.Printf("Error notifying: %v", err)
+					slog.ErrorContext(ctx, "error notifying update for channel", "error", err, "channel_id", ev.Channel)
 				}
 			}
 		default:
-			log.Printf("Unhandled event: %v", ev)
+			slog.ErrorContext(ctx, "Unhandled event", "event", ev)
 		}
 	}
 }

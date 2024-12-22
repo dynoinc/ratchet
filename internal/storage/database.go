@@ -5,7 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/url"
 	"strconv"
@@ -74,6 +74,6 @@ func New(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("unable to apply river migrations: %w", err)
 	}
 
-	log.Println("Migrations applied successfully!")
+	slog.Info("Migrations applied successfully!")
 	return pool, nil
 }

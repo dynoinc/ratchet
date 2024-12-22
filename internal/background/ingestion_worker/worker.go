@@ -3,7 +3,7 @@ package ingestion_worker
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -66,9 +66,9 @@ func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[backgro
 		return messages[i].Timestamp < messages[j].Timestamp
 	})
 
-	log.Printf("Adding %d messages from %s", len(messages), j.Args.ChannelID)
+	slog.InfoContext(ctx, "Adding messages from channel", "count", len(messages), "channelID", j.Args.ChannelID)
 	for _, message := range messages {
-		log.Printf("Adding message %s: %v", message.Timestamp, message.Text)
+		slog.InfoContext(ctx, "Adding message", "timestamp", message.Timestamp, "text", message.Text)
 	}
 
 	if err := w.bot.AddMessages(ctx, j.Args.ChannelID, messages, latest); err != nil {

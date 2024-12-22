@@ -2,7 +2,7 @@ package classifier_worker
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"testing"
 
@@ -35,7 +35,7 @@ func TestClassifierWorker(t *testing.T) {
 
 	if a, ok := outputs[os.Getenv("INCIDENT_BINARY_ACTION")]; ok {
 		if err := json.NewEncoder(os.Stdout).Encode(&a); err != nil {
-			log.Printf("Failed to encode incident action: %v", err)
+			slog.Error("failed to encode incident action", "error", err)
 			os.Exit(1)
 		}
 
