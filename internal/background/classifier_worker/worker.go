@@ -10,8 +10,6 @@ import (
 	"os/exec"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
 	"github.com/riverqueue/river"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -21,12 +19,6 @@ import (
 )
 
 type Config struct {
-	OpenAIAPIKey string `envconfig:"OPENAI_API_KEY" default:"fake-classifier-key"`
-	OpenAIURL    string `envconfig:"OPENAI_URL" default:"http://localhost:11434/v1/"`
-	OpenAIModel  string `envconfig:"OPENAI_MODEL"`
-
-	// In case it is possible to deterministically classify an incident (the alert bot always uses
-	// the same message format), we can use this to classify the incident without using the OpenAI API.
 	IncidentClassificationBinary string `split_words:"true"`
 }
 
@@ -34,8 +26,6 @@ type ClassifierWorker struct {
 	river.WorkerDefaults[background.ClassifierArgs]
 
 	incidentBinary string
-	openaiClient   *openai.Client
-	openaiModel    string
 	bot            *internal.Bot
 }
 
@@ -46,18 +36,8 @@ func New(ctx context.Context, c Config, bot *internal.Bot) (river.Worker[backgro
 		}
 	}
 
-	var openaiClient *openai.Client
-	if c.OpenAIModel != "" {
-		openaiClient := openai.NewClient(option.WithBaseURL(c.OpenAIURL), option.WithAPIKey(c.OpenAIAPIKey))
-		if _, err := openaiClient.Models.Get(ctx, c.OpenAIModel); err != nil {
-			return nil, err
-		}
-	}
-
 	return &ClassifierWorker{
 		incidentBinary: c.IncidentClassificationBinary,
-		openaiClient:   openaiClient,
-		openaiModel:    c.OpenAIModel,
 		bot:            bot,
 	}, nil
 }

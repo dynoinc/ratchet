@@ -74,8 +74,6 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.Weekl
 	if err != nil {
 		return fmt.Errorf("failed to get channel info: %w", err)
 	}
-
-	// Get channel name from attrs, fallback to channel ID if not found
 	channelName := cmp.Or(channel.Attrs.Name, job.Args.ChannelID)
 
 	// Generate the report using the database data

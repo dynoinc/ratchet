@@ -16,6 +16,8 @@ import (
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/riverqueue/river"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -28,11 +30,16 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/ingestion_worker"
 	"github.com/dynoinc/ratchet/internal/background/report_worker"
-	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
 )
+
+type OpenAIConfig struct {
+	APIKey string `envconfig:"API_KEY"`
+	URL    string `default:"https://api.openai.com/v1/"`
+	Model  string `default:"o1-mini"`
+}
 
 type Config struct {
 	DevMode bool `split_words:"true" default:"true"`
@@ -42,6 +49,9 @@ type Config struct {
 
 	// Classifier configuration
 	Classifier classifier_worker.Config
+
+	// OpenAI configuration
+	OpenAI OpenAIConfig `envconfig:"OPENAI"`
 
 	// Slack configuration
 	SlackBotToken   string `split_words:"true" required:"true"`
@@ -120,9 +130,11 @@ func main() {
 	}
 
 	// LLM setup
-	if c.DevMode {
-		if err := llm.StartOllamaContainer(ctx); err != nil {
-			slog.ErrorContext(ctx, "error setting up ollama", "error", err)
+	var openaiClient *openai.Client
+	if c.OpenAI.APIKey != "" {
+		openaiClient = openai.NewClient(option.WithBaseURL(c.OpenAI.URL), option.WithAPIKey(c.OpenAI.APIKey))
+		if _, err := openaiClient.Models.Get(ctx, c.OpenAI.Model); err != nil {
+			slog.ErrorContext(ctx, "error getting model", "error", err)
 			os.Exit(1)
 		}
 	}
