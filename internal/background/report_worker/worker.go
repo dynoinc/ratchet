@@ -17,21 +17,23 @@ import (
 
 type ReportWorker struct {
 	river.WorkerDefaults[background.WeeklyReportJobArgs]
-	slack     *slack.Client
-	generator *report.Generator
-	db        *pgxpool.Pool
+	slack      *slack.Client
+	generator  *report.Generator
+	db         *pgxpool.Pool
+	devChannel string
 }
 
-func New(slackClient *slack.Client, db *pgxpool.Pool) (*ReportWorker, error) {
+func New(slackClient *slack.Client, db *pgxpool.Pool, devChannel string) (*ReportWorker, error) {
 	generator, err := report.NewGenerator()
 	if err != nil {
 		return nil, err
 	}
 
 	return &ReportWorker{
-		slack:     slackClient,
-		generator: generator,
-		db:        db,
+		slack:      slackClient,
+		generator:  generator,
+		db:         db,
+		devChannel: devChannel,
 	}, nil
 }
 
@@ -101,20 +103,14 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.Weekl
 	// Create Slack blocks using slackReport
 	blocks := createSlackBlocks(slackReport)
 
-	// Store in database
-	_, err = schema.New(w.db).CreateReport(ctx, schema.CreateReportParams{
-		ChannelID:         job.Args.ChannelID,
-		ReportPeriodStart: pgtype.Timestamptz{Time: reportData.WeekRange.Start, Valid: true},
-		ReportPeriodEnd:   pgtype.Timestamptz{Time: reportData.WeekRange.End, Valid: true},
-		ReportData:        *reportData,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to store report: %w", err)
+	// Post the report to Slack (to dev channel if specified)
+	destChannel := job.Args.ChannelID
+	if w.devChannel != "" {
+		destChannel = w.devChannel
 	}
 
-	// Post the report to Slack
 	_, _, err = w.slack.PostMessage(
-		job.Args.ChannelID,
+		destChannel,
 		slack.MsgOptionBlocks(blocks...),
 	)
 	if err != nil {

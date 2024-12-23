@@ -42,8 +42,9 @@ type Config struct {
 	Classifier classifier_worker.Config
 
 	// Slack configuration
-	SlackBotToken string `split_words:"true" required:"true"`
-	SlackAppToken string `split_words:"true" required:"true"`
+	SlackBotToken   string `split_words:"true" required:"true"`
+	SlackAppToken   string `split_words:"true" required:"true"`
+	SlackDevChannel string `split_words:"true"`
 
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:"127.0.0.1:5001"`
@@ -140,7 +141,7 @@ func main() {
 	}
 
 	// Report worker setup
-	reportWorker, err := report_worker.New(slackIntegration.SlackClient(), db)
+	reportWorker, err := report_worker.New(slackIntegration.SlackClient(), db, c.SlackDevChannel)
 	if err != nil {
 		slog.ErrorContext(ctx, "error setting up report worker", "error", err)
 		os.Exit(1)
@@ -164,14 +165,6 @@ func main() {
 	if err := bot.Init(ctx, riverClient); err != nil {
 		slog.ErrorContext(ctx, "error initializing bot", "error", err)
 		os.Exit(1)
-	}
-
-	// Setup periodic jobs (for now only in dev mode)
-	if c.DevMode {
-		if err := background.Setup(ctx, db, riverClient); err != nil {
-			slog.ErrorContext(ctx, "error setting up periodic jobs", "error", err)
-			os.Exit(1)
-		}
 	}
 
 	// HTTP server setup
