@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/riverqueue/river"
 	"riverqueue.com/riverui"
 
@@ -20,7 +21,11 @@ type httpHandlers struct {
 	riverClient *river.Client[pgx.Tx]
 }
 
-func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx]) (http.Handler, error) {
+func New(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	riverClient *river.Client[pgx.Tx],
+) (http.Handler, error) {
 	handlers := &httpHandlers{
 		db:          db,
 		riverClient: riverClient,
@@ -53,6 +58,7 @@ func New(ctx context.Context, db *pgxpool.Pool, riverClient *river.Client[pgx.Tx
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
+	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/api/", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		apiMux.ServeHTTP(w, r)

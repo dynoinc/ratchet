@@ -14,11 +14,13 @@ import (
 	"syscall"
 
 	"github.com/carlmjohnson/versioninfo"
+	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/joho/godotenv"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -94,6 +96,15 @@ func main() {
 	}
 	slog.SetDefault(logger)
 	slog.InfoContext(ctx, "Starting ratchet", "version", versioninfo.Short())
+
+	// Metrics setup
+	promExporter, err := prometheus.New()
+	if err != nil {
+		slog.ErrorContext(ctx, "error setting up Prometheus exporter", "error", err)
+		os.Exit(1)
+	}
+	meterProvider := metric.NewMeterProvider(metric.WithReader(promExporter))
+	otel.SetMeterProvider(meterProvider)
 
 	// Database setup
 	if c.DevMode {
