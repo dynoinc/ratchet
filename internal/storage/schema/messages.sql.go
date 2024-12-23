@@ -29,7 +29,9 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 }
 
 const getAllMessages = `-- name: GetAllMessages :many
-SELECT channel_id, slack_ts, attrs FROM messages WHERE channel_id = $1
+SELECT channel_id, slack_ts, attrs
+FROM messages
+WHERE channel_id = $1
 `
 
 func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]Message, error) {
@@ -53,7 +55,10 @@ func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]Messa
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT channel_id, slack_ts, attrs FROM messages WHERE channel_id = $1 AND slack_ts = $2
+SELECT channel_id, slack_ts, attrs
+FROM messages
+WHERE channel_id = $1
+  AND slack_ts = $2
 `
 
 type GetMessageParams struct {
@@ -71,7 +76,8 @@ func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (Message
 const setIncidentID = `-- name: SetIncidentID :exec
 UPDATE messages
 SET attrs = attrs || jsonb_build_object('incident_id', $1::integer, 'action', $2::text)
-WHERE channel_id = $3 AND slack_ts = $4
+WHERE channel_id = $3
+  AND slack_ts = $4
 `
 
 type SetIncidentIDParams struct {
@@ -94,7 +100,8 @@ func (q *Queries) SetIncidentID(ctx context.Context, arg SetIncidentIDParams) er
 const tagAsBotNotification = `-- name: TagAsBotNotification :exec
 UPDATE messages
 SET attrs = attrs || jsonb_build_object('bot_name', $1::text)
-WHERE channel_id = $2 AND slack_ts = $3
+WHERE channel_id = $2
+  AND slack_ts = $3
 `
 
 type TagAsBotNotificationParams struct {
@@ -111,7 +118,8 @@ func (q *Queries) TagAsBotNotification(ctx context.Context, arg TagAsBotNotifica
 const tagAsUserMessage = `-- name: TagAsUserMessage :exec
 UPDATE messages
 SET attrs = attrs || jsonb_build_object('user_id', $1::text)
-WHERE channel_id = $2 AND slack_ts = $3
+WHERE channel_id = $2
+  AND slack_ts = $3
 `
 
 type TagAsUserMessageParams struct {

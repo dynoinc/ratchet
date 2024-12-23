@@ -16,7 +16,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
-type ReportWorker struct {
+type reportWorker struct {
 	river.WorkerDefaults[background.WeeklyReportJobArgs]
 
 	slack      *slack.Client
@@ -24,15 +24,15 @@ type ReportWorker struct {
 	devChannel string
 }
 
-func New(slackClient *slack.Client, db *pgxpool.Pool, devChannel string) (*ReportWorker, error) {
-	return &ReportWorker{
+func New(slackClient *slack.Client, db *pgxpool.Pool, devChannel string) (*reportWorker, error) {
+	return &reportWorker{
 		slack:      slackClient,
 		db:         db,
 		devChannel: devChannel,
 	}, nil
 }
 
-func (w *ReportWorker) Work(ctx context.Context, job *river.Job[background.WeeklyReportJobArgs]) error {
+func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.WeeklyReportJobArgs]) error {
 	// Calculate the time range for the report
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, 0, -7) // Last 7 days

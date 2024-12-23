@@ -15,14 +15,14 @@ import (
 	"github.com/dynoinc/ratchet/internal"
 )
 
-type Integration struct {
+type integration struct {
 	BotUserID string
 	client    *socketmode.Client
 
 	bot *internal.Bot
 }
 
-func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*Integration, error) {
+func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*integration, error) {
 	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
 
 	authTest, err := api.AuthTestContext(ctx)
@@ -32,14 +32,14 @@ func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*In
 
 	socketClient := socketmode.New(api)
 
-	return &Integration{
+	return &integration{
 		BotUserID: authTest.UserID,
 		client:    socketClient,
 		bot:       bot,
 	}, nil
 }
 
-func (b *Integration) Run(ctx context.Context) error {
+func (b *integration) Run(ctx context.Context) error {
 	go func() {
 		for {
 			select {
@@ -63,7 +63,7 @@ func (b *Integration) Run(ctx context.Context) error {
 	return b.client.RunContext(ctx)
 }
 
-func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) {
+func (b *integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) {
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
@@ -80,7 +80,7 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	}
 }
 
-func (b *Integration) SlackClient() *slack.Client {
+func (b *integration) SlackClient() *slack.Client {
 	return &b.client.Client
 }
 

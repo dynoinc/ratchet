@@ -12,18 +12,15 @@ import (
 )
 
 const addChannel = `-- name: AddChannel :one
-INSERT INTO channels (
-    channel_id,
-    attrs
-) VALUES (
-    $1, $2
-)
+INSERT INTO channels (channel_id,
+                      attrs)
+VALUES ($1, $2)
 ON CONFLICT (channel_id) DO UPDATE
-SET attrs = CASE
-    WHEN EXCLUDED.attrs IS NULL OR EXCLUDED.attrs = '{}'::jsonb
-    THEN channels.attrs
-    ELSE EXCLUDED.attrs
-END
+    SET attrs = CASE
+                    WHEN EXCLUDED.attrs IS NULL OR EXCLUDED.attrs = '{}'::jsonb
+                        THEN channels.attrs
+                    ELSE EXCLUDED.attrs
+        END
 RETURNING channel_id, attrs, created_at, slack_ts_watermark
 `
 
@@ -45,7 +42,8 @@ func (q *Queries) AddChannel(ctx context.Context, arg AddChannelParams) (Channel
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT channel_id, attrs, created_at, slack_ts_watermark FROM channels
+SELECT channel_id, attrs, created_at, slack_ts_watermark
+FROM channels
 WHERE channel_id = $1
 `
 
@@ -62,8 +60,9 @@ func (q *Queries) GetChannel(ctx context.Context, channelID string) (Channel, er
 }
 
 const getChannelByName = `-- name: GetChannelByName :one
-SELECT channel_id, attrs, created_at, slack_ts_watermark FROM channels
-WHERE attrs->>'name' = $1::text
+SELECT channel_id, attrs, created_at, slack_ts_watermark
+FROM channels
+WHERE attrs ->> 'name' = $1::text
 `
 
 func (q *Queries) GetChannelByName(ctx context.Context, dollar_1 string) (Channel, error) {
@@ -79,7 +78,8 @@ func (q *Queries) GetChannelByName(ctx context.Context, dollar_1 string) (Channe
 }
 
 const getChannels = `-- name: GetChannels :many
-SELECT channel_id, attrs, created_at, slack_ts_watermark FROM channels
+SELECT channel_id, attrs, created_at, slack_ts_watermark
+FROM channels
 `
 
 func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
@@ -108,7 +108,9 @@ func (q *Queries) GetChannels(ctx context.Context) ([]Channel, error) {
 }
 
 const removeChannel = `-- name: RemoveChannel :exec
-DELETE FROM channels WHERE channel_id = $1
+DELETE
+FROM channels
+WHERE channel_id = $1
 `
 
 func (q *Queries) RemoveChannel(ctx context.Context, channelID string) error {

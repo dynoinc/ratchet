@@ -13,14 +13,12 @@ import (
 )
 
 const createReport = `-- name: CreateReport :one
-INSERT INTO reports (
-    channel_id,
-    report_period_start,
-    report_period_end,
-    report_data
-) VALUES (
-    $1, $2, $3, $4
-) RETURNING id, channel_id, report_period_start, report_period_end, report_data, created_at
+INSERT INTO reports (channel_id,
+                     report_period_start,
+                     report_period_end,
+                     report_data)
+VALUES ($1, $2, $3, $4)
+RETURNING id, channel_id, report_period_start, report_period_end, report_data, created_at
 `
 
 type CreateReportParams struct {
@@ -50,15 +48,14 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 }
 
 const getChannelReports = `-- name: GetChannelReports :many
-SELECT 
-    r.id,
-    r.channel_id,
-    c.attrs->>'name' as channel_name,
-    r.report_period_start,
-    r.report_period_end,
-    r.created_at
+SELECT r.id,
+       r.channel_id,
+       c.attrs ->> 'name' as channel_name,
+       r.report_period_start,
+       r.report_period_end,
+       r.created_at
 FROM reports r
-JOIN channels c ON c.channel_id = r.channel_id
+         JOIN channels c ON c.channel_id = r.channel_id
 WHERE r.channel_id = $1
 ORDER BY r.created_at DESC
 LIMIT $2
@@ -106,11 +103,10 @@ func (q *Queries) GetChannelReports(ctx context.Context, arg GetChannelReportsPa
 }
 
 const getReport = `-- name: GetReport :one
-SELECT 
-    r.id, r.channel_id, r.report_period_start, r.report_period_end, r.report_data, r.created_at,
-    c.attrs->>'name' as channel_name
+SELECT r.id, r.channel_id, r.report_period_start, r.report_period_end, r.report_data, r.created_at,
+       c.attrs ->> 'name' as channel_name
 FROM reports r
-JOIN channels c ON c.channel_id = r.channel_id
+         JOIN channels c ON c.channel_id = r.channel_id
 WHERE r.id = $1
 `
 
