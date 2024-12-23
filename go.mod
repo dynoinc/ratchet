@@ -15,7 +15,6 @@ require (
 	github.com/openai/openai-go v0.1.0-alpha.32
 	github.com/riverqueue/river v0.14.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.14.0
-	github.com/robfig/cron/v3 v3.0.1
 	github.com/slack-go/slack v0.15.0
 	github.com/stretchr/testify v1.9.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.33.0
