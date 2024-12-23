@@ -22,7 +22,7 @@ type Config struct {
 	IncidentClassificationBinary string `split_words:"true"`
 }
 
-type ClassifierWorker struct {
+type classifierWorker struct {
 	river.WorkerDefaults[background.ClassifierArgs]
 
 	incidentBinary string
@@ -36,25 +36,25 @@ func New(c Config, bot *internal.Bot) (river.Worker[background.ClassifierArgs], 
 		}
 	}
 
-	return &ClassifierWorker{
+	return &classifierWorker{
 		incidentBinary: c.IncidentClassificationBinary,
 		bot:            bot,
 	}, nil
 }
 
-type Action string
-type Priority string
+type action string
+type priority string
 
 const (
-	ActionNone          Action = "none"
-	ActionOpenIncident  Action = "open_incident"
-	ActionCloseIncident Action = "close_incident"
+	actionNone          action = "none"
+	actionOpenIncident  action = "open_incident"
+	actionCloseIncident action = "close_incident"
 
-	PriorityHigh Priority = "HIGH"
-	PriorityLow  Priority = "LOW"
+	priorityHigh priority = "HIGH"
+	priorityLow  priority = "LOW"
 )
 
-func (a *Action) UnmarshalJSON(b []byte) error {
+func (a *action) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -62,11 +62,11 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 
 	switch s {
 	case "none":
-		*a = ActionNone
+		*a = actionNone
 	case "open_incident":
-		*a = ActionOpenIncident
+		*a = actionOpenIncident
 	case "close_incident":
-		*a = ActionCloseIncident
+		*a = actionCloseIncident
 	default:
 		return fmt.Errorf("unknown action: %s", s)
 	}
@@ -74,7 +74,7 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (p *Priority) UnmarshalJSON(b []byte) error {
+func (p *priority) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -82,9 +82,9 @@ func (p *Priority) UnmarshalJSON(b []byte) error {
 
 	switch s {
 	case "HIGH":
-		*p = PriorityHigh
+		*p = priorityHigh
 	case "LOW":
-		*p = PriorityLow
+		*p = priorityLow
 	default:
 		return fmt.Errorf("unknown priority: %s", s)
 	}
@@ -92,16 +92,16 @@ func (p *Priority) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-type IncidentAction struct {
-	Action  Action `json:"action"`
+type incidentAction struct {
+	Action  action `json:"action"`
 	Alert   string `json:"alert"`
 	Service string `json:"service"`
 
 	// Only used for open_incident.
-	Priority Priority `json:"priority,omitempty"`
+	Priority priority `json:"priority,omitempty"`
 }
 
-func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
+func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		}
 
 		slog.InfoContext(ctx, "classified incident", "text", text, "action", action)
-		if action.Action != ActionNone {
+		if action.Action != actionNone {
 			if err := processIncidentAction(ctx, w.bot, msg, action); err != nil {
 				if errors.Is(err, internal.ErrNoOpenIncident) {
 					// Ignore errors when closing incidents that are not open.
@@ -145,7 +145,7 @@ func processIncidentAction(
 	ctx context.Context,
 	bot *internal.Bot,
 	msg schema.Message,
-	action *IncidentAction,
+	action *incidentAction,
 ) error {
 	t, err := slack_integration.TsToTime(msg.SlackTs)
 	if err != nil {
@@ -155,7 +155,7 @@ func processIncidentAction(
 	tz := pgtype.Timestamptz{Time: t, Valid: true}
 
 	switch action.Action {
-	case ActionOpenIncident:
+	case actionOpenIncident:
 		_, err := bot.OpenIncident(ctx, schema.OpenIncidentParams{
 			ChannelID:      msg.ChannelID,
 			SlackTs:        msg.SlackTs,
@@ -167,7 +167,7 @@ func processIncidentAction(
 		if err != nil {
 			return fmt.Errorf("failed to open incident: %w", err)
 		}
-	case ActionCloseIncident:
+	case actionCloseIncident:
 		if err := bot.CloseIncident(ctx, msg.ChannelID, msg.SlackTs, action.Alert, action.Service, tz); err != nil {
 			return fmt.Errorf("failed to close incident: %w", err)
 		}
@@ -181,7 +181,7 @@ type binaryInput struct {
 	Text     string `json:"text"`
 }
 
-func runIncidentBinary(binaryPath string, username, text string) (*IncidentAction, error) {
+func runIncidentBinary(binaryPath string, username, text string) (*incidentAction, error) {
 	input := binaryInput{
 		Username: username,
 		Text:     text,
@@ -201,7 +201,7 @@ func runIncidentBinary(binaryPath string, username, text string) (*IncidentActio
 		return nil, fmt.Errorf("failed to run binary: %w", err)
 	}
 
-	var output IncidentAction
+	var output incidentAction
 	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
 		return nil, fmt.Errorf("failed to parse output: %w", err)
 	}

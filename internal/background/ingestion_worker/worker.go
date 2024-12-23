@@ -15,18 +15,18 @@ import (
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 )
 
-type MessagesIngestionWorker struct {
+type messagesIngestionWorker struct {
 	river.WorkerDefaults[background.MessagesIngestionWorkerArgs]
 
 	bot         *internal.Bot
 	slackClient *slack.Client
 }
 
-func New(bot *internal.Bot, slackClient *slack.Client) (*MessagesIngestionWorker, error) {
-	return &MessagesIngestionWorker{bot: bot, slackClient: slackClient}, nil
+func New(bot *internal.Bot, slackClient *slack.Client) (*messagesIngestionWorker, error) {
+	return &messagesIngestionWorker{bot: bot, slackClient: slackClient}, nil
 }
 
-func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
+func (w *messagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
 	// Need to make sure we watermark always advances forward.
 	now := time.Now()
 	latest := fmt.Sprintf("%d.%06d", now.Unix(), now.Nanosecond()/1000)

@@ -32,7 +32,10 @@ func (q *Queries) CloseIncident(ctx context.Context, arg CloseIncidentParams) (i
 }
 
 const getAllIncidents = `-- name: GetAllIncidents :many
-SELECT incident_id, channel_id, slack_ts, alert, service, priority, attrs, start_timestamp, end_timestamp FROM incidents WHERE channel_id = $1 ORDER BY start_timestamp DESC
+SELECT incident_id, channel_id, slack_ts, alert, service, priority, attrs, start_timestamp, end_timestamp
+FROM incidents
+WHERE channel_id = $1
+ORDER BY start_timestamp DESC
 `
 
 func (q *Queries) GetAllIncidents(ctx context.Context, channelID string) ([]Incident, error) {
@@ -66,16 +69,15 @@ func (q *Queries) GetAllIncidents(ctx context.Context, channelID string) ([]Inci
 }
 
 const getIncidentStatsByPeriod = `-- name: GetIncidentStatsByPeriod :many
-SELECT 
-    priority as severity,
-    COUNT(*) as count,
-    AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds,
-    SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp)))::float8 as total_duration_seconds
-FROM incidents 
-WHERE channel_id = $1 
-    AND start_timestamp >= $2 
-    AND start_timestamp <= $3
-    AND end_timestamp IS NOT NULL
+SELECT priority                                                           as severity,
+       COUNT(*)                                                           as count,
+       AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp)))         as avg_duration_seconds,
+       SUM(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp)))::float8 as total_duration_seconds
+FROM incidents
+WHERE channel_id = $1
+  AND start_timestamp >= $2
+  AND start_timestamp <= $3
+  AND end_timestamp IS NOT NULL
 GROUP BY priority
 ORDER BY priority
 `
@@ -196,16 +198,15 @@ func (q *Queries) GetOpenIncidents(ctx context.Context) ([]Incident, error) {
 }
 
 const getTopAlerts = `-- name: GetTopAlerts :many
-SELECT 
-    alert,
-    COUNT(*) as count,
-    MAX(start_timestamp) as last_seen,
-    AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds
+SELECT alert,
+       COUNT(*)                                                   as count,
+       MAX(start_timestamp)                                       as last_seen,
+       AVG(EXTRACT(EPOCH FROM (end_timestamp - start_timestamp))) as avg_duration_seconds
 FROM incidents
-WHERE channel_id = $1 
-    AND start_timestamp >= $2 
-    AND start_timestamp <= $3
-    AND end_timestamp IS NOT NULL
+WHERE channel_id = $1
+  AND start_timestamp >= $2
+  AND start_timestamp <= $3
+  AND end_timestamp IS NOT NULL
 GROUP BY alert
 ORDER BY count DESC
 LIMIT 5
@@ -250,26 +251,22 @@ func (q *Queries) GetTopAlerts(ctx context.Context, arg GetTopAlertsParams) ([]G
 }
 
 const openIncident = `-- name: OpenIncident :one
-INSERT INTO incidents (
-    channel_id,
-    slack_ts,
-    alert,
-    service,
-    priority,
-    attrs,
-    start_timestamp
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7
-)
+INSERT INTO incidents (channel_id,
+                       slack_ts,
+                       alert,
+                       service,
+                       priority,
+                       attrs,
+                       start_timestamp)
+VALUES ($1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7)
 ON CONFLICT (channel_id, slack_ts)
-DO UPDATE SET
-    alert = EXCLUDED.alert
+    DO UPDATE SET alert = EXCLUDED.alert
 RETURNING incident_id
 `
 

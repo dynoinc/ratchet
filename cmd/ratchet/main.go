@@ -35,13 +35,13 @@ import (
 	"github.com/dynoinc/ratchet/internal/web"
 )
 
-type OpenAIConfig struct {
+type openAIConfig struct {
 	APIKey string `envconfig:"API_KEY"`
 	URL    string `default:"https://api.openai.com/v1/"`
 	Model  string `default:"o1-mini"`
 }
 
-type Config struct {
+type config struct {
 	DevMode bool `split_words:"true" default:"true"`
 
 	// Database configuration
@@ -51,7 +51,7 @@ type Config struct {
 	Classifier classifier_worker.Config
 
 	// OpenAI configuration
-	OpenAI OpenAIConfig `envconfig:"OPENAI"`
+	OpenAI openAIConfig `envconfig:"OPENAI"`
 
 	// Slack configuration
 	SlackBotToken   string `split_words:"true" required:"true"`
@@ -67,7 +67,7 @@ func main() {
 	flag.Parse()
 
 	if *help {
-		_ = envconfig.Usage("ratchet", &Config{})
+		_ = envconfig.Usage("ratchet", &config{})
 		return
 	}
 
@@ -83,7 +83,7 @@ func main() {
 		}
 	}
 
-	var c Config
+	var c config
 	if err := envconfig.Process("ratchet", &c); err != nil {
 		slog.ErrorContext(ctx, "error processing environment variables", "error", err)
 		os.Exit(1)

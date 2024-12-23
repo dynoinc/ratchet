@@ -10,26 +10,26 @@ import (
 )
 
 func TestClassifierWorker(t *testing.T) {
-	outputs := map[string]IncidentAction{
+	outputs := map[string]incidentAction{
 		"OPEN_HIGH": {
-			Action:   ActionOpenIncident,
+			Action:   actionOpenIncident,
 			Alert:    "fake-alert",
 			Service:  "fake-service",
-			Priority: PriorityHigh,
+			Priority: priorityHigh,
 		},
 		"OPEN_LOW": {
-			Action:   ActionOpenIncident,
+			Action:   actionOpenIncident,
 			Alert:    "fake-alert",
 			Service:  "fake-service",
-			Priority: PriorityLow,
+			Priority: priorityLow,
 		},
 		"CLOSE": {
-			Action:  ActionCloseIncident,
+			Action:  actionCloseIncident,
 			Alert:   "fake-alert",
 			Service: "fake-service",
 		},
 		"NONE": {
-			Action: ActionNone,
+			Action: actionNone,
 		},
 	}
 
