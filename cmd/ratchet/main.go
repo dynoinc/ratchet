@@ -67,7 +67,7 @@ func main() {
 	flag.Parse()
 
 	if *help {
-		envconfig.Usage("ratchet", &Config{})
+		_ = envconfig.Usage("ratchet", &Config{})
 		return
 	}
 
@@ -153,7 +153,7 @@ func main() {
 	}
 
 	// Classifier setup
-	classifier, err := classifier_worker.New(ctx, c.Classifier, bot)
+	classifier, err := classifier_worker.New(c.Classifier, bot)
 	if err != nil {
 		slog.ErrorContext(ctx, "error setting up classifier", "error", err)
 		os.Exit(1)
@@ -188,7 +188,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := bot.Init(ctx, riverClient); err != nil {
+	if err := bot.Init(riverClient); err != nil {
 		slog.ErrorContext(ctx, "error initializing bot", "error", err)
 		os.Exit(1)
 	}

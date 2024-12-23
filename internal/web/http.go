@@ -119,7 +119,7 @@ func (h *httpHandlers) refreshChannelInfo(writer http.ResponseWriter, request *h
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 	}
 
-	json.NewEncoder(writer).Encode(map[string]interface{}{})
+	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
 }
 
 func (h *httpHandlers) reingestMessages(writer http.ResponseWriter, request *http.Request) {
@@ -132,7 +132,7 @@ func (h *httpHandlers) reingestMessages(writer http.ResponseWriter, request *htt
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 	}
 
-	json.NewEncoder(writer).Encode(map[string]interface{}{})
+	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
 }
 
 func (h *httpHandlers) reclassifyMessages(writer http.ResponseWriter, request *http.Request) {
@@ -161,7 +161,7 @@ func (h *httpHandlers) reclassifyMessages(writer http.ResponseWriter, request *h
 		}
 	}
 
-	json.NewEncoder(writer).Encode(map[string]interface{}{})
+	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
 }
 
 func (h *httpHandlers) postReport(writer http.ResponseWriter, request *http.Request) {
@@ -174,5 +174,5 @@ func (h *httpHandlers) postReport(writer http.ResponseWriter, request *http.Requ
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 	}
 
-	json.NewEncoder(writer).Encode(map[string]interface{}{})
+	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
 }

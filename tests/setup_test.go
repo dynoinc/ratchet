@@ -28,6 +28,9 @@ func SetupBot(t *testing.T) *internal.Bot {
 	bot := internal.New(db)
 
 	workers := river.NewWorkers()
+	river.AddWorker(workers, river.WorkFunc(func(ctx context.Context, j *river.Job[background.ChannelInfoWorkerArgs]) error {
+		return nil
+	}))
 	river.AddWorker(workers, river.WorkFunc(func(ctx context.Context, j *river.Job[background.ClassifierArgs]) error {
 		return nil
 	}))
@@ -45,7 +48,7 @@ func SetupBot(t *testing.T) *internal.Bot {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, bot.Init(ctx, riverClient))
+	require.NoError(t, bot.Init(riverClient))
 	return bot
 }
 

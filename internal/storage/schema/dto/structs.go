@@ -9,7 +9,7 @@ import (
 type MessageAttrs struct {
 	Message *slack.Message `json:"message,omitempty"`
 
-	// Set in case this is a incident open/close message
+	// Set in case this is an incident open/close message
 	IncidentID int32  `json:"incident_id,omitempty"`
 	Action     string `json:"action,omitempty"`
 

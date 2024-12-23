@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -36,7 +35,7 @@ func New(db *pgxpool.Pool) *Bot {
 	}
 }
 
-func (b *Bot) Init(ctx context.Context, riverClient *river.Client[pgx.Tx]) error {
+func (b *Bot) Init(riverClient *river.Client[pgx.Tx]) error {
 	b.riverClient = riverClient
 	return nil
 }
@@ -168,12 +167,8 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		}, &river.InsertOpts{
 			UniqueOpts: river.UniqueOpts{ByArgs: false},
 		})
-		// Suppress error, we don't want to block from adding messages if we can't schedule a job
-		// This is a best effort to fetch channel info.
 		if err != nil {
-			slog.Error("error adding channel info worker",
-				"channel_id", channelID,
-				"error", err)
+			return err
 		}
 	}
 

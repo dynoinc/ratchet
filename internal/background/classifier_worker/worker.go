@@ -29,7 +29,7 @@ type ClassifierWorker struct {
 	bot            *internal.Bot
 }
 
-func New(ctx context.Context, c Config, bot *internal.Bot) (river.Worker[background.ClassifierArgs], error) {
+func New(c Config, bot *internal.Bot) (river.Worker[background.ClassifierArgs], error) {
 	if c.IncidentClassificationBinary != "" {
 		if _, err := exec.LookPath(c.IncidentClassificationBinary); err != nil {
 			return nil, err
