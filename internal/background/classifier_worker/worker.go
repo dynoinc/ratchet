@@ -130,7 +130,7 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 			return nil
 		}
 	}
-	
+
 	subType := msg.Attrs.Message.SubType
 	if subType == "bot_message" {
 		botName := msg.Attrs.Message.Username
