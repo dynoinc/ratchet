@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -29,8 +30,7 @@ func TestIncidents(t *testing.T) {
 
 	t.Run("closing an incident that doesn't exist returns an error", func(t *testing.T) {
 		err := bot.CloseIncident(ctx, "channel1", "ts1", "alert1", "service1", etz)
-		require.Error(t, err)
-		require.Equal(t, internal.ErrNoOpenIncident, err)
+		require.True(t, errors.Is(err, internal.ErrNoOpenIncident))
 	})
 
 	t.Run("can open incident", func(t *testing.T) {
