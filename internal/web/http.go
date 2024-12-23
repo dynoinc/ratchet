@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -40,10 +41,10 @@ func New(
 	}
 	riverServer, err := riverui.NewServer(opts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create riverui server: %w", err)
 	}
 	if err := riverServer.Start(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error starting riverui server: %w", err)
 	}
 
 	// API

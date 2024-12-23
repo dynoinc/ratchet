@@ -234,7 +234,7 @@ func main() {
 			cancel()
 
 			if err := server.Shutdown(ctx); err != nil {
-				return err
+				return fmt.Errorf("error shutting down http server: %w", err)
 			}
 		}
 

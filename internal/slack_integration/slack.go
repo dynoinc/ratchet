@@ -27,7 +27,7 @@ func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*in
 
 	authTest, err := api.AuthTestContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("slack API test failed: %v", err)
+		return nil, fmt.Errorf("slack API test failed: %w", err)
 	}
 
 	socketClient := socketmode.New(api)
@@ -94,12 +94,12 @@ func TsToTime(ts string) (time.Time, error) {
 	// Convert seconds and microseconds to integers
 	seconds, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse seconds: %v", err)
+		return time.Time{}, fmt.Errorf("failed to parse seconds: %w", err)
 	}
 
 	microseconds, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse microseconds: %v", err)
+		return time.Time{}, fmt.Errorf("failed to parse microseconds: %w", err)
 	}
 
 	// Create a time.Time object using Unix seconds and nanoseconds

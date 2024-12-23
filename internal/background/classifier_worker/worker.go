@@ -32,7 +32,7 @@ type classifierWorker struct {
 func New(c Config, bot *internal.Bot) (river.Worker[background.ClassifierArgs], error) {
 	if c.IncidentClassificationBinary != "" {
 		if _, err := exec.LookPath(c.IncidentClassificationBinary); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to look up incident classification binary: %w", err)
 		}
 	}
 
@@ -57,7 +57,7 @@ const (
 func (a *action) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal action: %w", err)
 	}
 
 	switch s {
@@ -77,7 +77,7 @@ func (a *action) UnmarshalJSON(b []byte) error {
 func (p *priority) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal priority: %w", err)
 	}
 
 	switch s {
@@ -104,7 +104,7 @@ type incidentAction struct {
 func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get message: %w", err)
 	}
 
 	if w.incidentBinary != "" {
@@ -134,11 +134,17 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 	subType := msg.Attrs.Message.SubType
 	if subType == "bot_message" {
 		botName := msg.Attrs.Message.Username
-		return w.bot.TagAsBotNotification(ctx, msg.ChannelID, msg.SlackTs, botName)
+		if err := w.bot.TagAsBotNotification(ctx, msg.ChannelID, msg.SlackTs, botName); err != nil {
+			return fmt.Errorf("failed to tag as bot notification: %w", err)
+		}
+		return nil
 	}
 
 	userID := msg.Attrs.Message.User
-	return w.bot.TagAsUserMessage(ctx, msg.ChannelID, msg.SlackTs, userID)
+	if err := w.bot.TagAsUserMessage(ctx, msg.ChannelID, msg.SlackTs, userID); err != nil {
+		return fmt.Errorf("failed to tag as user message: %w", err)
+	}
+	return nil
 }
 
 func processIncidentAction(
@@ -198,12 +204,12 @@ func runIncidentBinary(binaryPath string, username, text string) (*incidentActio
 	cmd.Stdout = &stdout
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to run binary: %w", err)
+		return nil, fmt.Errorf("failed to run binary %s: %w", binaryPath, err)
 	}
 
 	var output incidentAction
 	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
-		return nil, fmt.Errorf("failed to parse output: %w", err)
+		return nil, fmt.Errorf("failed to parse output from binary: %w", err)
 	}
 
 	return &output, nil

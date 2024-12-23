@@ -32,12 +32,12 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	// Set up Docker client
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %v", err)
+		return fmt.Errorf("failed to create Docker client: %w", err)
 	}
 
 	// Pull PostgreSQL image if not available
 	if _, err = cli.ImagePull(ctx, PostgresImage, image.PullOptions{}); err != nil {
-		return fmt.Errorf("failed to pull Docker image: %v", err)
+		return fmt.Errorf("failed to pull Docker image: %w", err)
 	}
 
 	// Define container configurations
@@ -76,17 +76,17 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 	if err != nil {
 		if !errdefs.IsConflict(err) {
-			return fmt.Errorf("failed to create container: %v", err)
+			return fmt.Errorf("failed to create container: %w", err)
 		}
 	}
 
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return fmt.Errorf("failed to start container: %v", err)
+		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	// Check readiness with exponential backoff
 	if err := checkPostgresReady(ctx, c, 30); err != nil {
-		return fmt.Errorf("PostgreSQL readiness check failed: %v", err)
+		return fmt.Errorf("PostgreSQL readiness check failed: %w", err)
 	}
 
 	// Return container ID and stop function
@@ -97,7 +97,7 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 func checkPostgresReady(ctx context.Context, c DatabaseConfig, attempts int) error {
 	pool, err := pgxpool.New(ctx, c.URL())
 	if err != nil {
-		return fmt.Errorf("failed to create connection pool: %v", err)
+		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
 	defer pool.Close()
 

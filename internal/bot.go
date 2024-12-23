@@ -46,7 +46,7 @@ func (b *Bot) AddChannel(ctx context.Context, channelID string) (schema.Channel,
 		ChannelID: channelID,
 	})
 	if err != nil {
-		return schema.Channel{}, fmt.Errorf("error adding channel: %w", err)
+		return schema.Channel{}, fmt.Errorf("error adding channel %s: %w", channelID, err)
 	}
 
 	return channel, nil
@@ -64,7 +64,7 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 		ChannelID: channelID,
 	})
 	if err != nil {
-		return fmt.Errorf("error adding channel: %w", err)
+		return fmt.Errorf("error adding channel %s: %w", channelID, err)
 	}
 
 	// If this is a new channel without attributes, schedule a job to fetch info
@@ -73,7 +73,7 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 			ChannelID: channelID,
 		}, nil)
 		if err != nil {
-			return fmt.Errorf("error scheduling channel info fetch: %w", err)
+			return fmt.Errorf("error scheduling channel info fetch for channel %s: %w", channelID, err)
 		}
 	}
 
@@ -87,7 +87,7 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 		&river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}},
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("error scheduling message ingestion for channel %s: %w", channelID, err)
 	}
 
 	return tx.Commit(ctx)
@@ -110,10 +110,10 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		}); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.ForeignKeyViolation {
-				return fmt.Errorf("error adding message to %s: %w", channelID, ErrChannelNotKnown)
+				return fmt.Errorf("error adding message (ts=%s) to channel %s: %w", message.Timestamp, channelID, ErrChannelNotKnown)
 			}
 
-			return err
+			return fmt.Errorf("error adding message (ts=%s) to channel %s: %w", message.Timestamp, channelID, err)
 		}
 
 		jobs = append(jobs, river.InsertManyParams{
@@ -123,7 +123,7 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 
 	if len(jobs) > 0 {
 		if _, err = b.riverClient.InsertManyTx(ctx, tx, jobs); err != nil {
-			return err
+			return fmt.Errorf("error scheduling classification jobs for channel %s: %w", channelID, err)
 		}
 	}
 
@@ -131,7 +131,7 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		ChannelID:        channelID,
 		SlackTsWatermark: newWatermark,
 	}); err != nil {
-		return err
+		return fmt.Errorf("error updating slack ts watermark for channel %s to %s: %w", channelID, newWatermark, err)
 	}
 
 	// If channel had activity, there is a high chance there is more to ingest.
@@ -152,13 +152,13 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 			ScheduledAt: scheduledAt,
 		},
 	); err != nil {
-		return err
+		return fmt.Errorf("error scheduling message ingestion for channel %s: %w", channelID, err)
 	}
 
 	// If we don't have any attributes, add a job to fetch them
 	channel, err := qtx.GetChannel(ctx, channelID)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting channel %s: %w", channelID, err)
 	}
 
 	if channel.Attrs == (dto.ChannelAttrs{}) || channel.Attrs.Name == "" {
@@ -168,7 +168,7 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 			UniqueOpts: river.UniqueOpts{ByArgs: false},
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("error scheduling channel info fetch for channel %s: %w", channelID, err)
 		}
 	}
 
@@ -176,26 +176,38 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 }
 
 func (b *Bot) TagAsBotNotification(ctx context.Context, channelID, slackTs, botName string) error {
-	return schema.New(b.DB).TagAsBotNotification(ctx, schema.TagAsBotNotificationParams{
+	err := schema.New(b.DB).TagAsBotNotification(ctx, schema.TagAsBotNotificationParams{
 		ChannelID: channelID,
 		SlackTs:   slackTs,
 		BotName:   botName,
 	})
+	if err != nil {
+		return fmt.Errorf("error tagging message (ts=%s) as bot notification in channel %s: %w", slackTs, channelID, err)
+	}
+	return nil
 }
 
 func (b *Bot) TagAsUserMessage(ctx context.Context, channelID, slackTs, userID string) error {
-	return schema.New(b.DB).TagAsUserMessage(ctx, schema.TagAsUserMessageParams{
+	err := schema.New(b.DB).TagAsUserMessage(ctx, schema.TagAsUserMessageParams{
 		ChannelID: channelID,
 		SlackTs:   slackTs,
 		UserID:    userID,
 	})
+	if err != nil {
+		return fmt.Errorf("error tagging message (ts=%s) as user message in channel %s: %w", slackTs, channelID, err)
+	}
+	return nil
 }
 
 func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) (schema.Message, error) {
-	return schema.New(b.DB).GetMessage(ctx, schema.GetMessageParams{
+	msg, err := schema.New(b.DB).GetMessage(ctx, schema.GetMessageParams{
 		ChannelID: channelID,
 		SlackTs:   slackTs,
 	})
+	if err != nil {
+		return schema.Message{}, fmt.Errorf("error getting message (ts=%s) from channel %s: %w", slackTs, channelID, err)
+	}
+	return msg, nil
 }
 
 /* Incident related methods */
@@ -215,7 +227,7 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 			return id, nil
 		}
 
-		return 0, err
+		return 0, fmt.Errorf("error opening incident for channel %s: %w", params.ChannelID, err)
 	}
 
 	if err := qtx.SetIncidentID(ctx, schema.SetIncidentIDParams{
@@ -224,7 +236,7 @@ func (b *Bot) OpenIncident(ctx context.Context, params schema.OpenIncidentParams
 		IncidentID: id,
 		Action:     "open",
 	}); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("error setting incident ID for message (ts=%s) in channel %s: %w", params.SlackTs, params.ChannelID, err)
 	}
 
 	// TODO: enqueue a background job to post runbook for the alert to slack if we have any.
@@ -252,10 +264,10 @@ func (b *Bot) CloseIncident(
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNoOpenIncident
+			return fmt.Errorf("no open incident found for alert %s in service %s: %w", alert, service, ErrNoOpenIncident)
 		}
 
-		return err
+		return fmt.Errorf("error getting latest incident for alert %s in service %s: %w", alert, service, err)
 	}
 
 	if err := qtx.SetIncidentID(ctx, schema.SetIncidentIDParams{
@@ -264,14 +276,14 @@ func (b *Bot) CloseIncident(
 		IncidentID: incident.IncidentID,
 		Action:     "close",
 	}); err != nil {
-		return err
+		return fmt.Errorf("error setting incident ID %d for message (ts=%s) in channel %s: %w", incident.IncidentID, slackTs, channelID, err)
 	}
 
 	if _, err := qtx.CloseIncident(ctx, schema.CloseIncidentParams{
 		EndTimestamp: endTimestamp,
 		IncidentID:   incident.IncidentID,
 	}); err != nil {
-		return err
+		return fmt.Errorf("error closing incident %d: %w", incident.IncidentID, err)
 	}
 
 	// TODO: enqueue a background job to process this incident.
