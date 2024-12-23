@@ -6,14 +6,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -buildvcs=true -o ratchet ./cmd/ratchet/main.go
+RUN go build ./cmd/ratchet
 
 # Stage 2: Create the final image
 FROM ubuntu:22.04
 
-RUN apt update
-RUN apt install -y ca-certificates
-RUN update-ca-certificates
+RUN apt update && apt install -y ca-certificates && update-ca-certificates
 
 WORKDIR /
 COPY --from=builder /app/ratchet .
