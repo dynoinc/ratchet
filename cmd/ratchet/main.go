@@ -133,10 +133,13 @@ func main() {
 	var openaiClient *openai.Client
 	if c.OpenAI.APIKey != "" {
 		openaiClient = openai.NewClient(option.WithBaseURL(c.OpenAI.URL), option.WithAPIKey(c.OpenAI.APIKey))
-		if _, err := openaiClient.Models.Get(ctx, c.OpenAI.Model); err != nil {
+		model, err := openaiClient.Models.Get(ctx, c.OpenAI.Model)
+		if err != nil {
 			slog.ErrorContext(ctx, "error getting model", "error", err)
 			os.Exit(1)
 		}
+
+		slog.InfoContext(ctx, "OpenAI model info", "model", model.ID, "owner", model.OwnedBy, "created", model.Created)
 	}
 
 	// Bot setup

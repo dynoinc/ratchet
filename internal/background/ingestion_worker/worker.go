@@ -69,7 +69,12 @@ func (w *MessagesIngestionWorker) Work(ctx context.Context, j *river.Job[backgro
 
 	slog.InfoContext(ctx, "Adding messages from channel", "count", len(messages), "channelID", j.Args.ChannelID)
 	for _, message := range messages {
-		slog.InfoContext(ctx, "Adding message", "timestamp", message.Timestamp, "text", message.Text)
+		slog.InfoContext(
+			ctx, "Adding message",
+			"timestamp", message.Timestamp,
+			"text", message.Text,
+			"channelID", j.Args.ChannelID,
+		)
 	}
 
 	if err := w.bot.AddMessages(ctx, j.Args.ChannelID, messages, latest); err != nil {

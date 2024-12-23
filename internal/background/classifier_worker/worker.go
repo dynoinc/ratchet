@@ -102,13 +102,7 @@ type IncidentAction struct {
 }
 
 func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
-	if job == nil || job.Args.ChannelID == "" || job.Args.SlackTS == "" {
-		return fmt.Errorf("invalid job arguments")
-	}
-
-	args := job.Args
-
-	msg, err := w.bot.GetMessage(ctx, args.ChannelID, args.SlackTS)
+	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		return err
 	}
@@ -136,9 +130,7 @@ func (w *ClassifierWorker) Work(ctx context.Context, job *river.Job[background.C
 			return nil
 		}
 	}
-
-	// TODO: Use OpenAI API to classify incidents, bot updates and human interactions instead
-	// of this hard-coded behavior.
+	
 	subType := msg.Attrs.Message.SubType
 	if subType == "bot_message" {
 		botName := msg.Attrs.Message.Username
