@@ -1,6 +1,6 @@
 module github.com/dynoinc/ratchet
 
-go 1.23.3
+go 1.23.4
 
 require (
 	github.com/carlmjohnson/versioninfo v0.22.5
