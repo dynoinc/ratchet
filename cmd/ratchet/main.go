@@ -12,10 +12,12 @@ import (
 	"os/signal"
 	"path"
 	"syscall"
+	"time"
 
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/lmittmann/tint"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/riverqueue/river"
@@ -90,19 +92,24 @@ func main() {
 	}
 
 	// Logging setup
-	handlerOpts := &slog.HandlerOptions{
-		AddSource: true,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.SourceKey {
-				s := a.Value.Any().(*slog.Source)
-				s.File = path.Base(s.File)
-			}
-			return a
-		},
+	shortfile := func(groups []string, a slog.Attr) slog.Attr {
+		if a.Key == slog.SourceKey {
+			s := a.Value.Any().(*slog.Source)
+			s.File = path.Base(s.File)
+		}
+		return a
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, handlerOpts))
+
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		AddSource:   true,
+		ReplaceAttr: shortfile,
+	}))
 	if c.DevMode {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, handlerOpts))
+		logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+			AddSource:   true,
+			TimeFormat:  time.Kitchen,
+			ReplaceAttr: shortfile,
+		}))
 	}
 	slog.SetDefault(logger)
 	slog.InfoContext(ctx, "Starting ratchet", "version", versioninfo.Short())
