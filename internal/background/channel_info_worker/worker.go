@@ -32,19 +32,18 @@ func (w *ChannelInfoWorker) Work(ctx context.Context, job *river.Job[background.
 		ChannelID: job.Args.ChannelID,
 	})
 	if err != nil {
-		return fmt.Errorf("error getting channel info: %w", err)
+		return fmt.Errorf("error getting channel info for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
 	attrs := dto.ChannelAttrs{
 		Name: channelInfo.Name,
 	}
 
-	_, err = schema.New(w.db).AddChannel(ctx, schema.AddChannelParams{
+	if err = schema.New(w.db).UpdateChannelAttrs(ctx, schema.UpdateChannelAttrsParams{
 		ChannelID: job.Args.ChannelID,
 		Attrs:     attrs,
-	})
-	if err != nil {
-		return fmt.Errorf("error updating channel info: %w", err)
+	}); err != nil {
+		return fmt.Errorf("error updating channel info for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
 	return nil

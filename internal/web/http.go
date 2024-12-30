@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/jackc/pgx/v5"
@@ -59,12 +60,12 @@ func New(
 	apiMux.HandleFunc("POST /channels/{channelID}/post_report", handlers.postReport)
 
 	mux := http.NewServeMux()
-	mux.Handle("/riverui", riverServer)
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/riverui/", riverServer)
+	mux.Handle("GET /metrics", promhttp.Handler())
+	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(versioninfo.Short()))
 	}))
-	mux.Handle("/api", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		apiMux.ServeHTTP(w, r)
 	})))
@@ -77,6 +78,9 @@ func (h *httpHandlers) listChannels(writer http.ResponseWriter, request *http.Re
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	sort.Slice(channels, func(i, j int) bool {
+		return channels[i].Attrs.Name < channels[j].Attrs.Name
+	})
 
 	if err := json.NewEncoder(writer).Encode(channels); err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)

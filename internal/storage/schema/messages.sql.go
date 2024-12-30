@@ -28,6 +28,16 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 	return err
 }
 
+const deleteOldMessages = `-- name: DeleteOldMessages :exec
+DELETE FROM messages
+WHERE to_timestamp(slack_ts::double precision) < (now() - interval '3 months')
+`
+
+func (q *Queries) DeleteOldMessages(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteOldMessages)
+	return err
+}
+
 const getAllMessages = `-- name: GetAllMessages :many
 SELECT channel_id, slack_ts, attrs
 FROM messages

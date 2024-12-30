@@ -12,25 +12,15 @@ import (
 )
 
 const addChannel = `-- name: AddChannel :one
-INSERT INTO channels (channel_id,
-                      attrs)
-VALUES ($1, $2)
+INSERT INTO channels (channel_id)
+VALUES ($1)
 ON CONFLICT (channel_id) DO UPDATE
-    SET attrs = CASE
-                    WHEN EXCLUDED.attrs IS NULL OR EXCLUDED.attrs = '{}'::jsonb
-                        THEN channels.attrs
-                    ELSE EXCLUDED.attrs
-        END
+    SET channel_id = channels.channel_id 
 RETURNING channel_id, attrs, created_at, slack_ts_watermark
 `
 
-type AddChannelParams struct {
-	ChannelID string
-	Attrs     dto.ChannelAttrs
-}
-
-func (q *Queries) AddChannel(ctx context.Context, arg AddChannelParams) (Channel, error) {
-	row := q.db.QueryRow(ctx, addChannel, arg.ChannelID, arg.Attrs)
+func (q *Queries) AddChannel(ctx context.Context, channelID string) (Channel, error) {
+	row := q.db.QueryRow(ctx, addChannel, channelID)
 	var i Channel
 	err := row.Scan(
 		&i.ChannelID,
@@ -118,18 +108,34 @@ func (q *Queries) RemoveChannel(ctx context.Context, channelID string) error {
 	return err
 }
 
-const updateSlackTSWatermark = `-- name: UpdateSlackTSWatermark :exec
+const updateChannelAttrs = `-- name: UpdateChannelAttrs :exec
+UPDATE channels
+SET attrs = channels.attrs || $2
+WHERE channel_id = $1
+`
+
+type UpdateChannelAttrsParams struct {
+	ChannelID string
+	Attrs     dto.ChannelAttrs
+}
+
+func (q *Queries) UpdateChannelAttrs(ctx context.Context, arg UpdateChannelAttrsParams) error {
+	_, err := q.db.Exec(ctx, updateChannelAttrs, arg.ChannelID, arg.Attrs)
+	return err
+}
+
+const updateChannelSlackTSWatermark = `-- name: UpdateChannelSlackTSWatermark :exec
 UPDATE channels
 SET slack_ts_watermark = $2
 WHERE channel_id = $1
 `
 
-type UpdateSlackTSWatermarkParams struct {
+type UpdateChannelSlackTSWatermarkParams struct {
 	ChannelID        string
 	SlackTsWatermark string
 }
 
-func (q *Queries) UpdateSlackTSWatermark(ctx context.Context, arg UpdateSlackTSWatermarkParams) error {
-	_, err := q.db.Exec(ctx, updateSlackTSWatermark, arg.ChannelID, arg.SlackTsWatermark)
+func (q *Queries) UpdateChannelSlackTSWatermark(ctx context.Context, arg UpdateChannelSlackTSWatermarkParams) error {
+	_, err := q.db.Exec(ctx, updateChannelSlackTSWatermark, arg.ChannelID, arg.SlackTsWatermark)
 	return err
 }

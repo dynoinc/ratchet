@@ -42,9 +42,7 @@ func (b *Bot) Init(riverClient *river.Client[pgx.Tx]) error {
 
 // AddChannel adds a channel to the database. Primarily used for testing.
 func (b *Bot) AddChannel(ctx context.Context, channelID string) (schema.Channel, error) {
-	channel, err := schema.New(b.DB).AddChannel(ctx, schema.AddChannelParams{
-		ChannelID: channelID,
-	})
+	channel, err := schema.New(b.DB).AddChannel(ctx, channelID)
 	if err != nil {
 		return schema.Channel{}, fmt.Errorf("error adding channel %s: %w", channelID, err)
 	}
@@ -60,9 +58,7 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := schema.New(b.DB).WithTx(tx)
-	channel, err := qtx.AddChannel(ctx, schema.AddChannelParams{
-		ChannelID: channelID,
-	})
+	channel, err := qtx.AddChannel(ctx, channelID)
 	if err != nil {
 		return fmt.Errorf("error adding channel %s: %w", channelID, err)
 	}
@@ -127,7 +123,7 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		}
 	}
 
-	if err := qtx.UpdateSlackTSWatermark(ctx, schema.UpdateSlackTSWatermarkParams{
+	if err := qtx.UpdateChannelSlackTSWatermark(ctx, schema.UpdateChannelSlackTSWatermarkParams{
 		ChannelID:        channelID,
 		SlackTsWatermark: newWatermark,
 	}); err != nil {
@@ -155,21 +151,8 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		return fmt.Errorf("error scheduling message ingestion for channel %s: %w", channelID, err)
 	}
 
-	// If we don't have any attributes, add a job to fetch them
-	channel, err := qtx.GetChannel(ctx, channelID)
-	if err != nil {
-		return fmt.Errorf("error getting channel %s: %w", channelID, err)
-	}
-
-	if channel.Attrs == (dto.ChannelAttrs{}) || channel.Attrs.Name == "" {
-		_, err = b.riverClient.InsertTx(ctx, tx, background.ChannelInfoWorkerArgs{
-			ChannelID: channelID,
-		}, &river.InsertOpts{
-			UniqueOpts: river.UniqueOpts{ByArgs: false},
-		})
-		if err != nil {
-			return fmt.Errorf("error scheduling channel info fetch for channel %s: %w", channelID, err)
-		}
+	if err := qtx.DeleteOldMessages(ctx); err != nil {
+		return fmt.Errorf("error deleting old messages for channel %s: %w", channelID, err)
 	}
 
 	return tx.Commit(ctx)

@@ -48,7 +48,7 @@ func TestOnboardingFlow(t *testing.T) {
 	t.Run("can get channel by name after attrs are set", func(t *testing.T) {
 		queries := schema.New(bot.DB)
 
-		_, err := queries.AddChannel(ctx, schema.AddChannelParams{
+		err := queries.UpdateChannelAttrs(ctx, schema.UpdateChannelAttrsParams{
 			ChannelID: "channel1",
 			Attrs:     dto.ChannelAttrs{Name: "test-channel"},
 		})
