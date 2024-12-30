@@ -97,6 +97,12 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := schema.New(b.DB).WithTx(tx)
+
+	// Delete old messages before adding new ones.
+	if err := qtx.DeleteOldMessages(ctx); err != nil {
+		return fmt.Errorf("error deleting old messages for channel %s: %w", channelID, err)
+	}
+
 	var jobs []river.InsertManyParams
 	for _, message := range messages {
 		if err := qtx.AddMessage(ctx, schema.AddMessageParams{
@@ -149,10 +155,6 @@ func (b *Bot) AddMessages(ctx context.Context, channelID string, messages []slac
 		},
 	); err != nil {
 		return fmt.Errorf("error scheduling message ingestion for channel %s: %w", channelID, err)
-	}
-
-	if err := qtx.DeleteOldMessages(ctx); err != nil {
-		return fmt.Errorf("error deleting old messages for channel %s: %w", channelID, err)
 	}
 
 	return tx.Commit(ctx)
