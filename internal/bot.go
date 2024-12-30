@@ -68,7 +68,7 @@ func (b *Bot) Notify(ctx context.Context, channelID string) error {
 	}
 
 	// If this is a new channel without attributes, schedule a job to fetch info
-	if channel.Attrs == (dto.ChannelAttrs{}) || channel.Attrs.Name == "" {
+	if channel.Attrs.Name == "" {
 		_, err = b.riverClient.InsertTx(ctx, tx, background.ChannelInfoWorkerArgs{
 			ChannelID: channelID,
 		}, nil)

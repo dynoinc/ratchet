@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/carlmjohnson/versioninfo"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -58,9 +59,12 @@ func New(
 	apiMux.HandleFunc("POST /channels/{channelID}/post_report", handlers.postReport)
 
 	mux := http.NewServeMux()
-	mux.Handle("/riverui/", riverServer)
+	mux.Handle("/riverui", riverServer)
 	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/api/", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(versioninfo.Short()))
+	}))
+	mux.Handle("/api", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		apiMux.ServeHTTP(w, r)
 	})))
@@ -128,7 +132,7 @@ func (h *httpHandlers) reingestMessages(writer http.ResponseWriter, request *htt
 
 	_, err := h.riverClient.Insert(request.Context(), background.MessagesIngestionWorkerArgs{
 		ChannelID: channelID,
-	}, &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}})
+	}, nil)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 	}
