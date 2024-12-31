@@ -37,7 +37,7 @@ jobs:
 
       - name: Scan Docker Image with Trivy
         id: trivy_scan
-        uses: aquasecurity/trivy-action@v0.29.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: ratchet:latest
           format: "sarif"
