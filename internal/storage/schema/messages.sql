@@ -31,3 +31,7 @@ UPDATE messages
 SET attrs = attrs || jsonb_build_object('user_id', @user_id::text)
 WHERE channel_id = @channel_id
   AND slack_ts = @slack_ts;
+
+-- name: DeleteOldMessages :exec
+DELETE FROM messages
+WHERE to_timestamp(slack_ts::double precision) < (now() - interval '3 months');

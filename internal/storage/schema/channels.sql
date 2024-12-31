@@ -1,13 +1,8 @@
 -- name: AddChannel :one
-INSERT INTO channels (channel_id,
-                      attrs)
-VALUES ($1, $2)
+INSERT INTO channels (channel_id)
+VALUES ($1)
 ON CONFLICT (channel_id) DO UPDATE
-    SET attrs = CASE
-                    WHEN EXCLUDED.attrs IS NULL OR EXCLUDED.attrs = '{}'::jsonb
-                        THEN channels.attrs
-                    ELSE EXCLUDED.attrs
-        END
+    SET channel_id = channels.channel_id 
 RETURNING *;
 
 -- name: GetChannel :one
@@ -29,7 +24,12 @@ DELETE
 FROM channels
 WHERE channel_id = $1;
 
--- name: UpdateSlackTSWatermark :exec
+-- name: UpdateChannelAttrs :exec
+UPDATE channels
+SET attrs = channels.attrs || $2
+WHERE channel_id = $1;
+
+-- name: UpdateChannelSlackTSWatermark :exec
 UPDATE channels
 SET slack_ts_watermark = $2
 WHERE channel_id = $1;

@@ -29,15 +29,14 @@ func New(bot *internal.Bot, slackClient *slack.Client) (*messagesIngestionWorker
 func (w *messagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
 	// Need to make sure we watermark always advances forward.
 	now := time.Now()
-	latest := fmt.Sprintf("%d.%06d", now.Unix(), now.Nanosecond()/1000)
+	latest := slack_integration.TimeToTs(now)
 	if latest <= j.Args.SlackTSWatermark {
 		watermarkTS, err := slack_integration.TsToTime(j.Args.SlackTSWatermark)
 		if err != nil {
-			return fmt.Errorf("error converting slack timestamp to time: %w", err)
+			return fmt.Errorf("error converting slack timestamp to time for channel %s: %w", j.Args.ChannelID, err)
 		}
 
-		now = watermarkTS.Add(time.Millisecond)
-		latest = fmt.Sprintf("%d.%06d", now.Unix(), now.Nanosecond()/1000)
+		latest = slack_integration.TimeToTs(watermarkTS.Add(time.Millisecond))
 	}
 
 	params := slack.GetConversationHistoryParameters{

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 
+	"github.com/carlmjohnson/versioninfo"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -59,7 +61,10 @@ func New(
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("GET /metrics", promhttp.Handler())
+	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(versioninfo.Short()))
+	}))
 	mux.Handle("/api/", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		apiMux.ServeHTTP(w, r)
@@ -73,6 +78,9 @@ func (h *httpHandlers) listChannels(writer http.ResponseWriter, request *http.Re
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	sort.Slice(channels, func(i, j int) bool {
+		return channels[i].Attrs.Name < channels[j].Attrs.Name
+	})
 
 	if err := json.NewEncoder(writer).Encode(channels); err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -118,6 +126,7 @@ func (h *httpHandlers) refreshChannelInfo(writer http.ResponseWriter, request *h
 	}, nil)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
@@ -126,11 +135,27 @@ func (h *httpHandlers) refreshChannelInfo(writer http.ResponseWriter, request *h
 func (h *httpHandlers) reingestMessages(writer http.ResponseWriter, request *http.Request) {
 	channelID := request.PathValue("channelID")
 
-	_, err := h.riverClient.Insert(request.Context(), background.MessagesIngestionWorkerArgs{
-		ChannelID: channelID,
-	}, &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}})
+	ctx := request.Context()
+	tx, err := h.db.Begin(ctx)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := schema.New(h.db).WithTx(tx)
+	if err := qtx.UpdateChannelSlackTSWatermark(ctx, schema.UpdateChannelSlackTSWatermarkParams{
+		ChannelID: channelID,
+	}); err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := h.riverClient.Insert(request.Context(), background.MessagesIngestionWorkerArgs{
+		ChannelID: channelID,
+	}, nil); err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
@@ -173,6 +198,7 @@ func (h *httpHandlers) postReport(writer http.ResponseWriter, request *http.Requ
 	}, nil)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})

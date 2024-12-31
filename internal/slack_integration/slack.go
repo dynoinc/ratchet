@@ -105,3 +105,12 @@ func TsToTime(ts string) (time.Time, error) {
 	// Create a time.Time object using Unix seconds and nanoseconds
 	return time.Unix(seconds, microseconds*1000).UTC(), nil
 }
+
+func TimeToTs(t time.Time) string {
+	// Convert time.Time to Unix seconds and nanoseconds
+	seconds := t.Unix()
+	nanoseconds := int64(t.Nanosecond())
+
+	// Convert Unix seconds and nanoseconds to a Slack timestamp
+	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
+}
