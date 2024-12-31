@@ -24,6 +24,26 @@ type httpHandlers struct {
 	riverClient *river.Client[pgx.Tx]
 }
 
+func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		result, err := handler(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if result == nil {
+			result = struct{}{}
+		}
+
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
 func New(
 	ctx context.Context,
 	db *pgxpool.Pool,
@@ -51,95 +71,63 @@ func New(
 
 	// API
 	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("GET /channels", handlers.listChannels)
-	apiMux.HandleFunc("GET /channels/{channelID}/messages", handlers.listMessages)
-	apiMux.HandleFunc("GET /channels/{channelID}/incidents", handlers.listIncidents)
-	apiMux.HandleFunc("POST /channels/{channelID}/refresh_channel_info", handlers.refreshChannelInfo)
-	apiMux.HandleFunc("POST /channels/{channelID}/reingest_messages", handlers.reingestMessages)
-	apiMux.HandleFunc("POST /channels/{channelID}/reclassify_messages", handlers.reclassifyMessages)
-	apiMux.HandleFunc("POST /channels/{channelID}/post_report", handlers.postReport)
+	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
+	apiMux.HandleFunc("GET /channels/{channelID}/messages", handleJSON(handlers.listMessages))
+	apiMux.HandleFunc("GET /channels/{channelID}/incidents", handleJSON(handlers.listIncidents))
+	apiMux.HandleFunc("POST /channels/{channelID}/refresh_channel_info", handleJSON(handlers.refreshChannelInfo))
+	apiMux.HandleFunc("POST /channels/{channelID}/reingest_messages", handleJSON(handlers.reingestMessages))
+	apiMux.HandleFunc("POST /channels/{channelID}/reclassify_messages", handleJSON(handlers.reclassifyMessages))
+	apiMux.HandleFunc("POST /channels/{channelID}/post_report", handleJSON(handlers.postReport))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
+	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(versioninfo.Short()))
 	}))
-	mux.Handle("/api/", http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		apiMux.ServeHTTP(w, r)
-	})))
 	return mux, nil
 }
 
-func (h *httpHandlers) listChannels(writer http.ResponseWriter, request *http.Request) {
-	channels, err := schema.New(h.db).GetChannels(request.Context())
+func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
+	channels, err := schema.New(h.db).GetChannels(r.Context())
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
+
 	sort.Slice(channels, func(i, j int) bool {
 		return channels[i].Attrs.Name < channels[j].Attrs.Name
 	})
 
-	if err := json.NewEncoder(writer).Encode(channels); err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	return channels, nil
 }
 
-func (h *httpHandlers) listMessages(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("channelID")
-
-	messages, err := schema.New(h.db).GetAllMessages(request.Context(), channelID)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := json.NewEncoder(writer).Encode(messages); err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
+func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
+	channelID := r.PathValue("channelID")
+	return schema.New(h.db).GetAllMessages(r.Context(), channelID)
 }
 
-func (h *httpHandlers) listIncidents(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("channelID")
-
-	incidents, err := schema.New(h.db).GetAllIncidents(request.Context(), channelID)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := json.NewEncoder(writer).Encode(incidents); err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
+func (h *httpHandlers) listIncidents(r *http.Request) (any, error) {
+	channelID := r.PathValue("channelID")
+	return schema.New(h.db).GetAllIncidents(r.Context(), channelID)
 }
 
-func (h *httpHandlers) refreshChannelInfo(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("channelID")
-
-	_, err := h.riverClient.Insert(request.Context(), background.ChannelInfoWorkerArgs{
+func (h *httpHandlers) refreshChannelInfo(r *http.Request) (any, error) {
+	channelID := r.PathValue("channelID")
+	_, err := h.riverClient.Insert(r.Context(), background.ChannelInfoWorkerArgs{
 		ChannelID: channelID,
 	}, nil)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
 
-	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
+	return nil, err
 }
 
-func (h *httpHandlers) reingestMessages(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("channelID")
+func (h *httpHandlers) reingestMessages(r *http.Request) (any, error) {
+	channelID := r.PathValue("channelID")
 
-	ctx := request.Context()
+	ctx := r.Context()
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -147,27 +135,24 @@ func (h *httpHandlers) reingestMessages(writer http.ResponseWriter, request *htt
 	if err := qtx.UpdateChannelSlackTSWatermark(ctx, schema.UpdateChannelSlackTSWatermarkParams{
 		ChannelID: channelID,
 	}); err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
-	if _, err := h.riverClient.Insert(request.Context(), background.MessagesIngestionWorkerArgs{
+	if _, err := h.riverClient.Insert(r.Context(), background.MessagesIngestionWorkerArgs{
 		ChannelID: channelID,
 	}, nil); err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
-	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
+	return map[string]interface{}{}, nil
 }
 
-func (h *httpHandlers) reclassifyMessages(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("channelID")
+func (h *httpHandlers) reclassifyMessages(r *http.Request) (any, error) {
+	channelID := r.PathValue("channelID")
 
-	messages, err := schema.New(h.db).GetAllMessages(request.Context(), channelID)
+	messages, err := schema.New(h.db).GetAllMessages(r.Context(), channelID)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	var jobs []river.InsertManyParams
@@ -181,25 +166,20 @@ func (h *httpHandlers) reclassifyMessages(writer http.ResponseWriter, request *h
 	}
 
 	if len(jobs) > 0 {
-		if _, err := h.riverClient.InsertManyFast(request.Context(), jobs); err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
-			return
+		if _, err := h.riverClient.InsertManyFast(r.Context(), jobs); err != nil {
+			return nil, err
 		}
 	}
 
-	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
+	return nil, nil
 }
 
-func (h *httpHandlers) postReport(writer http.ResponseWriter, request *http.Request) {
-	channelID := request.PathValue("channelID")
+func (h *httpHandlers) postReport(r *http.Request) (any, error) {
+	channelID := r.PathValue("channelID")
 
-	_, err := h.riverClient.Insert(request.Context(), background.WeeklyReportJobArgs{
+	_, err := h.riverClient.Insert(r.Context(), background.WeeklyReportJobArgs{
 		ChannelID: channelID,
 	}, nil)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
 
-	_ = json.NewEncoder(writer).Encode(map[string]interface{}{})
+	return nil, err
 }
