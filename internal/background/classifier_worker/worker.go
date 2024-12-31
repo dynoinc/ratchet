@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -103,6 +104,11 @@ type incidentAction struct {
 func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
+		if errors.Is(err, internal.ErrMessageNotFound) {
+			slog.WarnContext(ctx, "message not found", "channel_id", job.Args.ChannelID, "slack_ts", job.Args.SlackTS)
+			return nil
+		}
+
 		return fmt.Errorf("failed to get message: %w", err)
 	}
 

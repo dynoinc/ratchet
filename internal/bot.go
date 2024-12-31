@@ -21,6 +21,7 @@ import (
 
 var (
 	ErrChannelNotKnown = errors.New("channel not known")
+	ErrMessageNotFound = errors.New("message not found")
 	ErrNoOpenIncident  = errors.New("no open incident found")
 )
 
@@ -190,6 +191,10 @@ func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) 
 		SlackTs:   slackTs,
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return schema.Message{}, fmt.Errorf("message not found (ts=%s) from channel %s: %w", slackTs, channelID, ErrMessageNotFound)
+		}
+
 		return schema.Message{}, fmt.Errorf("error getting message (ts=%s) from channel %s: %w", slackTs, channelID, err)
 	}
 	return msg, nil
