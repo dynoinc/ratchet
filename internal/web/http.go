@@ -26,8 +26,6 @@ type httpHandlers struct {
 
 func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
 		result, err := handler(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -38,7 +36,10 @@ func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 			result = struct{}{}
 		}
 
-		if err := json.NewEncoder(w).Encode(result); err != nil {
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		w.Header().Set("Content-Type", "application/json")
+		if err := encoder.Encode(result); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
