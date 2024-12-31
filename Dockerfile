@@ -2,18 +2,17 @@
 FROM golang:1.23 AS builder
 
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY go.mod go.sum .
 RUN go mod download
 
 COPY . .
 RUN go build ./cmd/ratchet
 
 # Stage 2: Create the final image
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 RUN apt update && apt install -y ca-certificates && update-ca-certificates
 
-WORKDIR /
 COPY --from=builder /app/ratchet .
 
 ENTRYPOINT ["./ratchet"]
