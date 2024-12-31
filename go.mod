@@ -15,8 +15,8 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/openai/openai-go v0.1.0-alpha.41
 	github.com/prometheus/client_golang v1.20.5
-	github.com/riverqueue/river v0.14.3
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.14.3
+	github.com/riverqueue/river v0.15.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.15.0
 	github.com/slack-go/slack v0.15.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.34.0
@@ -79,9 +79,9 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.61.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/riverqueue/river/riverdriver v0.14.3 // indirect
-	github.com/riverqueue/river/rivershared v0.14.3 // indirect
-	github.com/riverqueue/river/rivertype v0.14.3 // indirect
+	github.com/riverqueue/river/riverdriver v0.15.0 // indirect
+	github.com/riverqueue/river/rivershared v0.15.0 // indirect
+	github.com/riverqueue/river/rivertype v0.15.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
