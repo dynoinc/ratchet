@@ -139,13 +139,13 @@ func (h *httpHandlers) reingestMessages(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	if _, err := h.riverClient.Insert(r.Context(), background.MessagesIngestionWorkerArgs{
+	if _, err := h.riverClient.InsertTx(r.Context(), tx, background.MessagesIngestionWorkerArgs{
 		ChannelID: channelID,
 	}, nil); err != nil {
 		return nil, err
 	}
 
-	return map[string]interface{}{}, nil
+	return nil, tx.Commit(ctx)
 }
 
 func (h *httpHandlers) reclassifyMessages(r *http.Request) (any, error) {

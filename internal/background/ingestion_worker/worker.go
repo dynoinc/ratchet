@@ -26,6 +26,10 @@ func New(bot *internal.Bot, slackClient *slack.Client) (*messagesIngestionWorker
 	return &messagesIngestionWorker{bot: bot, slackClient: slackClient}, nil
 }
 
+func (w *messagesIngestionWorker) Timeout(*river.Job[background.MessagesIngestionWorkerArgs]) time.Duration {
+	return 10 * time.Minute
+}
+
 func (w *messagesIngestionWorker) Work(ctx context.Context, j *river.Job[background.MessagesIngestionWorkerArgs]) error {
 	// Need to make sure we watermark always advances forward.
 	now := time.Now()
