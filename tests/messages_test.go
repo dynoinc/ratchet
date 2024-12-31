@@ -26,7 +26,7 @@ func TestMessages(t *testing.T) {
 			"channel1",
 			[]slack.Message{{
 				Msg: slack.Msg{
-					Timestamp: "ts1",
+					Timestamp: "1",
 				},
 			}},
 			"watermark1",
@@ -40,7 +40,7 @@ func TestMessages(t *testing.T) {
 			"channel2",
 			[]slack.Message{{
 				Msg: slack.Msg{
-					Timestamp: "ts1",
+					Timestamp: "1",
 				},
 			}},
 			"watermark1",
