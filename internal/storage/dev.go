@@ -73,14 +73,24 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	}
 
 	// Create and start the PostgreSQL container
+	var containerID string
 	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 	if err != nil {
 		if !errdefs.IsConflict(err) {
 			return fmt.Errorf("failed to create container: %w", err)
 		}
+
+		resp, err := cli.ContainerInspect(ctx, containerName)
+		if err != nil {
+			return fmt.Errorf("failed to inspect container: %w", err)
+		}
+
+		containerID = resp.ID
+	} else {
+		containerID = resp.ID
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if err := cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
