@@ -76,13 +76,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg, ctx := errgroup.WithContext(ctx)
-
-	if _, err := os.Stat(".env"); err == nil {
-		if err := godotenv.Load(); err != nil {
-			slog.ErrorContext(ctx, "error loading .env file", "error", err)
-			os.Exit(1)
-		}
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		slog.ErrorContext(ctx, "error loading .env file", "error", err)
+		os.Exit(1)
 	}
 
 	var c config
@@ -213,6 +209,7 @@ func main() {
 		Handler:     handler,
 	}
 
+	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
 		slog.InfoContext(ctx, "Starting river client")
 		return riverClient.Start(ctx)
@@ -225,7 +222,6 @@ func main() {
 
 		return nil
 	})
-
 	wg.Go(func() error {
 		slog.InfoContext(ctx, "Starting Slack integration", "bot_user_id", slackIntegration.BotUserID)
 		return slackIntegration.Run(ctx)
