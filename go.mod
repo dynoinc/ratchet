@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/carlmjohnson/versioninfo v0.22.5
-	github.com/docker/docker v27.4.1+incompatible
+	github.com/docker/docker v27.5.0+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438
