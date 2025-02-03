@@ -1,35 +1,18 @@
 -- name: AddChannel :one
-INSERT INTO channels (channel_id)
-VALUES ($1)
-ON CONFLICT (channel_id) DO UPDATE
-    SET channel_id = channels.channel_id 
-RETURNING *;
-
--- name: GetChannel :one
-SELECT *
-FROM channels
-WHERE channel_id = $1;
-
--- name: GetChannelByName :one
-SELECT *
-FROM channels
-WHERE attrs ->> 'name' = $1::text;
-
--- name: GetChannels :many
-SELECT *
-FROM channels;
-
--- name: RemoveChannel :exec
-DELETE
-FROM channels
-WHERE channel_id = $1;
+INSERT INTO channels_v2 (id)
+VALUES (@id)
+ON CONFLICT (id) DO UPDATE
+SET id = EXCLUDED.id
+RETURNING id, attrs;
 
 -- name: UpdateChannelAttrs :exec
-UPDATE channels
-SET attrs = channels.attrs || $2
-WHERE channel_id = $1;
+UPDATE channels_v2
+SET attrs = COALESCE(attrs, '{}'::jsonb) || @attrs
+WHERE id = @id;
 
--- name: UpdateChannelSlackTSWatermark :exec
-UPDATE channels
-SET slack_ts_watermark = $2
-WHERE channel_id = $1;
+-- name: GetAllChannels :many
+SELECT id, attrs FROM channels_v2;
+
+-- name: GetChannelByName :one
+SELECT id, attrs FROM channels_v2
+WHERE attrs->>'name' = @name::text;

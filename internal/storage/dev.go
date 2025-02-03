@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	PostgresImage = "postgres:12.19"
+	postgresImage = "postgres:16.6"
 	containerName = "ratchet-db"
 )
 
@@ -36,13 +36,14 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	}
 
 	// Pull PostgreSQL image if not available
-	if _, err = cli.ImagePull(ctx, PostgresImage, image.PullOptions{}); err != nil {
+	_, err = cli.ImagePull(ctx, postgresImage, image.PullOptions{All: true})
+	if err != nil {
 		return fmt.Errorf("failed to pull Docker image: %w", err)
 	}
 
 	// Define container configurations
 	containerConfig := &container.Config{
-		Image: PostgresImage,
+		Image: postgresImage,
 		Env: []string{
 			"POSTGRES_USER=" + c.User,
 			"POSTGRES_PASSWORD=" + c.Pass,

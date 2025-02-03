@@ -2,22 +2,22 @@
 
 AI bot to help reduce operational toil
 
-## Code organization
+## Lessons learned
 
-* We are trying to keep things simple by only targeting one database, integration, etc.
-* For backend, we use `postgres` managed by `sqlc`. All that code is in `internal/storage`.
-* Think of slack integration (at `internal/slack`) as a client and bot (at `internal`) as server.
-    * Based on interactions that happens on slack, bot returns 0 or more actions to take.
-    * This way we can write tests for the bot without messing with slack.
-    * Later, we should consider replaying Slack HTTP API requests/responses to test this integration.
+* The idea to keep things simple by only using Postgres and Slack integration is working out.
+  * Though Slack API is pretty badly documented and not consistent.
+  
+* Investing into building UI for visibility ended up wasting a lot of time. 
+  * Even with AI, it is hard to get right for a backend engineer.
+  * Even after you figure out HTML/CSS/JS, dealing with security and deploying to production is a pain.
+  * River UI is great. 
 
-## Database Schema
+* For database schema, instead of using individual columns for each attribute, using `attrs` column as jsonb is great.
+  * SQLc support for custom types and automatically serialize/deserialize to jsonb is great.
 
-* The whole thing revolves around "Service" (to account for re-orgs / team renames).
-* Service have alerts. Alerts have runbooks. All the past versions are kept in system, exactly one is active.
-* Service has human asking for help.
-* Service has bot sending notifications about related events. Each notification is considered complete in itself.
-* Alerts, humans and bot notifications come via one or more channels for same service.
+* Given the focus of the bot is on AI, could have saved time by - 
+  * Not focusing on non-AI features (like matching open/close incidents with alerts).
+  * By not aiming for perfect data collection, when AI is good with imperfect data.
 
 ## Contributing
 
@@ -29,4 +29,4 @@ AI bot to help reduce operational toil
   RATCHET_SLACK_BOT_TOKEN=xoxb-...
 ```
 
-* Just start the binary using `go run ./cmd/ratchet/main.go`. It depends on docker to start a postgres instance.
+* Just start the binary using `go run ./cmd/ratchet`. It will use docker to start Postgres instance if not already running.

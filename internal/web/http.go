@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -28,6 +29,11 @@ func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		result, err := handler(r)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -73,12 +79,8 @@ func New(
 	// API
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
-	apiMux.HandleFunc("GET /channels/{channelID}/messages", handleJSON(handlers.listMessages))
-	apiMux.HandleFunc("GET /channels/{channelID}/incidents", handleJSON(handlers.listIncidents))
-	apiMux.HandleFunc("POST /channels/{channelID}/refresh_channel_info", handleJSON(handlers.refreshChannelInfo))
-	apiMux.HandleFunc("POST /channels/{channelID}/reingest_messages", handleJSON(handlers.reingestMessages))
-	apiMux.HandleFunc("POST /channels/{channelID}/reclassify_messages", handleJSON(handlers.reclassifyMessages))
-	apiMux.HandleFunc("POST /channels/{channelID}/post_report", handleJSON(handlers.postReport))
+	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
+	apiMux.HandleFunc("GET /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -91,7 +93,7 @@ func New(
 }
 
 func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
-	channels, err := schema.New(h.db).GetChannels(r.Context())
+	channels, err := schema.New(h.db).GetAllChannels(r.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -104,83 +106,28 @@ func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
-	channelID := r.PathValue("channelID")
-	return schema.New(h.db).GetAllMessages(r.Context(), channelID)
-}
-
-func (h *httpHandlers) listIncidents(r *http.Request) (any, error) {
-	channelID := r.PathValue("channelID")
-	return schema.New(h.db).GetAllIncidents(r.Context(), channelID)
-}
-
-func (h *httpHandlers) refreshChannelInfo(r *http.Request) (any, error) {
-	channelID := r.PathValue("channelID")
-	_, err := h.riverClient.Insert(r.Context(), background.ChannelInfoWorkerArgs{
-		ChannelID: channelID,
-	}, nil)
-
-	return nil, err
-}
-
-func (h *httpHandlers) reingestMessages(r *http.Request) (any, error) {
-	channelID := r.PathValue("channelID")
-
-	ctx := r.Context()
-	tx, err := h.db.Begin(ctx)
+	channelName := r.PathValue("channel_name")
+	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
 
-	qtx := schema.New(h.db).WithTx(tx)
-	if err := qtx.UpdateChannelSlackTSWatermark(ctx, schema.UpdateChannelSlackTSWatermarkParams{
-		ChannelID: channelID,
-	}); err != nil {
+	return schema.New(h.db).GetAllMessages(r.Context(), channel.ID)
+}
+
+func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
+	channelName := r.PathValue("channel_name")
+	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	if err != nil {
 		return nil, err
 	}
 
-	if _, err := h.riverClient.InsertTx(r.Context(), tx, background.MessagesIngestionWorkerArgs{
-		ChannelID: channelID,
+	// submit job to river to onboard channel
+	if _, err := h.riverClient.Insert(r.Context(), background.ChannelOnboardWorkerArgs{
+		ChannelID: channel.ID,
 	}, nil); err != nil {
 		return nil, err
 	}
 
-	return nil, tx.Commit(ctx)
-}
-
-func (h *httpHandlers) reclassifyMessages(r *http.Request) (any, error) {
-	channelID := r.PathValue("channelID")
-
-	messages, err := schema.New(h.db).GetAllMessages(r.Context(), channelID)
-	if err != nil {
-		return nil, err
-	}
-
-	var jobs []river.InsertManyParams
-	for _, message := range messages {
-		jobs = append(jobs, river.InsertManyParams{
-			Args: background.ClassifierArgs{
-				ChannelID: channelID,
-				SlackTS:   message.SlackTs,
-			},
-		})
-	}
-
-	if len(jobs) > 0 {
-		if _, err := h.riverClient.InsertManyFast(r.Context(), jobs); err != nil {
-			return nil, err
-		}
-	}
-
 	return nil, nil
-}
-
-func (h *httpHandlers) postReport(r *http.Request) (any, error) {
-	channelID := r.PathValue("channelID")
-
-	_, err := h.riverClient.Insert(r.Context(), background.WeeklyReportJobArgs{
-		ChannelID: channelID,
-	}, nil)
-
-	return nil, err
 }

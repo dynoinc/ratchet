@@ -28,10 +28,8 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
-	"github.com/dynoinc/ratchet/internal/background/channel_info_worker"
+	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
-	"github.com/dynoinc/ratchet/internal/background/ingestion_worker"
-	"github.com/dynoinc/ratchet/internal/background/report_worker"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
@@ -103,6 +101,7 @@ func main() {
 	if c.DevMode {
 		logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{
 			AddSource:   true,
+			Level:       slog.LevelDebug,
 			TimeFormat:  time.Kitchen,
 			ReplaceAttr: shortfile,
 		}))
@@ -162,29 +161,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Ingestion worker setup
-	ingestionWorker, err := ingestion_worker.New(bot, slackIntegration.SlackClient())
-	if err != nil {
-		slog.ErrorContext(ctx, "error setting up ingestion worker", "error", err)
-		os.Exit(1)
-	}
-
-	// Report worker setup
-	reportWorker, err := report_worker.New(slackIntegration.SlackClient(), db, c.SlackDevChannel)
-	if err != nil {
-		slog.ErrorContext(ctx, "error setting up report worker", "error", err)
-		os.Exit(1)
-	}
-
-	// Channel info worker setup
-	channelInfoWorker := channel_info_worker.New(slackIntegration.SlackClient(), db)
+	// Channel onboarding worker setup
+	channelOnboardWorker := channel_onboard_worker.New(slackIntegration.SlackClient(), bot)
 
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
-	river.AddWorker(workers, ingestionWorker)
-	river.AddWorker(workers, reportWorker)
-	river.AddWorker(workers, channelInfoWorker)
+	river.AddWorker(workers, channelOnboardWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "error setting up background worker", "error", err)

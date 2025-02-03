@@ -6,30 +6,31 @@ import (
 	"os"
 	"testing"
 
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/stretchr/testify/require"
 )
 
 func TestClassifierWorker(t *testing.T) {
-	outputs := map[string]incidentAction{
+	outputs := map[string]dto.IncidentAction{
 		"OPEN_HIGH": {
-			Action:   actionOpenIncident,
+			Action:   dto.ActionOpenIncident,
 			Alert:    "fake-alert",
 			Service:  "fake-service",
-			Priority: priorityHigh,
+			Priority: dto.PriorityHigh,
 		},
 		"OPEN_LOW": {
-			Action:   actionOpenIncident,
+			Action:   dto.ActionOpenIncident,
 			Alert:    "fake-alert",
 			Service:  "fake-service",
-			Priority: priorityLow,
+			Priority: dto.PriorityLow,
 		},
 		"CLOSE": {
-			Action:  actionCloseIncident,
+			Action:  dto.ActionCloseIncident,
 			Alert:   "fake-alert",
 			Service: "fake-service",
 		},
 		"NONE": {
-			Action: actionNone,
+			Action: dto.ActionNone,
 		},
 	}
 
@@ -52,7 +53,7 @@ func TestClassifierWorker(t *testing.T) {
 			t.Setenv("INCIDENT_BINARY_ACTION", testCase)
 			got, err := runIncidentBinary(executable, "username", "text")
 			require.NoError(t, err)
-			require.Equal(t, expected, *got)
+			require.Equal(t, expected, got)
 		})
 	}
 }

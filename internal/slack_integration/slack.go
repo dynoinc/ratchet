@@ -53,8 +53,11 @@ func (b *integration) Run(ctx context.Context) error {
 						continue
 					}
 
-					b.client.Ack(*evt.Request)
-					b.handleEventAPI(ctx, eventsAPI)
+					if err := b.handleEventAPI(ctx, eventsAPI); err != nil {
+						slog.ErrorContext(ctx, "error handling event", "error", err)
+					}
+
+					b.client.AckCtx(ctx, evt.Request.EnvelopeID, nil)
 				}
 			}
 		}
@@ -63,21 +66,23 @@ func (b *integration) Run(ctx context.Context) error {
 	return b.client.RunContext(ctx)
 }
 
-func (b *integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) {
+func (b *integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) error {
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			if ev.ThreadTimeStamp == "" {
-				err := b.bot.Notify(ctx, ev.Channel)
-				if err != nil {
-					slog.ErrorContext(ctx, "error notifying update for channel", "error", err, "channel_id", ev.Channel)
-				}
+			err := b.bot.Notify(ctx, ev)
+			if err != nil {
+				return fmt.Errorf("notifying update for channel: %w", err)
 			}
 		default:
-			slog.ErrorContext(ctx, "Unhandled event", "event", ev)
+			return fmt.Errorf("unhandled event: %T", ev)
 		}
+	default:
+		return fmt.Errorf("unhandled event type: %s", event.Type)
 	}
+
+	return nil
 }
 
 func (b *integration) SlackClient() *slack.Client {
