@@ -62,10 +62,10 @@ type IncidentAction struct {
 	Service string `json:"service"`
 
 	// Only used for open_incident.
-	Priority priority `json:"priority,omitempty"`
+	Priority priority `json:"priority,omitzero"`
 
 	// Only used for close_incident.
-	Duration durationWrapper `json:"duration"`
+	Duration durationWrapper `json:"duration,omitzero"`
 }
 
 type durationWrapper struct {
