@@ -37,7 +37,7 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages []string) (string, error) {
+func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
 	if c == nil {
 		return "", nil
 	}
@@ -47,6 +47,7 @@ func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages []stri
 	your team can make to improve future support requests. You explain with example the reasons why some actions should be taken.
 
 	Keep each suggestion limited to a title and a concise bullet point. Format using markdown for posting to slack.
+	Limit the suggestions count to 3. Its okay to suggest fewer or even zero suggestions, but keep them relevant to the messages.
 	`
 
 	params := openai.ChatCompletionNewParams{

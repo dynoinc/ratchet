@@ -111,13 +111,25 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 	table.Render()
 	report.WriteString("```\n")
 
-	textMessages := make([]string, 0, len(messages))
+	textMessages := make([][]string, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Attrs.Message.BotID != "" {
 			continue
 		}
 
-		textMessages = append(textMessages, msg.Attrs.Message.Text)
+		threadMessages, err := schema.New(w.db).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+			ChannelID: msg.ChannelID,
+			ParentTs:  msg.Ts,
+		})
+		if err != nil {
+			return fmt.Errorf("getting thread messages: %w", err)
+		}
+		fullThreadMessages := []string{msg.Attrs.Message.Text}
+		for _, threadMessage := range threadMessages {
+			fullThreadMessages = append(fullThreadMessages, threadMessage.Attrs.Message.Text)
+		}
+
+		textMessages = append(textMessages, fullThreadMessages)
 	}
 	suggestions, err := w.llmClient.GenerateChannelSuggestions(ctx, textMessages)
 	if err != nil {

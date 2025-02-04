@@ -12,9 +12,10 @@ import (
 )
 
 const addThreadMessage = `-- name: AddThreadMessage :exec
-INSERT INTO thread_messages_v2 (channel_id, parent_ts, ts, attrs)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (channel_id, parent_ts, ts) DO NOTHING
+INSERT INTO
+    thread_messages_v2 (channel_id, parent_ts, ts, attrs)
+VALUES
+    ($1, $2, $3, $4) ON CONFLICT (channel_id, parent_ts, ts) DO NOTHING
 `
 
 type AddThreadMessageParams struct {
@@ -32,4 +33,47 @@ func (q *Queries) AddThreadMessage(ctx context.Context, arg AddThreadMessagePara
 		arg.Attrs,
 	)
 	return err
+}
+
+const getThreadMessages = `-- name: GetThreadMessages :many
+SELECT
+    channel_id,
+    parent_ts,
+    ts,
+    attrs
+FROM
+    thread_messages_v2
+WHERE
+    channel_id = $1
+    AND parent_ts = $2
+`
+
+type GetThreadMessagesParams struct {
+	ChannelID string
+	ParentTs  string
+}
+
+func (q *Queries) GetThreadMessages(ctx context.Context, arg GetThreadMessagesParams) ([]ThreadMessagesV2, error) {
+	rows, err := q.db.Query(ctx, getThreadMessages, arg.ChannelID, arg.ParentTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ThreadMessagesV2
+	for rows.Next() {
+		var i ThreadMessagesV2
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.ParentTs,
+			&i.Ts,
+			&i.Attrs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
