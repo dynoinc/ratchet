@@ -18,8 +18,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lmittmann/tint"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
 	"github.com/riverqueue/river"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -31,16 +29,11 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/report_worker"
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
 )
-
-type openAIConfig struct {
-	APIKey string `envconfig:"API_KEY"`
-	URL    string `default:"https://api.openai.com/v1/"`
-	Model  string `default:"o1-mini"`
-}
 
 type config struct {
 	DevMode bool `split_words:"true" default:"true"`
@@ -52,7 +45,7 @@ type config struct {
 	Classifier classifier_worker.Config
 
 	// OpenAI configuration
-	OpenAI openAIConfig `envconfig:"OPENAI"`
+	OpenAI llm.Config `envconfig:"OPENAI"`
 
 	// Slack configuration
 	SlackBotToken   string `split_words:"true" required:"true"`
@@ -133,16 +126,10 @@ func main() {
 	}
 
 	// LLM setup
-	var openaiClient *openai.Client
-	if c.OpenAI.APIKey != "" {
-		openaiClient = openai.NewClient(option.WithBaseURL(c.OpenAI.URL), option.WithAPIKey(c.OpenAI.APIKey))
-		model, err := openaiClient.Models.Get(ctx, c.OpenAI.Model)
-		if err != nil {
-			slog.ErrorContext(ctx, "error getting model", "error", err)
-			os.Exit(1)
-		}
-
-		slog.InfoContext(ctx, "OpenAI model info", "model", model.ID, "owner", model.OwnedBy, "created", model.Created)
+	llmClient, err := llm.New(ctx, c.OpenAI)
+	if err != nil {
+		slog.ErrorContext(ctx, "error setting up LLM client", "error", err)
+		os.Exit(1)
 	}
 
 	// Bot setup
@@ -166,7 +153,7 @@ func main() {
 	channelOnboardWorker := channel_onboard_worker.New(slackIntegration.Client(), bot)
 
 	// Report worker setup
-	reportWorker := report_worker.New(db, slackIntegration.Client(), c.SlackDevChannel)
+	reportWorker := report_worker.New(db, slackIntegration.Client(), llmClient, c.SlackDevChannel)
 
 	// Background job setup
 	workers := river.NewWorkers()

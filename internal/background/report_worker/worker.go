@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,13 +23,15 @@ type reportWorker struct {
 
 	db           *pgxpool.Pool
 	slackClient  *slack.Client
+	llmClient    *llm.Client
 	devChannelID string
 }
 
-func New(db *pgxpool.Pool, slackClient *slack.Client, devChannelID string) *reportWorker {
+func New(db *pgxpool.Pool, slackClient *slack.Client, llmClient *llm.Client, devChannelID string) *reportWorker {
 	return &reportWorker{
 		db:           db,
 		slackClient:  slackClient,
+		llmClient:    llmClient,
 		devChannelID: devChannelID,
 	}
 }
@@ -107,6 +110,23 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 
 	table.Render()
 	report.WriteString("```\n")
+
+	textMessages := make([]string, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Attrs.Message.BotID != "" {
+			continue
+		}
+
+		textMessages = append(textMessages, msg.Attrs.Message.Text)
+	}
+	suggestions, err := w.llmClient.GenerateChannelSuggestions(ctx, textMessages)
+	if err != nil {
+		return fmt.Errorf("generating suggestions: %w", err)
+	}
+	if len(suggestions) > 0 {
+		report.WriteString(fmt.Sprintf("\n*Suggestions for Improvement:*\n%s\n", suggestions))
+	}
+
 	// Send report to Slack
 	channelID := job.Args.ChannelID
 	if w.devChannelID != "" {
