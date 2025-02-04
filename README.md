@@ -19,7 +19,11 @@ AI bot to help reduce operational toil
   * Not focusing on non-AI features (like matching open/close incidents with alerts).
   * By not aiming for perfect data collection, when AI is good with imperfect data.
 
-* For LLM, ollama is great for local development.
+* On the AI front - 
+  * Ollama is great for local development. 
+  * qwen2.5:7b model is fast and good enough for local development.
+  * Cursor IDE is great for writing code. 
+  * Using paid models like Claude Sonnet to improve your own prompt does wonders.
 
 ## Contributing
 

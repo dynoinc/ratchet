@@ -44,19 +44,32 @@ func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 		return "", nil
 	}
 
-	prompt := `You are tech-lead of the a software engineering team, who is looking for opportunities for how to make
-	life of your users better. By taking a look at help slack messages users have posted, you figure out actionable changes
-	your team can make to improve future support requests. You explain with example the reasons why some actions should be taken.
+	prompt := `You are a technical analyst reviewing user support messages. Your task is to identify specific, actionable improvements based on the provided messages.
 
-	Keep each suggestion limited to a title and a concise bullet point. Format using markdown for posting to slack.
-	Limit the suggestions count to 3. Its okay to suggest fewer or even zero suggestions, but keep them relevant to the messages.
+	For each suggestion:
+	1. Focus only on concrete issues mentioned in the messages
+	2. Provide a clear, specific title that identifies the problem area
+	3. Include a single, concise bullet point explaining the proposed solution
+	4. Format in Slack-friendly markdown with each suggestion as a separate block
+
+	Rules:
+	- Maximum 3 suggestions
+	- Each suggestion must directly relate to issues in the messages
+	- No generic or speculative improvements
+	- Keep titles short and descriptive
+	- Bullet points should be 1-2 sentences maximum
+	- If no clear improvements can be identified, return "No specific improvements identified from these messages"
+
+	Format each suggestion as:
+	*Title*
+	• Specific improvement details
 	`
 
 	params := openai.ChatCompletionNewParams{
 		Model: openai.F(openai.ChatModel(c.model)),
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleDeveloper),
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
 				Content: openai.F(any(prompt)),
 			},
 			openai.ChatCompletionMessageParam{
@@ -64,6 +77,7 @@ func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 				Content: openai.F(any(fmt.Sprintf("Messages:\n%s", messages))),
 			},
 		}),
+		Temperature: openai.F(0.7),
 	}
 
 	resp, err := c.client.Chat.Completions.New(ctx, params)
