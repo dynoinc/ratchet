@@ -30,7 +30,6 @@ AI bot to help reduce operational toil
   RATCHET_SLACK_APP_TOKEN=xapp-...
   RATCHET_SLACK_BOT_TOKEN=xoxb-...
   RATCHET_CLASSIFIER_INCIDENT_CLASSIFICATION_BINARY=path/to/binary
-
 ```
 
 * Just start the binary using `go run ./cmd/ratchet`. It will use docker to start Postgres instance if not already running.
