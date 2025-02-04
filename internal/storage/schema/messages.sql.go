@@ -29,6 +29,51 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 	return err
 }
 
+const getAlerts = `-- name: GetAlerts :many
+SELECT
+    alert :: text,
+    service :: text,
+    priority :: text
+FROM
+    (
+        SELECT
+            DISTINCT attrs -> 'incident_action' ->> 'alert' as alert,
+            attrs -> 'incident_action' ->> 'service' as service,
+            attrs -> 'incident_action' ->> 'priority' as priority
+        FROM
+            messages_v2
+        WHERE
+            channel_id = $1
+            AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
+    ) subq
+`
+
+type GetAlertsRow struct {
+	Alert    string
+	Service  string
+	Priority string
+}
+
+func (q *Queries) GetAlerts(ctx context.Context, channelID string) ([]GetAlertsRow, error) {
+	rows, err := q.db.Query(ctx, getAlerts, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAlertsRow
+	for rows.Next() {
+		var i GetAlertsRow
+		if err := rows.Scan(&i.Alert, &i.Service, &i.Priority); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllMessages = `-- name: GetAllMessages :many
 SELECT
     channel_id,
@@ -42,6 +87,88 @@ WHERE
 
 func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]MessagesV2, error) {
 	rows, err := q.db.Query(ctx, getAllMessages, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MessagesV2
+	for rows.Next() {
+		var i MessagesV2
+		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllOpenIncidentMessages = `-- name: GetAllOpenIncidentMessages :many
+SELECT
+    channel_id,
+    ts,
+    attrs
+FROM
+    messages_v2
+WHERE
+    channel_id = $1
+    AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
+    AND attrs -> 'incident_action' ->> 'service' = $2 :: text
+    AND attrs -> 'incident_action' ->> 'alert' = $3 :: text
+ORDER BY
+    CAST(ts AS numeric) ASC
+`
+
+type GetAllOpenIncidentMessagesParams struct {
+	ChannelID string
+	Service   string
+	Alert     string
+}
+
+func (q *Queries) GetAllOpenIncidentMessages(ctx context.Context, arg GetAllOpenIncidentMessagesParams) ([]MessagesV2, error) {
+	rows, err := q.db.Query(ctx, getAllOpenIncidentMessages, arg.ChannelID, arg.Service, arg.Alert)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MessagesV2
+	for rows.Next() {
+		var i MessagesV2
+		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLatestServiceUpdates = `-- name: GetLatestServiceUpdates :many
+SELECT
+    channel_id,
+    ts,
+    attrs
+FROM
+    messages_v2
+WHERE
+    attrs -> 'ai_classification' ->> 'service' = $1 :: text
+    AND CAST(ts AS numeric) > EXTRACT(
+        epoch
+        FROM
+            NOW() - INTERVAL '5 minutes'
+    )
+ORDER BY
+    CAST(ts AS numeric) DESC
+LIMIT
+    5
+`
+
+func (q *Queries) GetLatestServiceUpdates(ctx context.Context, service string) ([]MessagesV2, error) {
+	rows, err := q.db.Query(ctx, getLatestServiceUpdates, service)
 	if err != nil {
 		return nil, err
 	}

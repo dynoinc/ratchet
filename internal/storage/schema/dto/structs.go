@@ -21,3 +21,9 @@ type MessageAttrs struct {
 type ThreadMessageAttrs struct {
 	Message SlackMessage `json:"message,omitzero"`
 }
+
+type RunbookAttrs struct {
+	ServiceName string `json:"service_name"`
+	AlertName   string `json:"alert_name"`
+	Runbook     string `json:"runbook"`
+}

@@ -13,6 +13,11 @@ type ChannelsV2 struct {
 	Attrs dto.ChannelAttrs
 }
 
+type IncidentRunbook struct {
+	ID    int64
+	Attrs dto.RunbookAttrs
+}
+
 type MessagesV2 struct {
 	ChannelID string
 	Ts        string

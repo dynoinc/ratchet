@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -139,4 +141,63 @@ Message to classify:
 	}
 
 	return service, nil
+}
+
+func (c *Client) UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msg dto.MessageAttrs, threadMsgs []schema.ThreadMessagesV2) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	prompt := `You are a technical analyst creating or updating a runbook for an incident alert. Your task is to create a concise runbook based solely on the information provided in the messages.
+
+The runbook should have the following sections:
+1. Alert Description - Explain what this alert means and when it triggers, based on the messages
+2. Troubleshooting Steps - Document only the specific steps that were actually taken or suggested in the messages
+3. Historical Causes - Document only the causes derived from the messages
+
+Important:
+- Do not include generic advice or steps that weren't mentioned in the messages
+- Keep the content focused and specific to what was discussed
+- If certain information is not available in the messages, keep that section brief or note "No information available"
+
+Format the response in Markdown with clear section headers.`
+
+	allMsgs := make([]string, 0, len(threadMsgs)+1)
+	allMsgs = append(allMsgs, fmt.Sprintf("Initial incident message: %s", msg.Message.Text))
+	for _, msg := range threadMsgs {
+		allMsgs = append(allMsgs, fmt.Sprintf("Thread message: %s", msg.Attrs.Message.Text))
+	}
+
+	allMsgsStr := strings.Join(allMsgs, "\n")
+
+	var content string
+	if runbook.Attrs.Runbook != "" {
+		content = fmt.Sprintf("Existing runbook:\n%s\n\nNew messages:\n%s", runbook.Attrs.Runbook, allMsgsStr)
+	} else {
+		content = fmt.Sprintf("Create new runbook from messages:\n%s", allMsgsStr)
+	}
+
+	params := openai.ChatCompletionNewParams{
+		Model: openai.F(openai.ChatModel(c.model)),
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
+				Content: openai.F(any(prompt)),
+			},
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
+				Content: openai.F(any(content)),
+			},
+		}),
+		Temperature: openai.F(0.7),
+	}
+
+	resp, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return "", fmt.Errorf("updating runbook: %w", err)
+	}
+
+	slog.DebugContext(ctx, "updated runbook", "request", params, "response", resp.Choices[0].Message.Content)
+
+	return resp.Choices[0].Message.Content, nil
 }

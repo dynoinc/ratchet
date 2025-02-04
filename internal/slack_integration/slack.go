@@ -4,15 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
-	"strings"
-	"time"
 
+	"github.com/dynoinc/ratchet/internal"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
-
-	"github.com/dynoinc/ratchet/internal"
 )
 
 type integration struct {
@@ -87,35 +83,4 @@ func (b *integration) handleEventAPI(ctx context.Context, event slackevents.Even
 
 func (b *integration) Client() *slack.Client {
 	return &b.client.Client
-}
-
-func TsToTime(ts string) (time.Time, error) {
-	// Split the timestamp into seconds and microseconds
-	parts := strings.Split(ts, ".")
-	if len(parts) != 2 {
-		return time.Time{}, fmt.Errorf("invalid Slack timestamp format: %s", ts)
-	}
-
-	// Convert seconds and microseconds to integers
-	seconds, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse seconds: %w", err)
-	}
-
-	microseconds, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse microseconds: %w", err)
-	}
-
-	// Create a time.Time object using Unix seconds and nanoseconds
-	return time.Unix(seconds, microseconds*1000).UTC(), nil
-}
-
-func TimeToTs(t time.Time) string {
-	// Convert time.Time to Unix seconds and nanoseconds
-	seconds := t.Unix()
-	nanoseconds := int64(t.Nanosecond())
-
-	// Convert Unix seconds and nanoseconds to a Slack timestamp
-	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
 }

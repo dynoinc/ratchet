@@ -1,7 +1,5 @@
 package background
 
-import "github.com/riverqueue/river"
-
 type ClassifierArgs struct {
 	ChannelID string `json:"channel_id"`
 	SlackTS   string `json:"slack_ts"`
@@ -27,8 +25,20 @@ func (r ReportWorkerArgs) Kind() string {
 	return "report"
 }
 
-func (r ReportWorkerArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		Queue: "report",
-	}
+type PostRunbookWorkerArgs struct {
+	ChannelID string `json:"channel_id"`
+	SlackTS   string `json:"slack_ts"`
+}
+
+func (r PostRunbookWorkerArgs) Kind() string {
+	return "post_runbook"
+}
+
+type UpdateRunbookWorkerArgs struct {
+	ChannelID string `json:"channel_id"`
+	SlackTS   string `json:"slack_ts"`
+}
+
+func (u UpdateRunbookWorkerArgs) Kind() string {
+	return "update_runbook"
 }

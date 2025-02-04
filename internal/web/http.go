@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -70,18 +71,21 @@ func New(
 	}
 	riverServer, err := riverui.NewServer(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create riverui server: %w", err)
+		return nil, fmt.Errorf("creating riverui server: %w", err)
 	}
 	if err := riverServer.Start(ctx); err != nil {
-		return nil, fmt.Errorf("error starting riverui server: %w", err)
+		return nil, fmt.Errorf("starting riverui server: %w", err)
 	}
 
 	// API
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
+	apiMux.HandleFunc("GET /channels/{channel_name}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("GET /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
 	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
+	apiMux.HandleFunc("GET /channels/{channel_name}/runbook", handleJSON(handlers.runbook))
+	apiMux.HandleFunc("POST /channels/{channel_name}/runbook", handleJSON(handlers.createRunbook))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -104,6 +108,29 @@ func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
 	})
 
 	return channels, nil
+}
+
+func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
+	channelName := r.PathValue("channel_name")
+	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	if err != nil {
+		return nil, err
+	}
+
+	alerts, err := schema.New(h.db).GetAlerts(r.Context(), channel.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(alerts, func(i, j int) bool {
+		return cmp.Or(
+			alerts[i].Service < alerts[j].Service,
+			alerts[i].Alert < alerts[j].Alert,
+			alerts[i].Priority < alerts[j].Priority,
+		)
+	})
+
+	return alerts, nil
 }
 
 func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
@@ -147,4 +174,64 @@ func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 	}
 
 	return nil, nil
+}
+
+func (h *httpHandlers) runbook(r *http.Request) (any, error) {
+	channelName := r.PathValue("channel_name")
+	_, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	if err != nil {
+		return nil, err
+	}
+
+	serviceName := r.URL.Query().Get("service")
+	alertName := r.URL.Query().Get("alert")
+	if serviceName == "" || alertName == "" {
+		return nil, fmt.Errorf("service and alert are required")
+	}
+
+	runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
+		ServiceName: serviceName,
+		AlertName:   alertName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting runbook (%s/%s): %w", serviceName, alertName, err)
+	}
+
+	return runbook, nil
+}
+
+func (h *httpHandlers) createRunbook(r *http.Request) (any, error) {
+	channelName := r.PathValue("channel_name")
+	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	if err != nil {
+		return nil, err
+	}
+
+	serviceName := r.URL.Query().Get("service")
+	alertName := r.URL.Query().Get("alert")
+	if serviceName == "" || alertName == "" {
+		return nil, fmt.Errorf("service and alert are required")
+	}
+
+	msgs, err := schema.New(h.db).GetAllOpenIncidentMessages(r.Context(), schema.GetAllOpenIncidentMessagesParams{
+		ChannelID: channel.ID,
+		Service:   serviceName,
+		Alert:     alertName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, msg := range msgs {
+		if _, err := h.riverClient.Insert(r.Context(), background.UpdateRunbookWorkerArgs{
+			ChannelID: channel.ID,
+			SlackTS:   msg.Ts,
+		}, &river.InsertOpts{
+			Queue: "update_runbook",
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return msgs, nil
 }

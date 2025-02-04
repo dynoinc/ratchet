@@ -11,7 +11,6 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
-	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
@@ -40,7 +39,7 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: job.Args.ChannelID,
-		Latest:    slack_integration.TimeToTs(time.Now()),
+		Latest:    internal.TimeToTs(time.Now()),
 		Limit:     1000,
 	}
 
@@ -93,7 +92,10 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 		return fmt.Errorf("updating channel info for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
-	if err = w.bot.AddMessage(ctx, tx, addMessageParams); err != nil {
+	// Classification of old messages is low priority
+	if err = w.bot.AddMessage(ctx, tx, addMessageParams, &river.InsertOpts{
+		Priority: 4,
+	}); err != nil {
 		return fmt.Errorf("adding messages to channel %s: %w", job.Args.ChannelID, err)
 	}
 

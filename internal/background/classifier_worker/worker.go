@@ -98,8 +98,7 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 	}
 	defer tx.Rollback(ctx)
 
-	qtx := schema.New(w.bot.DB).WithTx(tx)
-	if err := qtx.UpdateMessageAttrs(ctx, params); err != nil {
+	if err := w.bot.UpdateMessage(ctx, tx, params); err != nil {
 		return fmt.Errorf("updating message attrs: %w", err)
 	}
 

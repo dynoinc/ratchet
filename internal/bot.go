@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,7 +48,42 @@ func (b *Bot) UpdateChannel(ctx context.Context, tx pgx.Tx, params schema.Update
 	return nil
 }
 
-func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams) error {
+func (b *Bot) UpdateMessage(ctx context.Context, tx pgx.Tx, params schema.UpdateMessageAttrsParams) error {
+	qtx := schema.New(b.DB).WithTx(tx)
+
+	if err := qtx.UpdateMessageAttrs(ctx, params); err != nil {
+		return fmt.Errorf("updating message %s (ts=%s): %w", params.ChannelID, params.Ts, err)
+	}
+
+	if params.Attrs.IncidentAction.Action == dto.ActionOpenIncident {
+		if _, err := b.riverClient.InsertTx(ctx, tx, background.PostRunbookWorkerArgs{
+			ChannelID: params.ChannelID,
+			SlackTS:   params.Ts,
+		}, nil); err != nil {
+			return fmt.Errorf("scheduling runbook worker: %w", err)
+		}
+
+		// schedule a job to update runbook 1 day after the incident is opened
+		ts, err := TsToTime(params.Ts)
+		if err != nil {
+			return fmt.Errorf("converting slack ts (%s) to time: %w", params.Ts, err)
+		}
+
+		if _, err := b.riverClient.InsertTx(ctx, tx, background.UpdateRunbookWorkerArgs{
+			ChannelID: params.ChannelID,
+			SlackTS:   params.Ts,
+		}, &river.InsertOpts{
+			Queue:       "update_runbook",
+			ScheduledAt: ts.Add(24 * time.Hour),
+		}); err != nil {
+			return fmt.Errorf("scheduling runbook worker: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams, classifierInsertOpts *river.InsertOpts) error {
 	qtx := schema.New(b.DB).WithTx(tx)
 
 	channelID := params[0].ChannelID
@@ -78,7 +116,8 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 		}
 
 		jobs = append(jobs, river.InsertManyParams{
-			Args: background.ClassifierArgs{ChannelID: param.ChannelID, SlackTS: param.Ts},
+			Args:       background.ClassifierArgs{ChannelID: param.ChannelID, SlackTS: param.Ts},
+			InsertOpts: classifierInsertOpts,
 		})
 	}
 
@@ -119,7 +158,7 @@ func (b *Bot) Notify(ctx context.Context, ev *slackevents.MessageEvent) error {
 					},
 				},
 			},
-		}); err != nil {
+		}, nil); err != nil {
 			return fmt.Errorf("adding message: %w", err)
 		}
 	} else {
@@ -158,4 +197,35 @@ func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) 
 	}
 
 	return msg.Attrs, nil
+}
+
+func TsToTime(ts string) (time.Time, error) {
+	// Split the timestamp into seconds and microseconds
+	parts := strings.Split(ts, ".")
+	if len(parts) != 2 {
+		return time.Time{}, fmt.Errorf("invalid Slack timestamp format: %s", ts)
+	}
+
+	// Convert seconds and microseconds to integers
+	seconds, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse seconds: %w", err)
+	}
+
+	microseconds, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse microseconds: %w", err)
+	}
+
+	// Create a time.Time object using Unix seconds and nanoseconds
+	return time.Unix(seconds, microseconds*1000).UTC(), nil
+}
+
+func TimeToTs(t time.Time) string {
+	// Convert time.Time to Unix seconds and nanoseconds
+	seconds := t.Unix()
+	nanoseconds := int64(t.Nanosecond())
+
+	// Convert Unix seconds and nanoseconds to a Slack timestamp
+	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
 }
