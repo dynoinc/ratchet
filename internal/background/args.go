@@ -17,6 +17,15 @@ func (c ChannelOnboardWorkerArgs) Kind() string {
 	return "channel_board"
 }
 
+type BackfillThreadWorkerArgs struct {
+	ChannelID string `json:"channel_id"`
+	SlackTS   string `json:"slack_ts"`
+}
+
+func (b BackfillThreadWorkerArgs) Kind() string {
+	return "backfill_thread"
+}
+
 type ReportWorkerArgs struct {
 	ChannelID string `json:"channel_id"`
 }

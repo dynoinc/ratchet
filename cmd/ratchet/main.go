@@ -26,6 +26,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/report_worker"
@@ -151,10 +152,13 @@ func main() {
 	}
 
 	// Channel onboarding worker setup
-	channelOnboardWorker := channel_onboard_worker.New(slackIntegration.Client(), bot)
+	channelOnboardWorker := channel_onboard_worker.New(bot, slackIntegration.Client())
+
+	// Backfill thread worker setup
+	backfillThreadWorker := backfill_thread_worker.New(bot, slackIntegration.Client())
 
 	// Report worker setup
-	reportWorker := report_worker.New(db, slackIntegration.Client(), llmClient, c.SlackDevChannel)
+	reportWorker := report_worker.New(bot, slackIntegration.Client(), llmClient, c.SlackDevChannel)
 
 	// Runbook worker setup
 	postRunbookWorker := runbook_worker.NewPostRunbookWorker(bot, slackIntegration.Client(), c.SlackDevChannel)
@@ -167,6 +171,7 @@ func main() {
 	river.AddWorker(workers, reportWorker)
 	river.AddWorker(workers, postRunbookWorker)
 	river.AddWorker(workers, updateRunbookWorker)
+	river.AddWorker(workers, backfillThreadWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "error setting up background worker", "error", err)

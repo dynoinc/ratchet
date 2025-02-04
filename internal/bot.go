@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack/slackevents"
@@ -128,11 +130,28 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 	return nil
 }
 
-func (b *Bot) AddThreadMessage(ctx context.Context, tx pgx.Tx, params schema.AddThreadMessageParams) error {
+func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.AddThreadMessageParams) error {
 	qtx := schema.New(b.DB).WithTx(tx)
 
-	// TODO: handle parent message not found
-	qtx.AddThreadMessage(ctx, params)
+	for _, param := range params {
+		if err := qtx.AddThreadMessage(ctx, param); err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok {
+				if pgErr.Code == pgerrcode.ForeignKeyViolation {
+					if _, err := b.riverClient.InsertTx(ctx, tx, background.BackfillThreadWorkerArgs{
+						ChannelID: param.ChannelID,
+						SlackTS:   param.ParentTs,
+					}, nil); err != nil {
+						return fmt.Errorf("scheduling backfill thread worker: %w", err)
+					}
+
+					continue
+				}
+			}
+
+			return fmt.Errorf("adding thread message (ts=%s) to channel %s: %w", param.Ts, param.ChannelID, err)
+		}
+	}
+
 	return nil
 }
 
@@ -162,17 +181,19 @@ func (b *Bot) Notify(ctx context.Context, ev *slackevents.MessageEvent) error {
 			return fmt.Errorf("adding message: %w", err)
 		}
 	} else {
-		if err := b.AddThreadMessage(ctx, tx, schema.AddThreadMessageParams{
-			ChannelID: ev.Channel,
-			ParentTs:  ev.ThreadTimeStamp,
-			Ts:        ev.TimeStamp,
-			Attrs: dto.ThreadMessageAttrs{
-				Message: dto.SlackMessage{
-					SubType:     ev.SubType,
-					Text:        ev.Text,
-					User:        ev.User,
-					BotID:       ev.BotID,
-					BotUsername: ev.Username,
+		if err := b.AddThreadMessages(ctx, tx, []schema.AddThreadMessageParams{
+			{
+				ChannelID: ev.Channel,
+				ParentTs:  ev.ThreadTimeStamp,
+				Ts:        ev.TimeStamp,
+				Attrs: dto.ThreadMessageAttrs{
+					Message: dto.SlackMessage{
+						SubType:     ev.SubType,
+						Text:        ev.Text,
+						User:        ev.User,
+						BotID:       ev.BotID,
+						BotUsername: ev.Username,
+					},
 				},
 			},
 		}); err != nil {

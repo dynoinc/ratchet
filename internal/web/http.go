@@ -82,9 +82,9 @@ func New(
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
 	apiMux.HandleFunc("GET /channels/{channel_name}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
-	apiMux.HandleFunc("GET /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
 	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
 	apiMux.HandleFunc("GET /channels/{channel_name}/runbook", handleJSON(handlers.runbook))
+	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
 	apiMux.HandleFunc("POST /channels/{channel_name}/runbook", handleJSON(handlers.createRunbook))
 
 	mux := http.NewServeMux()

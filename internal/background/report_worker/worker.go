@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olekukonko/tablewriter"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack"
@@ -21,15 +21,15 @@ import (
 type reportWorker struct {
 	river.WorkerDefaults[background.ReportWorkerArgs]
 
-	db           *pgxpool.Pool
+	bot          *internal.Bot
 	slackClient  *slack.Client
 	llmClient    *llm.Client
 	devChannelID string
 }
 
-func New(db *pgxpool.Pool, slackClient *slack.Client, llmClient *llm.Client, devChannelID string) *reportWorker {
+func New(bot *internal.Bot, slackClient *slack.Client, llmClient *llm.Client, devChannelID string) *reportWorker {
 	return &reportWorker{
-		db:           db,
+		bot:          bot,
 		slackClient:  slackClient,
 		llmClient:    llmClient,
 		devChannelID: devChannelID,
@@ -37,7 +37,7 @@ func New(db *pgxpool.Pool, slackClient *slack.Client, llmClient *llm.Client, dev
 }
 
 func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.ReportWorkerArgs]) error {
-	messages, err := schema.New(w.db).GetMessagesWithinTS(ctx, schema.GetMessagesWithinTSParams{
+	messages, err := schema.New(w.bot.DB).GetMessagesWithinTS(ctx, schema.GetMessagesWithinTSParams{
 		ChannelID: job.Args.ChannelID,
 		StartTs:   fmt.Sprintf("%d.000000", time.Now().AddDate(0, 0, -7).Unix()),
 		EndTs:     fmt.Sprintf("%d.000000", time.Now().Unix()),
@@ -117,7 +117,7 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 			continue
 		}
 
-		threadMessages, err := schema.New(w.db).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+		threadMessages, err := schema.New(w.bot.DB).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
 			ChannelID: msg.ChannelID,
 			ParentTs:  msg.Ts,
 		})

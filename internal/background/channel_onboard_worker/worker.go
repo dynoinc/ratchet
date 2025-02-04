@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/slack-go/slack"
@@ -18,14 +19,14 @@ import (
 type ChannelOnboardWorker struct {
 	river.WorkerDefaults[background.ChannelOnboardWorkerArgs]
 
-	slackClient *slack.Client
 	bot         *internal.Bot
+	slackClient *slack.Client
 }
 
-func New(slackClient *slack.Client, bot *internal.Bot) *ChannelOnboardWorker {
+func New(bot *internal.Bot, slackClient *slack.Client) *ChannelOnboardWorker {
 	return &ChannelOnboardWorker{
-		slackClient: slackClient,
 		bot:         bot,
+		slackClient: slackClient,
 	}
 }
 
@@ -60,6 +61,7 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 	}
 
 	addMessageParams := make([]schema.AddMessageParams, len(messages))
+	var backfillThreadInsertParams []river.InsertManyParams
 	for i, message := range messages {
 		addMessageParams[i] = schema.AddMessageParams{
 			ChannelID: job.Args.ChannelID,
@@ -73,6 +75,15 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 					BotUsername: message.Username,
 				},
 			},
+		}
+
+		if message.ReplyCount > 0 {
+			backfillThreadInsertParams = append(backfillThreadInsertParams, river.InsertManyParams{
+				Args: background.BackfillThreadWorkerArgs{
+					ChannelID: job.Args.ChannelID,
+					SlackTS:   message.Timestamp,
+				},
+			})
 		}
 	}
 
@@ -92,11 +103,17 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 		return fmt.Errorf("updating channel info for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
-	// Classification of old messages is low priority
 	if err = w.bot.AddMessage(ctx, tx, addMessageParams, &river.InsertOpts{
 		Priority: 4,
 	}); err != nil {
 		return fmt.Errorf("adding messages to channel %s: %w", job.Args.ChannelID, err)
+	}
+
+	if len(backfillThreadInsertParams) > 0 {
+		client := river.ClientFromContext[pgx.Tx](ctx)
+		if _, err := client.InsertManyTx(ctx, tx, backfillThreadInsertParams); err != nil {
+			return fmt.Errorf("inserting backfill thread insert params: %w", err)
+		}
 	}
 
 	if _, err = river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job); err != nil {
