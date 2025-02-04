@@ -12,9 +12,10 @@ import (
 )
 
 const addMessage = `-- name: AddMessage :exec
-INSERT INTO messages_v2 (channel_id, ts, attrs)
-VALUES ($1, $2, $3)
-ON CONFLICT (channel_id, ts) DO NOTHING
+INSERT INTO
+    messages_v2 (channel_id, ts, attrs)
+VALUES
+    ($1, $2, $3) ON CONFLICT (channel_id, ts) DO NOTHING
 `
 
 type AddMessageParams struct {
@@ -29,8 +30,14 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 }
 
 const getAllMessages = `-- name: GetAllMessages :many
-SELECT channel_id, ts, attrs FROM messages_v2
-WHERE channel_id = $1
+SELECT
+    channel_id,
+    ts,
+    attrs
+FROM
+    messages_v2
+WHERE
+    channel_id = $1
 `
 
 func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]MessagesV2, error) {
@@ -54,8 +61,15 @@ func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]Messa
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT channel_id, ts, attrs FROM messages_v2
-WHERE channel_id = $1 AND ts = $2
+SELECT
+    channel_id,
+    ts,
+    attrs
+FROM
+    messages_v2
+WHERE
+    channel_id = $1
+    AND ts = $2
 `
 
 type GetMessageParams struct {
@@ -70,10 +84,53 @@ func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (Message
 	return i, err
 }
 
+const getMessagesWithinTS = `-- name: GetMessagesWithinTS :many
+SELECT
+    channel_id,
+    ts,
+    attrs
+FROM
+    messages_v2
+WHERE
+    channel_id = $1
+    AND ts BETWEEN $2
+    AND $3
+`
+
+type GetMessagesWithinTSParams struct {
+	ChannelID string
+	StartTs   string
+	EndTs     string
+}
+
+func (q *Queries) GetMessagesWithinTS(ctx context.Context, arg GetMessagesWithinTSParams) ([]MessagesV2, error) {
+	rows, err := q.db.Query(ctx, getMessagesWithinTS, arg.ChannelID, arg.StartTs, arg.EndTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MessagesV2
+	for rows.Next() {
+		var i MessagesV2
+		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateMessageAttrs = `-- name: UpdateMessageAttrs :exec
-UPDATE messages_v2
-SET attrs = COALESCE(attrs, '{}'::jsonb) || $1
-WHERE channel_id = $2 AND ts = $3
+UPDATE
+    messages_v2
+SET
+    attrs = COALESCE(attrs, '{}' :: jsonb) || $1
+WHERE
+    channel_id = $2
+    AND ts = $3
 `
 
 type UpdateMessageAttrsParams struct {

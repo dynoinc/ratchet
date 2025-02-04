@@ -12,11 +12,14 @@ import (
 )
 
 const addChannel = `-- name: AddChannel :one
-INSERT INTO channels_v2 (id)
-VALUES ($1)
-ON CONFLICT (id) DO UPDATE
-SET id = EXCLUDED.id
-RETURNING id, attrs
+INSERT INTO
+    channels_v2 (id)
+VALUES
+    ($1) ON CONFLICT (id) DO
+UPDATE
+SET
+    id = EXCLUDED.id RETURNING id,
+    attrs
 `
 
 func (q *Queries) AddChannel(ctx context.Context, id string) (ChannelsV2, error) {
@@ -27,7 +30,11 @@ func (q *Queries) AddChannel(ctx context.Context, id string) (ChannelsV2, error)
 }
 
 const getAllChannels = `-- name: GetAllChannels :many
-SELECT id, attrs FROM channels_v2
+SELECT
+    id,
+    attrs
+FROM
+    channels_v2
 `
 
 func (q *Queries) GetAllChannels(ctx context.Context) ([]ChannelsV2, error) {
@@ -51,8 +58,13 @@ func (q *Queries) GetAllChannels(ctx context.Context) ([]ChannelsV2, error) {
 }
 
 const getChannelByName = `-- name: GetChannelByName :one
-SELECT id, attrs FROM channels_v2
-WHERE attrs->>'name' = $1::text
+SELECT
+    id,
+    attrs
+FROM
+    channels_v2
+WHERE
+    attrs ->> 'name' = $1 :: text
 `
 
 func (q *Queries) GetChannelByName(ctx context.Context, name string) (ChannelsV2, error) {
@@ -63,9 +75,12 @@ func (q *Queries) GetChannelByName(ctx context.Context, name string) (ChannelsV2
 }
 
 const updateChannelAttrs = `-- name: UpdateChannelAttrs :exec
-UPDATE channels_v2
-SET attrs = COALESCE(attrs, '{}'::jsonb) || $1
-WHERE id = $2
+UPDATE
+    channels_v2
+SET
+    attrs = COALESCE(attrs, '{}' :: jsonb) || $1
+WHERE
+    id = $2
 `
 
 type UpdateChannelAttrsParams struct {

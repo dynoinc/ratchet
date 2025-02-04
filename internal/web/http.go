@@ -81,6 +81,7 @@ func New(
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("GET /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
+	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -124,6 +125,22 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 
 	// submit job to river to onboard channel
 	if _, err := h.riverClient.Insert(r.Context(), background.ChannelOnboardWorkerArgs{
+		ChannelID: channel.ID,
+	}, nil); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
+	channelName := r.PathValue("channel_name")
+	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := h.riverClient.Insert(r.Context(), background.ReportWorkerArgs{
 		ChannelID: channel.ID,
 	}, nil); err != nil {
 		return nil, err

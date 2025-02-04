@@ -52,7 +52,7 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 		}
 
 		messages = append(messages, history.Messages...)
-		if !history.HasMore || len(messages) >= 1000 {
+		if !history.HasMore || len(messages) >= 10 {
 			break
 		}
 

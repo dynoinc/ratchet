@@ -11,6 +11,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lmittmann/tint v1.0.7
+	github.com/olekukonko/tablewriter v0.0.5
 	github.com/openai/openai-go v0.1.0-alpha.51
 	github.com/prometheus/client_golang v1.20.5
 	github.com/riverqueue/river v0.16.0
@@ -61,6 +62,7 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 // indirect
 	github.com/magiconair/properties v1.8.9 // indirect
+	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect

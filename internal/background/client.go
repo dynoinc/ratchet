@@ -13,6 +13,9 @@ func New(db *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error
 			river.QueueDefault: {
 				MaxWorkers: 10,
 			},
+			"report": {
+				MaxWorkers: 1,
+			},
 		},
 		Workers: workers,
 	})

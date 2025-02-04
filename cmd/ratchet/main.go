@@ -30,6 +30,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
+	"github.com/dynoinc/ratchet/internal/background/report_worker"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
@@ -56,7 +57,7 @@ type config struct {
 	// Slack configuration
 	SlackBotToken   string `split_words:"true" required:"true"`
 	SlackAppToken   string `split_words:"true" required:"true"`
-	SlackDevChannel string `split_words:"true"`
+	SlackDevChannel string `split_words:"true" default:"ratchet-test"`
 
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:"127.0.0.1:5001"`
@@ -162,12 +163,16 @@ func main() {
 	}
 
 	// Channel onboarding worker setup
-	channelOnboardWorker := channel_onboard_worker.New(slackIntegration.SlackClient(), bot)
+	channelOnboardWorker := channel_onboard_worker.New(slackIntegration.Client(), bot)
+
+	// Report worker setup
+	reportWorker := report_worker.New(db, slackIntegration.Client(), c.SlackDevChannel)
 
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
 	river.AddWorker(workers, channelOnboardWorker)
+	river.AddWorker(workers, reportWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "error setting up background worker", "error", err)
