@@ -8,10 +8,6 @@ type SlackMessage struct {
 	BotUsername string `json:"bot_usernames,omitzero"`
 }
 
-type ChannelAttrs struct {
-	Name string `json:"name,omitzero"`
-}
-
 type MessageAttrs struct {
 	Message        SlackMessage   `json:"message,omitzero"`
 	IncidentAction IncidentAction `json:"incident_action,omitzero"`

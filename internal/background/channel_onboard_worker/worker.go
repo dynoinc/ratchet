@@ -86,7 +86,8 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 	if err := w.bot.UpdateChannel(ctx, tx, schema.UpdateChannelAttrsParams{
 		ID: job.Args.ChannelID,
 		Attrs: dto.ChannelAttrs{
-			Name: channelInfo.Name,
+			Name:             channelInfo.Name,
+			OnboardingStatus: dto.OnboardingStatusFinished,
 		},
 	}); err != nil {
 		return fmt.Errorf("updating channel info for channel ID %s: %w", job.Args.ChannelID, err)

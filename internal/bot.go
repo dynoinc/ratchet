@@ -55,6 +55,15 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 	}
 
 	if channel.Attrs == (dto.ChannelAttrs{}) {
+		if err := qtx.UpdateChannelAttrs(ctx, schema.UpdateChannelAttrsParams{
+			ID: channelID,
+			Attrs: dto.ChannelAttrs{
+				OnboardingStatus: dto.OnboardingStatusStarted,
+			},
+		}); err != nil {
+			return fmt.Errorf("updating channel %s: %w", channelID, err)
+		}
+
 		if _, err := b.riverClient.InsertTx(ctx, tx, background.ChannelOnboardWorkerArgs{
 			ChannelID: channelID,
 		}, nil); err != nil {
