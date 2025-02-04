@@ -10,7 +10,7 @@ AI bot to help reduce operational toil
   * Though Slack API is pretty badly documented and not consistent.
 * Investing into building UI for visibility ended up wasting a lot of time. 
   * Even with AI tools, it is hard to get right for a backend engineer.
-  * Even after you figure out HTML/CSS/JS, dealing with security concernsand deploying to production is a pain.
+  * Even after you figure out HTML/CSS/JS, dealing with security concerns and deploying to production is a pain.
   * JSON API on the other hand is great. Just works and can post process output with `jq` efficiently.
   * River and its UI is great though.
 * For database schema, instead of using individual columns for each attribute, using `attrs` column as jsonb is great.
