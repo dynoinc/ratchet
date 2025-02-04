@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -72,4 +74,55 @@ func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	slog.DebugContext(ctx, "generated suggestions", "request", params, "response", resp.Choices[0].Message.Content)
 
 	return resp.Choices[0].Message.Content, nil
+}
+
+func (c *Client) ClassifyService(ctx context.Context, text string, services []string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	prompt := `You are a service classification assistant. Your task is to identify which service from the following list is being referenced in the user's message:
+
+Services: ` + strings.Join(services, ", ") + `
+
+Rules:
+- Return EXACTLY one service name from the list above
+- If no service matches, return "none"
+- Return ONLY the service name, no explanation
+- The response must match the exact spelling and case of the service name
+
+Message to classify:
+` + text
+
+	params := openai.ChatCompletionNewParams{
+		Model: openai.F(openai.ChatModel(c.model)),
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
+				Content: openai.F(any(prompt)),
+			},
+		}),
+		Temperature: openai.F(0.0),
+	}
+
+	resp, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return "", fmt.Errorf("classifying service: %w", err)
+	}
+
+	slog.DebugContext(ctx, "classified service", "request", params, "response", resp.Choices[0].Message.Content)
+
+	// Clean up response by trimming whitespace and converting to lowercase for comparison
+	service := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if service == "none" {
+		return "", nil
+	}
+
+	// Case-sensitive check if service exists in list
+	if !slices.Contains(services, service) {
+		slog.WarnContext(ctx, "llm returned invalid service name", "service", service)
+		return "", nil
+	}
+
+	return service, nil
 }

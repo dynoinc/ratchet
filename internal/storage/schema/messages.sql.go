@@ -123,6 +123,40 @@ func (q *Queries) GetMessagesWithinTS(ctx context.Context, arg GetMessagesWithin
 	return items, nil
 }
 
+const getServices = `-- name: GetServices :many
+SELECT
+    service :: text
+FROM
+    (
+        SELECT
+            DISTINCT attrs -> 'incident_action' ->> 'service' as service
+        FROM
+            messages_v2
+        WHERE
+            attrs -> 'incident_action' ->> 'service' IS NOT NULL
+    ) s
+`
+
+func (q *Queries) GetServices(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, getServices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var service string
+		if err := rows.Scan(&service); err != nil {
+			return nil, err
+		}
+		items = append(items, service)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateMessageAttrs = `-- name: UpdateMessageAttrs :exec
 UPDATE
     messages_v2

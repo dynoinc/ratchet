@@ -143,7 +143,7 @@ func main() {
 	}
 
 	// Classifier setup
-	classifier, err := classifier_worker.New(c.Classifier, bot)
+	classifier, err := classifier_worker.New(c.Classifier, bot, llmClient)
 	if err != nil {
 		slog.ErrorContext(ctx, "error setting up classifier", "error", err)
 		os.Exit(1)

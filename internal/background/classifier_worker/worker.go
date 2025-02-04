@@ -14,12 +14,13 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type Config struct {
-	IncidentClassificationBinary string `split_words:"true"`
+	IncidentClassificationBinary string `split_words:"true" required:"true"`
 }
 
 type classifierWorker struct {
@@ -27,18 +28,18 @@ type classifierWorker struct {
 
 	incidentBinary string
 	bot            *internal.Bot
+	llmClient      *llm.Client
 }
 
-func New(c Config, bot *internal.Bot) (river.Worker[background.ClassifierArgs], error) {
-	if c.IncidentClassificationBinary != "" {
-		if _, err := exec.LookPath(c.IncidentClassificationBinary); err != nil {
-			return nil, fmt.Errorf("looking up incident classification binary: %w", err)
-		}
+func New(c Config, bot *internal.Bot, llmClient *llm.Client) (river.Worker[background.ClassifierArgs], error) {
+	if _, err := exec.LookPath(c.IncidentClassificationBinary); err != nil {
+		return nil, fmt.Errorf("looking up incident classification binary: %w", err)
 	}
 
 	return &classifierWorker{
 		incidentBinary: c.IncidentClassificationBinary,
 		bot:            bot,
+		llmClient:      llmClient,
 	}, nil
 }
 
@@ -65,30 +66,48 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		"slack_ts", job.Args.SlackTS,
 		"action", action,
 	)
+
+	params := schema.UpdateMessageAttrsParams{
+		ChannelID: job.Args.ChannelID,
+		Ts:        job.Args.SlackTS,
+	}
 	if action.Action != dto.ActionNone {
-		tx, err := w.bot.DB.Begin(ctx)
+		params.Attrs = dto.MessageAttrs{IncidentAction: action}
+	} else {
+		services, err := schema.New(w.bot.DB).GetServices(ctx)
 		if err != nil {
-			return err
-		}
-		defer tx.Rollback(ctx)
-
-		qtx := schema.New(w.bot.DB).WithTx(tx)
-		if err := qtx.UpdateMessageAttrs(ctx, schema.UpdateMessageAttrsParams{
-			ChannelID: job.Args.ChannelID,
-			Ts:        job.Args.SlackTS,
-			Attrs:     dto.MessageAttrs{IncidentAction: action},
-		}); err != nil {
-			return fmt.Errorf("updating message attrs: %w", err)
+			return fmt.Errorf("getting services: %w", err)
 		}
 
-		if _, err = river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job); err != nil {
-			return fmt.Errorf("completing job: %w", err)
+		// Use llm to classify which service the message belongs to
+		service, err := w.llmClient.ClassifyService(ctx, msg.Message.Text, services)
+		if err != nil {
+			return fmt.Errorf("classifying service: %w", err)
 		}
 
-		return tx.Commit(ctx)
+		if service == "" {
+			return nil
+		}
+
+		params.Attrs = dto.MessageAttrs{AIClassification: dto.AIClassification{Service: service}}
 	}
 
-	return nil
+	tx, err := w.bot.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := schema.New(w.bot.DB).WithTx(tx)
+	if err := qtx.UpdateMessageAttrs(ctx, params); err != nil {
+		return fmt.Errorf("updating message attrs: %w", err)
+	}
+
+	if _, err = river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job); err != nil {
+		return fmt.Errorf("completing job: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 type binaryInput struct {

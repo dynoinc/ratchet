@@ -45,3 +45,16 @@ WHERE
     channel_id = @channel_id
     AND ts BETWEEN @start_ts
     AND @end_ts;
+
+-- name: GetServices :many
+SELECT
+    service :: text
+FROM
+    (
+        SELECT
+            DISTINCT attrs -> 'incident_action' ->> 'service' as service
+        FROM
+            messages_v2
+        WHERE
+            attrs -> 'incident_action' ->> 'service' IS NOT NULL
+    ) s;
