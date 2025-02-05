@@ -116,9 +116,21 @@ func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
 		return nil, err
 	}
 
+	priorityFilter := r.URL.Query().Get("priority")
 	alerts, err := schema.New(h.db).GetAlerts(r.Context(), channel.ID)
 	if err != nil {
 		return nil, err
+	}
+
+	if priorityFilter != "" {
+		filteredAlerts := make([]schema.GetAlertsRow, 0, len(alerts))
+		for _, alert := range alerts {
+			if alert.Priority == priorityFilter {
+				filteredAlerts = append(filteredAlerts, alert)
+			}
+		}
+
+		alerts = filteredAlerts
 	}
 
 	sort.Slice(alerts, func(i, j int) bool {
