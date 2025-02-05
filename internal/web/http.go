@@ -83,7 +83,6 @@ func New(
 	apiMux.HandleFunc("GET /channels/{channel_name}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
-	apiMux.HandleFunc("GET /channels/{channel_name}/runbook", handleJSON(handlers.runbook))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
 	apiMux.HandleFunc("POST /channels/{channel_name}/runbook", handleJSON(handlers.createRunbook))
 
@@ -130,7 +129,30 @@ func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
 		)
 	})
 
-	return alerts, nil
+	type alertWithRunbook struct {
+		schema.GetAlertsRow
+		Runbook string `json:"runbook"`
+	}
+
+	alertsWithRunbook := make([]alertWithRunbook, len(alerts))
+	for i, alert := range alerts {
+		runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
+			ServiceName: alert.Service,
+			AlertName:   alert.Alert,
+		})
+		if err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return nil, err
+			}
+		}
+
+		alertsWithRunbook[i] = alertWithRunbook{
+			GetAlertsRow: alert,
+			Runbook:      runbook.Attrs.Runbook,
+		}
+	}
+
+	return alertsWithRunbook, nil
 }
 
 func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
@@ -174,30 +196,6 @@ func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 	}
 
 	return nil, nil
-}
-
-func (h *httpHandlers) runbook(r *http.Request) (any, error) {
-	channelName := r.PathValue("channel_name")
-	_, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
-	if err != nil {
-		return nil, err
-	}
-
-	serviceName := r.URL.Query().Get("service")
-	alertName := r.URL.Query().Get("alert")
-	if serviceName == "" || alertName == "" {
-		return nil, fmt.Errorf("service and alert are required")
-	}
-
-	runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
-		ServiceName: serviceName,
-		AlertName:   alertName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("getting runbook (%s/%s): %w", serviceName, alertName, err)
-	}
-
-	return runbook, nil
 }
 
 func (h *httpHandlers) createRunbook(r *http.Request) (any, error) {

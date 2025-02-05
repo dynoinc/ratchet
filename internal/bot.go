@@ -20,6 +20,13 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
+type messageSource int
+
+const (
+	SourceSlack messageSource = iota
+	SourceBackfill
+)
+
 var (
 	ErrMessageNotFound = errors.New("message not found")
 )
@@ -50,42 +57,7 @@ func (b *Bot) UpdateChannel(ctx context.Context, tx pgx.Tx, params schema.Update
 	return nil
 }
 
-func (b *Bot) UpdateMessage(ctx context.Context, tx pgx.Tx, params schema.UpdateMessageAttrsParams) error {
-	qtx := schema.New(b.DB).WithTx(tx)
-
-	if err := qtx.UpdateMessageAttrs(ctx, params); err != nil {
-		return fmt.Errorf("updating message %s (ts=%s): %w", params.ChannelID, params.Ts, err)
-	}
-
-	if params.Attrs.IncidentAction.Action == dto.ActionOpenIncident {
-		if _, err := b.riverClient.InsertTx(ctx, tx, background.PostRunbookWorkerArgs{
-			ChannelID: params.ChannelID,
-			SlackTS:   params.Ts,
-		}, nil); err != nil {
-			return fmt.Errorf("scheduling runbook worker: %w", err)
-		}
-
-		// schedule a job to update runbook 1 day after the incident is opened
-		ts, err := TsToTime(params.Ts)
-		if err != nil {
-			return fmt.Errorf("converting slack ts (%s) to time: %w", params.Ts, err)
-		}
-
-		if _, err := b.riverClient.InsertTx(ctx, tx, background.UpdateRunbookWorkerArgs{
-			ChannelID: params.ChannelID,
-			SlackTS:   params.Ts,
-		}, &river.InsertOpts{
-			Queue:       "update_runbook",
-			ScheduledAt: ts.Add(24 * time.Hour),
-		}); err != nil {
-			return fmt.Errorf("scheduling runbook worker: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams, classifierInsertOpts *river.InsertOpts) error {
+func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams, source messageSource) error {
 	qtx := schema.New(b.DB).WithTx(tx)
 
 	channelID := params[0].ChannelID
@@ -117,9 +89,17 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 			return fmt.Errorf("adding message (ts=%s) to channel %s: %w", param.Ts, param.ChannelID, err)
 		}
 
+		var insertOpts *river.InsertOpts
+		if source == SourceBackfill {
+			insertOpts = &river.InsertOpts{
+				// Avoid overloading the classifier worker with backfill jobs
+				Priority: 4,
+			}
+		}
+
 		jobs = append(jobs, river.InsertManyParams{
-			Args:       background.ClassifierArgs{ChannelID: param.ChannelID, SlackTS: param.Ts},
-			InsertOpts: classifierInsertOpts,
+			Args:       background.ClassifierArgs{ChannelID: param.ChannelID, SlackTS: param.Ts, IsBackfill: source == SourceBackfill},
+			InsertOpts: insertOpts,
 		})
 	}
 
@@ -139,7 +119,7 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 				continue
 			}
 
-			return fmt.Errorf("adding thread message (ts=%s) to channel %s: %w", param.Ts, param.ChannelID, err)
+			return fmt.Errorf("adding thread message to channel %s (ts=%s): %w", param.ChannelID, param.Ts, err)
 		}
 	}
 
@@ -168,7 +148,7 @@ func (b *Bot) Notify(ctx context.Context, ev *slackevents.MessageEvent) error {
 					},
 				},
 			},
-		}, nil); err != nil {
+		}, SourceSlack); err != nil {
 			return fmt.Errorf("adding message: %w", err)
 		}
 	} else {

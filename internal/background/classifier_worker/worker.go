@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
@@ -59,14 +61,6 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		return fmt.Errorf("classifying incident with binary: %w", err)
 	}
 
-	slog.InfoContext(
-		ctx, "classified incident",
-		"text", msg.Message.Text,
-		"channel_id", job.Args.ChannelID,
-		"slack_ts", job.Args.SlackTS,
-		"action", action,
-	)
-
 	params := schema.UpdateMessageAttrsParams{
 		ChannelID: job.Args.ChannelID,
 		Ts:        job.Args.SlackTS,
@@ -92,14 +86,48 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		params.Attrs = dto.MessageAttrs{AIClassification: dto.AIClassification{Service: service}}
 	}
 
+	slog.DebugContext(ctx, "classified message", "channel_id", params.ChannelID, "slack_ts", params.Ts, "text", msg.Message.Text, "attrs", params.Attrs)
+
 	tx, err := w.bot.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	if err := w.bot.UpdateMessage(ctx, tx, params); err != nil {
-		return fmt.Errorf("updating message attrs: %w", err)
+	qtx := schema.New(w.bot.DB).WithTx(tx)
+	if err := qtx.UpdateMessageAttrs(ctx, params); err != nil {
+		return fmt.Errorf("updating message %s (ts=%s): %w", params.ChannelID, params.Ts, err)
+	}
+
+	if params.Attrs.IncidentAction.Action == dto.ActionOpenIncident {
+		riverclient := river.ClientFromContext[pgx.Tx](ctx)
+
+		if !job.Args.IsBackfill {
+			// Only post runbook for new messages.
+			if _, err := riverclient.InsertTx(ctx, tx, background.PostRunbookWorkerArgs{
+				ChannelID: params.ChannelID,
+				SlackTS:   params.Ts,
+			}, nil); err != nil {
+				return fmt.Errorf("scheduling runbook worker: %w", err)
+			}
+		}
+
+		// schedule a job to update runbook 1 day after the incident is opened
+		ts, err := internal.TsToTime(params.Ts)
+		if err != nil {
+			return fmt.Errorf("converting slack ts (%s) to time: %w", params.Ts, err)
+		}
+
+		if _, err := riverclient.InsertTx(ctx, tx, background.UpdateRunbookWorkerArgs{
+			ChannelID: params.ChannelID,
+			SlackTS:   params.Ts,
+		}, &river.InsertOpts{
+			Queue:       "update_runbook",
+			ScheduledAt: ts.Add(24 * time.Hour),
+			Priority:    4, // update runbook as late as possible
+		}); err != nil {
+			return fmt.Errorf("scheduling runbook worker: %w", err)
+		}
 	}
 
 	if _, err = river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job); err != nil {
@@ -122,7 +150,7 @@ func runIncidentBinary(binaryPath string, username, text string) (dto.IncidentAc
 
 	inputJSON, err := json.Marshal(input)
 	if err != nil {
-		return dto.IncidentAction{}, fmt.Errorf("failed to marshal input: %w", err)
+		return dto.IncidentAction{}, fmt.Errorf("marshaling input: %w", err)
 	}
 
 	var stdout bytes.Buffer
@@ -131,12 +159,12 @@ func runIncidentBinary(binaryPath string, username, text string) (dto.IncidentAc
 	cmd.Stdout = &stdout
 
 	if err := cmd.Run(); err != nil {
-		return dto.IncidentAction{}, fmt.Errorf("failed to run binary %s: %w", binaryPath, err)
+		return dto.IncidentAction{}, fmt.Errorf("running incident classification binary %s: %w", binaryPath, err)
 	}
 
 	var output dto.IncidentAction
 	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
-		return dto.IncidentAction{}, fmt.Errorf("failed to parse output from binary: %w", err)
+		return dto.IncidentAction{}, fmt.Errorf("parsing output from binary: %w", err)
 	}
 
 	return output, nil

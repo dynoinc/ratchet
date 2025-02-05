@@ -58,8 +58,8 @@ func (p *priority) UnmarshalJSON(b []byte) error {
 
 type IncidentAction struct {
 	Action  action `json:"action"`
-	Alert   string `json:"alert"`
-	Service string `json:"service"`
+	Alert   string `json:"alert,omitzero"`
+	Service string `json:"service,omitzero"`
 
 	// Only used for open_incident.
 	Priority priority `json:"priority,omitzero"`
@@ -70,6 +70,10 @@ type IncidentAction struct {
 
 type durationWrapper struct {
 	time.Duration
+}
+
+func (d durationWrapper) IsZero() bool {
+	return d.Duration == 0
 }
 
 func (d *durationWrapper) UnmarshalJSON(b []byte) error {

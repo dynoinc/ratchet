@@ -103,9 +103,7 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 		return fmt.Errorf("updating channel info for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
-	if err = w.bot.AddMessage(ctx, tx, addMessageParams, &river.InsertOpts{
-		Priority: 4,
-	}); err != nil {
+	if err = w.bot.AddMessage(ctx, tx, addMessageParams, internal.SourceBackfill); err != nil {
 		return fmt.Errorf("adding messages to channel %s: %w", job.Args.ChannelID, err)
 	}
 

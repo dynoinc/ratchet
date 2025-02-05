@@ -1,8 +1,9 @@
 package background
 
 type ClassifierArgs struct {
-	ChannelID string `json:"channel_id"`
-	SlackTS   string `json:"slack_ts"`
+	ChannelID  string `json:"channel_id"`
+	SlackTS    string `json:"slack_ts"`
+	IsBackfill bool   `json:"is_backfill"`
 }
 
 func (c ClassifierArgs) Kind() string {
