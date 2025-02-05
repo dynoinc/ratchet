@@ -76,17 +76,22 @@ FROM
 
 -- name: GetAlerts :many
 SELECT
+    service :: text,
     alert :: text,
     priority :: text
 FROM
     (
         SELECT
-            DISTINCT attrs -> 'incident_action' ->> 'alert' as alert,
+            DISTINCT attrs -> 'incident_action' ->> 'service' as service,
+            attrs -> 'incident_action' ->> 'alert' as alert,
             attrs -> 'incident_action' ->> 'priority' as priority
         FROM
             messages_v2
         WHERE
-            attrs -> 'incident_action' ->> 'service' = @service :: text
+            (
+                @service :: text = '*'
+                OR attrs -> 'incident_action' ->> 'service' = @service :: text
+            )
             AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
     ) subq;
 

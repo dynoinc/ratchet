@@ -207,7 +207,28 @@ func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
 		)
 	})
 
-	return alerts, nil
+	type alertWithRunbook struct {
+		schema.GetAlertsRow
+		Runbook string
+	}
+
+	alertsWithRunbooks := make([]alertWithRunbook, len(alerts))
+	for i, alert := range alerts {
+		runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
+			ServiceName: alert.Service,
+			AlertName:   alert.Alert,
+		})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+
+		alertsWithRunbooks[i] = alertWithRunbook{
+			GetAlertsRow: alert,
+			Runbook:      runbook.Attrs.Runbook,
+		}
+	}
+
+	return alertsWithRunbooks, nil
 }
 
 func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {

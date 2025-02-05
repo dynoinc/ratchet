@@ -31,22 +31,28 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 
 const getAlerts = `-- name: GetAlerts :many
 SELECT
+    service :: text,
     alert :: text,
     priority :: text
 FROM
     (
         SELECT
-            DISTINCT attrs -> 'incident_action' ->> 'alert' as alert,
+            DISTINCT attrs -> 'incident_action' ->> 'service' as service,
+            attrs -> 'incident_action' ->> 'alert' as alert,
             attrs -> 'incident_action' ->> 'priority' as priority
         FROM
             messages_v2
         WHERE
-            attrs -> 'incident_action' ->> 'service' = $1 :: text
+            (
+                $1 :: text = '*'
+                OR attrs -> 'incident_action' ->> 'service' = $1 :: text
+            )
             AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
     ) subq
 `
 
 type GetAlertsRow struct {
+	Service  string
 	Alert    string
 	Priority string
 }
@@ -60,7 +66,7 @@ func (q *Queries) GetAlerts(ctx context.Context, service string) ([]GetAlertsRow
 	var items []GetAlertsRow
 	for rows.Next() {
 		var i GetAlertsRow
-		if err := rows.Scan(&i.Alert, &i.Priority); err != nil {
+		if err := rows.Scan(&i.Service, &i.Alert, &i.Priority); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
