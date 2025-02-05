@@ -30,15 +30,9 @@ func NewUpdateRunbookWorker(bot *internal.Bot, llmClient *llm.Client) *updateRun
 }
 
 func (w *updateRunbookWorker) Work(ctx context.Context, job *river.Job[background.UpdateRunbookWorkerArgs]) error {
-	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
-	if err != nil {
-		return fmt.Errorf("getting message: %w", err)
-	}
-
-	// get thread messages
-	threadMsgs, err := schema.New(w.bot.DB).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
-		ChannelID: job.Args.ChannelID,
-		ParentTs:  job.Args.SlackTS,
+	msgs, err := schema.New(w.bot.DB).GetThreadMessagesByServiceAndAlert(ctx, schema.GetThreadMessagesByServiceAndAlertParams{
+		Service: job.Args.Service,
+		Alert:   job.Args.Alert,
 	})
 	if err != nil {
 		return fmt.Errorf("getting thread messages: %w", err)
@@ -46,17 +40,26 @@ func (w *updateRunbookWorker) Work(ctx context.Context, job *river.Job[backgroun
 
 	// get current runbook
 	runbook, err := schema.New(w.bot.DB).GetRunbook(ctx, schema.GetRunbookParams{
-		ServiceName: msg.IncidentAction.Service,
-		AlertName:   msg.IncidentAction.Alert,
+		ServiceName: job.Args.Service,
+		AlertName:   job.Args.Alert,
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("getting runbook: %w", err)
 	}
 
-	// ask LLM to update the existing runbook with the info from new messages
-	updatedRunbook, err := w.llmClient.UpdateRunbook(ctx, runbook, msg, threadMsgs)
-	if err != nil {
-		return fmt.Errorf("updating runbook: %w", err)
+	var updatedRunbook string
+	if runbook == (schema.IncidentRunbook{}) {
+		// create new runbook from scratch
+		updatedRunbook, err = w.llmClient.CreateRunbook(ctx, job.Args.Service, job.Args.Alert, msgs)
+		if err != nil {
+			return fmt.Errorf("creating runbook: %w", err)
+		}
+	} else {
+		// update existing runbook with new messages
+		updatedRunbook, err = w.llmClient.UpdateRunbook(ctx, runbook, msgs)
+		if err != nil {
+			return fmt.Errorf("updating runbook: %w", err)
+		}
 	}
 
 	tx, err := w.bot.DB.Begin(ctx)
@@ -65,13 +68,15 @@ func (w *updateRunbookWorker) Work(ctx context.Context, job *river.Job[backgroun
 	}
 	defer tx.Rollback(ctx)
 
-	qtx := schema.New(tx)
-	if _, err := qtx.CreateRunbook(ctx, dto.RunbookAttrs{
-		ServiceName: msg.IncidentAction.Service,
-		AlertName:   msg.IncidentAction.Alert,
-		Runbook:     updatedRunbook,
-	}); err != nil {
-		return fmt.Errorf("creating runbook: %w", err)
+	if updatedRunbook != "" {
+		qtx := schema.New(tx)
+		if _, err := qtx.CreateRunbook(ctx, dto.RunbookAttrs{
+			ServiceName: job.Args.Service,
+			AlertName:   job.Args.Alert,
+			Runbook:     updatedRunbook,
+		}); err != nil {
+			return fmt.Errorf("writing updated runbook: %w", err)
+		}
 	}
 
 	if _, err = river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job); err != nil {

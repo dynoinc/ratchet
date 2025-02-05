@@ -45,8 +45,8 @@ func (r PostRunbookWorkerArgs) Kind() string {
 }
 
 type UpdateRunbookWorkerArgs struct {
-	ChannelID string `json:"channel_id"`
-	SlackTS   string `json:"slack_ts"`
+	Service string `json:"service"`
+	Alert   string `json:"alert"`
 }
 
 func (u UpdateRunbookWorkerArgs) Kind() string {

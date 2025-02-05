@@ -77,3 +77,48 @@ func (q *Queries) GetThreadMessages(ctx context.Context, arg GetThreadMessagesPa
 	}
 	return items, nil
 }
+
+const getThreadMessagesByServiceAndAlert = `-- name: GetThreadMessagesByServiceAndAlert :many
+SELECT
+    t.channel_id,
+    t.parent_ts,
+    t.ts,
+    t.attrs
+FROM
+    thread_messages_v2 t
+    JOIN messages_v2 m ON m.channel_id = t.channel_id
+    AND m.ts = t.parent_ts
+WHERE
+    m.attrs -> 'incident_action' ->> 'service' = $1 :: text
+    AND m.attrs -> 'incident_action' ->> 'alert' = $2 :: text
+`
+
+type GetThreadMessagesByServiceAndAlertParams struct {
+	Service string
+	Alert   string
+}
+
+func (q *Queries) GetThreadMessagesByServiceAndAlert(ctx context.Context, arg GetThreadMessagesByServiceAndAlertParams) ([]ThreadMessagesV2, error) {
+	rows, err := q.db.Query(ctx, getThreadMessagesByServiceAndAlert, arg.Service, arg.Alert)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ThreadMessagesV2
+	for rows.Next() {
+		var i ThreadMessagesV2
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.ParentTs,
+			&i.Ts,
+			&i.Attrs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

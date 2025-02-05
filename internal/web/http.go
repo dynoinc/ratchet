@@ -80,11 +80,12 @@ func New(
 	// API
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
-	apiMux.HandleFunc("GET /channels/{channel_name}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
-	apiMux.HandleFunc("POST /channels/{channel_name}/runbook", handleJSON(handlers.createRunbook))
+	apiMux.HandleFunc("GET /alerts/{service}", handleJSON(handlers.listAlerts))
+	apiMux.HandleFunc("GET /alerts/{service}/{alert}", handleJSON(handlers.getRunbook))
+	apiMux.HandleFunc("POST /alerts/{service}/{alert}/refresh-runbook", handleJSON(handlers.refreshRunbook))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -110,14 +111,10 @@ func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
-	channelName := r.PathValue("channel_name")
-	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
-	if err != nil {
-		return nil, err
-	}
+	serviceName := r.PathValue("service")
 
 	priorityFilter := r.URL.Query().Get("priority")
-	alerts, err := schema.New(h.db).GetAlerts(r.Context(), channel.ID)
+	alerts, err := schema.New(h.db).GetAlerts(r.Context(), serviceName)
 	if err != nil {
 		return nil, err
 	}
@@ -135,36 +132,27 @@ func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
 
 	sort.Slice(alerts, func(i, j int) bool {
 		return cmp.Or(
-			alerts[i].Service < alerts[j].Service,
-			alerts[i].Alert < alerts[j].Alert,
 			alerts[i].Priority < alerts[j].Priority,
+			alerts[i].Alert < alerts[j].Alert,
 		)
 	})
 
-	type alertWithRunbook struct {
-		schema.GetAlertsRow
-		Runbook string `json:"runbook"`
+	return alerts, nil
+}
+
+func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+	alertName := r.PathValue("alert")
+
+	runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
+		ServiceName: serviceName,
+		AlertName:   alertName,
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	alertsWithRunbook := make([]alertWithRunbook, len(alerts))
-	for i, alert := range alerts {
-		runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
-			ServiceName: alert.Service,
-			AlertName:   alert.Alert,
-		})
-		if err != nil {
-			if !errors.Is(err, pgx.ErrNoRows) {
-				return nil, err
-			}
-		}
-
-		alertsWithRunbook[i] = alertWithRunbook{
-			GetAlertsRow: alert,
-			Runbook:      runbook.Attrs.Runbook,
-		}
-	}
-
-	return alertsWithRunbook, nil
+	return runbook, nil
 }
 
 func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
@@ -210,38 +198,16 @@ func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 	return nil, nil
 }
 
-func (h *httpHandlers) createRunbook(r *http.Request) (any, error) {
-	channelName := r.PathValue("channel_name")
-	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
-	if err != nil {
+func (h *httpHandlers) refreshRunbook(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+	alertName := r.PathValue("alert")
+
+	if _, err := h.riverClient.Insert(r.Context(), background.UpdateRunbookWorkerArgs{
+		Service: serviceName,
+		Alert:   alertName,
+	}, nil); err != nil {
 		return nil, err
 	}
 
-	serviceName := r.URL.Query().Get("service")
-	alertName := r.URL.Query().Get("alert")
-	if serviceName == "" || alertName == "" {
-		return nil, fmt.Errorf("service and alert are required")
-	}
-
-	msgs, err := schema.New(h.db).GetAllOpenIncidentMessages(r.Context(), schema.GetAllOpenIncidentMessagesParams{
-		ChannelID: channel.ID,
-		Service:   serviceName,
-		Alert:     alertName,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, msg := range msgs {
-		if _, err := h.riverClient.Insert(r.Context(), background.UpdateRunbookWorkerArgs{
-			ChannelID: channel.ID,
-			SlackTS:   msg.Ts,
-		}, &river.InsertOpts{
-			Queue: "update_runbook",
-		}); err != nil {
-			return nil, err
-		}
-	}
-
-	return msgs, nil
+	return nil, nil
 }

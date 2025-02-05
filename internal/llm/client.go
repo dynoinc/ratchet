@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -143,38 +142,92 @@ Message to classify:
 	return service, nil
 }
 
-func (c *Client) UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msg dto.MessageAttrs, threadMsgs []schema.ThreadMessagesV2) (string, error) {
+func (c *Client) CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error) {
 	if c == nil {
 		return "", nil
 	}
 
-	prompt := `You are a technical analyst creating or updating a runbook for an incident alert. Your task is to create a concise runbook based solely on the information provided in the messages.
+	prompt := `Create a concise runbook based on the provided incident messages from past triaging. Structure as follows:
 
-The runbook should have the following sections:
-1. Alert Description - Explain what this alert means and when it triggers, based on the messages
-2. Troubleshooting Steps - Document only the specific steps that were actually taken or suggested in the messages
-3. Historical Causes - Document only the causes derived from the messages
+**Overview**
+- Brief description of the alert and its trigger conditions
 
-Important:
-- Do not include generic advice or steps that weren't mentioned in the messages
-- Keep the content focused and specific to what was discussed
-- If certain information is not available in the messages, keep that section brief or note "No information available"
+**Root Causes**
+- Identified causes from past incidents
+- Contributing factors
 
-Format the response in Markdown with clear section headers.`
+**Resolution Steps**
+- Specific troubleshooting steps taken
+- Commands used and their outcomes
+- Successful resolution actions
 
-	allMsgs := make([]string, 0, len(threadMsgs)+1)
-	allMsgs = append(allMsgs, fmt.Sprintf("Initial incident message: %s", msg.Message.Text))
-	for _, msg := range threadMsgs {
-		allMsgs = append(allMsgs, fmt.Sprintf("Thread message: %s", msg.Attrs.Message.Text))
+RULES:
+- Format in Slack-friendly Markdown.
+- Include only information explicitly mentioned in the messages.
+- Omit sections if no relevant information is available.
+- Keep the content focused and specific to what was discussed.
+- Do not include generic advice or steps that weren't mentioned in the messages.
+`
+
+	content := "Messages:\n"
+	for _, msg := range msgs {
+		content += fmt.Sprintf("%s\n", msg.Attrs.Message.Text)
 	}
 
-	allMsgsStr := strings.Join(allMsgs, "\n")
+	params := openai.ChatCompletionNewParams{
+		Model: openai.F(openai.ChatModel(c.model)),
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
+				Content: openai.F(any(prompt)),
+			},
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
+				Content: openai.F(any(content)),
+			},
+		}),
+		Temperature: openai.F(0.7),
+	}
 
-	var content string
-	if runbook.Attrs.Runbook != "" {
-		content = fmt.Sprintf("Existing runbook:\n%s\n\nNew messages:\n%s", runbook.Attrs.Runbook, allMsgsStr)
-	} else {
-		content = fmt.Sprintf("Create new runbook from messages:\n%s", allMsgsStr)
+	resp, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return "", fmt.Errorf("creating runbook: %w", err)
+	}
+
+	slog.DebugContext(ctx, "created runbook", "request", params, "response", resp.Choices[0].Message.Content)
+	return resp.Choices[0].Message.Content, nil
+}
+
+func (c *Client) UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	prompt := `You are updating an existing runbook for an incident alert. Review the existing runbook and new messages to make incremental updates.
+
+**Overview**
+- Brief description of the alert and its trigger conditions
+
+**Root Causes** 
+- Identified causes from past incidents
+- Contributing factors
+
+**Resolution Steps**
+- Specific troubleshooting steps taken
+- Commands used and their outcomes
+- Successful resolution actions
+
+RULES:
+- Format in Slack-friendly Markdown
+- Only add new information from the messages
+- Keep existing valid information
+- Remove outdated/incorrect information
+- Be concise and specific
+- Only include information explicitly mentioned`
+
+	content := fmt.Sprintf("Current runbook:\n%s\n\nNew messages:\n", runbook.Attrs.Runbook)
+	for _, msg := range msgs {
+		content += fmt.Sprintf("%s\n", msg.Attrs.Message.Text)
 	}
 
 	params := openai.ChatCompletionNewParams{
@@ -198,6 +251,5 @@ Format the response in Markdown with clear section headers.`
 	}
 
 	slog.DebugContext(ctx, "updated runbook", "request", params, "response", resp.Choices[0].Message.Content)
-
 	return resp.Choices[0].Message.Content, nil
 }

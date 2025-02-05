@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -99,33 +98,13 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		return fmt.Errorf("updating message %s (ts=%s): %w", params.ChannelID, params.Ts, err)
 	}
 
-	if params.Attrs.IncidentAction.Action == dto.ActionOpenIncident {
+	if params.Attrs.IncidentAction.Action == dto.ActionOpenIncident && !job.Args.IsBackfill {
 		riverclient := river.ClientFromContext[pgx.Tx](ctx)
-
-		if !job.Args.IsBackfill {
-			// Only post runbook for new messages.
-			if _, err := riverclient.InsertTx(ctx, tx, background.PostRunbookWorkerArgs{
-				ChannelID: params.ChannelID,
-				SlackTS:   params.Ts,
-			}, nil); err != nil {
-				return fmt.Errorf("scheduling runbook worker: %w", err)
-			}
-		}
-
-		// schedule a job to update runbook 1 day after the incident is opened
-		ts, err := internal.TsToTime(params.Ts)
-		if err != nil {
-			return fmt.Errorf("converting slack ts (%s) to time: %w", params.Ts, err)
-		}
-
-		if _, err := riverclient.InsertTx(ctx, tx, background.UpdateRunbookWorkerArgs{
+		// Only post runbook for new messages.
+		if _, err := riverclient.InsertTx(ctx, tx, background.PostRunbookWorkerArgs{
 			ChannelID: params.ChannelID,
 			SlackTS:   params.Ts,
-		}, &river.InsertOpts{
-			Queue:       "update_runbook",
-			ScheduledAt: ts.Add(24 * time.Hour),
-			Priority:    4, // update runbook as late as possible
-		}); err != nil {
+		}, nil); err != nil {
 			return fmt.Errorf("scheduling runbook worker: %w", err)
 		}
 	}
