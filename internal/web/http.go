@@ -77,15 +77,19 @@ func New(
 		return nil, fmt.Errorf("starting riverui server: %w", err)
 	}
 
-	// API
 	apiMux := http.NewServeMux()
+
+	// Channels
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
-	apiMux.HandleFunc("GET /alerts/{service}", handleJSON(handlers.listAlerts))
-	apiMux.HandleFunc("GET /alerts/{service}/{alert}", handleJSON(handlers.getRunbook))
-	apiMux.HandleFunc("POST /alerts/{service}/{alert}/refresh-runbook", handleJSON(handlers.refreshRunbook))
+
+	// Services
+	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
+	apiMux.HandleFunc("GET /services/{service}/alerts", handleJSON(handlers.listAlerts))
+	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}", handleJSON(handlers.getRunbook))
+	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/refresh-runbook", handleJSON(handlers.refreshRunbook))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -108,51 +112,6 @@ func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
 	})
 
 	return channels, nil
-}
-
-func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
-	serviceName := r.PathValue("service")
-
-	priorityFilter := r.URL.Query().Get("priority")
-	alerts, err := schema.New(h.db).GetAlerts(r.Context(), serviceName)
-	if err != nil {
-		return nil, err
-	}
-
-	if priorityFilter != "" {
-		filteredAlerts := make([]schema.GetAlertsRow, 0, len(alerts))
-		for _, alert := range alerts {
-			if alert.Priority == priorityFilter {
-				filteredAlerts = append(filteredAlerts, alert)
-			}
-		}
-
-		alerts = filteredAlerts
-	}
-
-	sort.Slice(alerts, func(i, j int) bool {
-		return cmp.Or(
-			alerts[i].Priority < alerts[j].Priority,
-			alerts[i].Alert < alerts[j].Alert,
-		)
-	})
-
-	return alerts, nil
-}
-
-func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
-	serviceName := r.PathValue("service")
-	alertName := r.PathValue("alert")
-
-	runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
-		ServiceName: serviceName,
-		AlertName:   alertName,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return runbook, nil
 }
 
 func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
@@ -210,4 +169,58 @@ func (h *httpHandlers) refreshRunbook(r *http.Request) (any, error) {
 	}
 
 	return nil, nil
+}
+
+func (h *httpHandlers) listServices(r *http.Request) (any, error) {
+	services, err := schema.New(h.db).GetServices(r.Context())
+	if err != nil {
+		return nil, err
+	}
+
+	return services, nil
+}
+
+func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+
+	priorityFilter := r.URL.Query().Get("priority")
+	alerts, err := schema.New(h.db).GetAlerts(r.Context(), serviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	if priorityFilter != "" {
+		filteredAlerts := make([]schema.GetAlertsRow, 0, len(alerts))
+		for _, alert := range alerts {
+			if alert.Priority == priorityFilter {
+				filteredAlerts = append(filteredAlerts, alert)
+			}
+		}
+
+		alerts = filteredAlerts
+	}
+
+	sort.Slice(alerts, func(i, j int) bool {
+		return cmp.Or(
+			alerts[i].Priority < alerts[j].Priority,
+			alerts[i].Alert < alerts[j].Alert,
+		)
+	})
+
+	return alerts, nil
+}
+
+func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+	alertName := r.PathValue("alert")
+
+	runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
+		ServiceName: serviceName,
+		AlertName:   alertName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return runbook, nil
 }

@@ -45,20 +45,7 @@ func (c DatabaseConfig) URL() string {
 }
 
 func New(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
-	d, err := iofs.New(migrationFiles, "schema/migrations")
-	if err != nil {
-		return nil, fmt.Errorf("unable to load migrations: %w", err)
-	}
-
-	m, err := migrate.NewWithSourceInstance("iofs", d, dbURL)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create driver: %w", err)
-	}
-
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return nil, fmt.Errorf("unable to apply migrations: %w", err)
-	}
-
+	// River migrations
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to connect to database: %w", err)
@@ -72,6 +59,21 @@ func New(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 	_, err = rm.Migrate(ctx, rivermigrate.DirectionUp, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to apply river migrations: %w", err)
+	}
+
+	// Ratchet migrations
+	d, err := iofs.New(migrationFiles, "schema/migrations")
+	if err != nil {
+		return nil, fmt.Errorf("unable to load migrations: %w", err)
+	}
+
+	m, err := migrate.NewWithSourceInstance("iofs", d, dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create driver: %w", err)
+	}
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return nil, fmt.Errorf("unable to apply migrations: %w", err)
 	}
 
 	slog.Info("Migrations applied successfully!")

@@ -12,6 +12,9 @@ DROP TABLE IF EXISTS messages CASCADE;
 
 DROP TABLE IF EXISTS channels CASCADE;
 
+DELETE FROM
+    river_job;
+
 CREATE TABLE IF NOT EXISTS channels_v2 (
     id TEXT PRIMARY KEY,
     attrs JSONB DEFAULT '{}' :: JSONB
