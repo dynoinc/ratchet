@@ -135,17 +135,8 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 
 	for _, param := range params {
 		if err := qtx.AddThreadMessage(ctx, param); err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok {
-				if pgErr.Code == pgerrcode.ForeignKeyViolation {
-					if _, err := b.riverClient.InsertTx(ctx, tx, background.BackfillThreadWorkerArgs{
-						ChannelID: param.ChannelID,
-						SlackTS:   param.ParentTs,
-					}, nil); err != nil {
-						return fmt.Errorf("scheduling backfill thread worker: %w", err)
-					}
-
-					continue
-				}
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == pgerrcode.ForeignKeyViolation {
+				continue
 			}
 
 			return fmt.Errorf("adding thread message (ts=%s) to channel %s: %w", param.Ts, param.ChannelID, err)
