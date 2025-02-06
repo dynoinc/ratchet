@@ -58,6 +58,8 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		if err != nil {
 			return fmt.Errorf("updating runbook: %w", err)
 		}
+
+		runbookMessage += "\n\n"
 	}
 
 	// TODO: Use lexical+semantic search to get the most relevant updates
@@ -72,7 +74,11 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 			updatesMessage += fmt.Sprintf("- %s (%s)\n", update.Attrs.Message.Text, update.Attrs.Message.User)
 		}
 
-		runbookMessage = fmt.Sprintf("%s\n\n%s", runbookMessage, updatesMessage)
+		runbookMessage += updatesMessage
+	}
+
+	if runbookMessage == "" {
+		return nil
 	}
 
 	channelID := job.Args.ChannelID

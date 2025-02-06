@@ -63,6 +63,10 @@ func updateRunbook(
 		return "", fmt.Errorf("getting thread messages: %w", err)
 	}
 
+	if len(msgs) == 0 {
+		return "", nil
+	}
+
 	// get current runbook
 	runbook, err := qtx.GetRunbook(ctx, schema.GetRunbookParams{
 		ServiceName: serviceName,
