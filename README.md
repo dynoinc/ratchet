@@ -7,33 +7,33 @@ AI bot to help reduce operational toil
 ## Lessons learned
 
 * The idea to keep things simple by only using Postgres and Slack integration is working out.
-  * Though Slack API is pretty badly documented and not consistent.
-* Investing into building UI for visibility ended up wasting a lot of time. 
+  * Though Slack API is poorly documented and inconsistent.
+* Investing in building UI for visibility ended up wasting a lot of time. 
   * Even with AI tools, it is hard to get right for a backend engineer.
   * Even after you figure out HTML/CSS/JS, dealing with security concerns and deploying to production is a pain.
-  * JSON API on the other hand is great. Just works and can post process output with `jq` efficiently.
+  * JSON API on the other hand is great. Just works and can post-process output with `jq` efficiently.
   * River and its UI is great though.
 * For database schema, instead of using individual columns for each attribute, using `attrs` column as jsonb is great.
-  * SQLc support for custom types and automatically serialize/deserialize to jsonb is great.
-* Given the focus of the bot is on AI, could have saved time by - 
+  * SQLc support for custom types and automatic serialization/deserialization to jsonb is great.
+* Given the focus of the bot is on AI, could have saved time by:
   * Not focusing on non-AI features (like matching open/close incidents manually or building UI).
-  * By not aiming for perfect data collection, when AI is good with imperfect data.
-* On the AI front - 
-  * Ollama is great for local development. 
+  * Not aiming for perfect data collection, when AI is good with imperfect data.
+* On the AI front:
+  * Ollama is great for local development.
   * qwen2.5:7b model is fast and good enough for local development.
-  * Cursor IDE is great for writing code. 
+  * Cursor IDE is great for writing code.
   * Using paid models like Claude Sonnet to improve your own prompt does wonders.
-  * Ging LLM as much context as possible (like all historical messages instead of only new ones), helps.
+  * Giving LLM as much context as possible (like all historical messages instead of only new ones) helps.
 
 ## Things left to do for v0.1
 
 - [ ] Purge old messages from DB to keep DB size in check.
 - [ ] Finish the feedback loop of persisting user reactions to bot responses.
-- [ ] Store detailed info about LLM calls to be able to fine tune the model and create evals automatically.
+- [ ] Store detailed info about LLM calls to be able to fine-tune the model and create evals automatically.
 - [ ] Do lexical/semantic search over all messages to find recent activity relevant to incidents.
 - [ ] Add natural language based command support.
-- [ ] In channel report, point alerts that are never acted on.
-- [ ] In channel report, point alerts that are open for too long. 
+- [ ] In channel report, point out alerts that are never acted on.
+- [ ] In channel report, point out alerts that are open for too long.
 - [ ] In channel report, fix user/bot name formatting.
 
 ## Contributing
