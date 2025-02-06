@@ -11,14 +11,14 @@ import (
 	"github.com/slack-go/slack/socketmode"
 )
 
-type integration struct {
+type Integration struct {
 	BotUserID string
 	client    *socketmode.Client
 
 	bot *internal.Bot
 }
 
-func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*integration, error) {
+func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*Integration, error) {
 	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
 
 	authTest, err := api.AuthTestContext(ctx)
@@ -28,14 +28,14 @@ func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*in
 
 	socketClient := socketmode.New(api)
 
-	return &integration{
+	return &Integration{
 		BotUserID: authTest.UserID,
 		client:    socketClient,
 		bot:       bot,
 	}, nil
 }
 
-func (b *integration) Run(ctx context.Context) error {
+func (b *Integration) Run(ctx context.Context) error {
 	go func() {
 		for {
 			select {
@@ -62,7 +62,7 @@ func (b *integration) Run(ctx context.Context) error {
 	return b.client.RunContext(ctx)
 }
 
-func (b *integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) error {
+func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) error {
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
@@ -81,6 +81,32 @@ func (b *integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	return nil
 }
 
-func (b *integration) Client() *slack.Client {
+func (b *Integration) Client() *slack.Client {
 	return &b.client.Client
+}
+
+func (b *Integration) GetBotChannels() ([]slack.Channel, error) {
+	params := &slack.GetConversationsForUserParameters{
+		UserID:          b.BotUserID,
+		Types:           []string{"public_channel"},
+		ExcludeArchived: true,
+	}
+
+	channels := []slack.Channel{}
+	for {
+		response, nextCursor, err := b.client.GetConversationsForUserContext(context.Background(), params)
+		if err != nil {
+			return nil, err
+		}
+
+		channels = append(channels, response...)
+
+		if nextCursor == "" {
+			break
+		}
+
+		params.Cursor = nextCursor
+	}
+
+	return channels, nil
 }

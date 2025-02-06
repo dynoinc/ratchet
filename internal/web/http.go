@@ -18,13 +18,9 @@ import (
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
-
-type httpHandlers struct {
-	db          *pgxpool.Pool
-	riverClient *river.Client[pgx.Tx]
-}
 
 func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -52,14 +48,22 @@ func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 	}
 }
 
+type httpHandlers struct {
+	db               *pgxpool.Pool
+	riverClient      *river.Client[pgx.Tx]
+	slackIntegration *slack_integration.Integration
+}
+
 func New(
 	ctx context.Context,
 	db *pgxpool.Pool,
 	riverClient *river.Client[pgx.Tx],
+	slackIntegration *slack_integration.Integration,
 ) (http.Handler, error) {
 	handlers := &httpHandlers{
-		db:          db,
-		riverClient: riverClient,
+		db:               db,
+		riverClient:      riverClient,
+		slackIntegration: slackIntegration,
 	}
 
 	// River UI
@@ -128,13 +132,32 @@ func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
 func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 	channelName := r.PathValue("channel_name")
 	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
-	if err != nil {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	}
+
+	channelID := channel.ID
+	if errors.Is(err, pgx.ErrNoRows) {
+		channels, err := h.slackIntegration.GetBotChannels()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, channel := range channels {
+			if channel.Name == channelName {
+				channelID = channel.ID
+				break
+			}
+		}
+	}
+
+	if channelID == "" {
+		return nil, fmt.Errorf("channel not found")
 	}
 
 	// submit job to river to onboard channel
 	if _, err := h.riverClient.Insert(r.Context(), background.ChannelOnboardWorkerArgs{
-		ChannelID: channel.ID,
+		ChannelID: channelID,
 	}, nil); err != nil {
 		return nil, err
 	}
