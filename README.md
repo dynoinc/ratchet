@@ -30,7 +30,7 @@ AI bot to help reduce operational toil
 - [ ] Purge old messages from DB to keep DB size in check.
 - [ ] Finish the feedback loop of persisting user reactions to bot responses.
 - [ ] Store detailed info about LLM calls to be able to fine tune the model and create evals automatically.
-- [ ] Post recent messages with runbook that are semantically most relevant to the incident.
+- [ ] Do lexical/semantic search over all messages to find recent activity relevant to incidents.
 - [ ] In channel report, point alerts that are never acted on.
 - [ ] In channel report, point alerts that are open for too long. 
 - [ ] In channel report, fix user/bot name formatting.
