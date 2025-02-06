@@ -23,6 +23,18 @@ AI bot to help reduce operational toil
   * qwen2.5:7b model is fast and good enough for local development.
   * Cursor IDE is great for writing code. 
   * Using paid models like Claude Sonnet to improve your own prompt does wonders.
+  * Ging LLM as much context as possible (like all historical messages instead of only new ones), helps.
+
+## Things left to do for v0.1
+
+[] Purge old messages from DB to keep DB size in check.
+[] Finish the feedback loop of persisting user reactions to bot responses.
+[] Store detailed info about LLM calls to be able to fine tune the model and create evals automatically.
+[] Post recent messages with runbook that are semantically most relevant to the incident.
+* Improve channel report -
+  [] Point alerts that are never acted on.
+  [] Point alerts that are open for too long. 
+  [] Fix user/bot name formatting.
 
 ## Contributing
 
