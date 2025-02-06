@@ -27,14 +27,13 @@ AI bot to help reduce operational toil
 
 ## Things left to do for v0.1
 
-[] Purge old messages from DB to keep DB size in check.
-[] Finish the feedback loop of persisting user reactions to bot responses.
-[] Store detailed info about LLM calls to be able to fine tune the model and create evals automatically.
-[] Post recent messages with runbook that are semantically most relevant to the incident.
-* Improve channel report -
-  [] Point alerts that are never acted on.
-  [] Point alerts that are open for too long. 
-  [] Fix user/bot name formatting.
+- [ ] Purge old messages from DB to keep DB size in check.
+- [ ] Finish the feedback loop of persisting user reactions to bot responses.
+- [ ] Store detailed info about LLM calls to be able to fine tune the model and create evals automatically.
+- [ ] Post recent messages with runbook that are semantically most relevant to the incident.
+- [ ] In channel report, point alerts that are never acted on.
+- [ ] In channel report, point alerts that are open for too long. 
+- [ ] In channel report, fix user/bot name formatting.
 
 ## Contributing
 
