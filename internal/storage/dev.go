@@ -32,13 +32,13 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	// Set up Docker client
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 
 	// Pull PostgreSQL image if not available
-	_, err = cli.ImagePull(ctx, postgresImage, image.PullOptions{All: true})
+	_, err = cli.ImagePull(ctx, postgresImage, image.PullOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to pull Docker image: %w", err)
+		return fmt.Errorf("pulling Docker image: %w", err)
 	}
 
 	// Define container configurations
@@ -78,12 +78,12 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 	if err != nil {
 		if !errdefs.IsConflict(err) {
-			return fmt.Errorf("failed to create container: %w", err)
+			return fmt.Errorf("creating container: %w", err)
 		}
 
 		resp, err := cli.ContainerInspect(ctx, containerName)
 		if err != nil {
-			return fmt.Errorf("failed to inspect container: %w", err)
+			return fmt.Errorf("inspecting container: %w", err)
 		}
 
 		containerID = resp.ID
@@ -92,12 +92,12 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	}
 
 	if err := cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
-		return fmt.Errorf("failed to start container: %w", err)
+		return fmt.Errorf("starting container: %w", err)
 	}
 
 	// Check readiness with exponential backoff
 	if err := checkPostgresReady(ctx, c, 30); err != nil {
-		return fmt.Errorf("PostgreSQL readiness check failed: %w", err)
+		return fmt.Errorf("PostgreSQL readiness check: %w", err)
 	}
 
 	// Return container ID and stop function
@@ -108,7 +108,7 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 func checkPostgresReady(ctx context.Context, c DatabaseConfig, attempts int) error {
 	pool, err := pgxpool.New(ctx, c.URL())
 	if err != nil {
-		return fmt.Errorf("failed to create connection pool: %w", err)
+		return fmt.Errorf("creating connection pool: %w", err)
 	}
 	defer pool.Close()
 
