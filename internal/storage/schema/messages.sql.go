@@ -9,6 +9,7 @@ import (
 	"context"
 
 	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addMessage = `-- name: AddMessage :exec
@@ -26,6 +27,28 @@ type AddMessageParams struct {
 
 func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 	_, err := q.db.Exec(ctx, addMessage, arg.ChannelID, arg.Ts, arg.Attrs)
+	return err
+}
+
+const deleteOldMessages = `-- name: DeleteOldMessages :exec
+DELETE FROM
+    messages_v2
+WHERE
+    channel_id = $1
+    AND CAST(ts AS numeric) < EXTRACT(
+        epoch
+        FROM
+            NOW() - $2 :: interval
+    )
+`
+
+type DeleteOldMessagesParams struct {
+	ChannelID string
+	OlderThan pgtype.Interval
+}
+
+func (q *Queries) DeleteOldMessages(ctx context.Context, arg DeleteOldMessagesParams) error {
+	_, err := q.db.Exec(ctx, deleteOldMessages, arg.ChannelID, arg.OlderThan)
 	return err
 }
 

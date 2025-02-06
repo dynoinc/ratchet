@@ -113,3 +113,14 @@ ORDER BY
     CAST(ts AS numeric) DESC
 LIMIT
     5;
+
+-- name: DeleteOldMessages :exec
+DELETE FROM
+    messages_v2
+WHERE
+    channel_id = @channel_id
+    AND CAST(ts AS numeric) < EXTRACT(
+        epoch
+        FROM
+            NOW() - @older_than :: interval
+    );

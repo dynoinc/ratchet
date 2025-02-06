@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack/slackevents"
@@ -81,6 +82,14 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 		}, nil); err != nil {
 			return fmt.Errorf("scheduling channel onboarding for channel %s: %w", channelID, err)
 		}
+	}
+
+	// Delete old messages
+	if err := qtx.DeleteOldMessages(ctx, schema.DeleteOldMessagesParams{
+		ChannelID: channelID,
+		OlderThan: pgtype.Interval{Days: 180},
+	}); err != nil {
+		return fmt.Errorf("deleting old messages for channel %s: %w", channelID, err)
 	}
 
 	var jobs []river.InsertManyParams

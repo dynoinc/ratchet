@@ -27,7 +27,6 @@ AI bot to help reduce operational toil
 
 ## Things left to do for v0.1
 
-- [ ] Purge old messages from DB to keep DB size in check.
 - [ ] Finish the feedback loop of persisting user reactions to bot responses.
 - [ ] Store detailed info about LLM calls to be able to fine-tune the model and create evals automatically.
 - [ ] Do lexical/semantic search over all messages to find recent activity relevant to incidents.
