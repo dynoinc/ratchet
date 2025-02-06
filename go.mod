@@ -6,6 +6,7 @@ require (
 	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/docker/docker v27.5.1+incompatible
 	github.com/docker/go-connections v0.5.0
+	github.com/getsentry/sentry-go v0.31.1
 	github.com/golang-migrate/migrate/v4 v4.18.2
 	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438
 	github.com/jackc/pgx/v5 v5.7.2
@@ -43,7 +44,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.7 // indirect
-	github.com/getsentry/sentry-go v0.31.1 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
