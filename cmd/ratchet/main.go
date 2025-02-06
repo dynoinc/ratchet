@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/carlmjohnson/versioninfo"
+	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lmittmann/tint"
@@ -48,6 +49,9 @@ type config struct {
 
 	// OpenAI configuration
 	OpenAI llm.Config `envconfig:"OPENAI"`
+
+	// Sentry configuration
+	SentryDSN string `envconfig:"SENTRY_DSN"`
 
 	// Slack configuration
 	SlackBotToken   string `split_words:"true" required:"true"`
@@ -108,29 +112,41 @@ func main() {
 	// Metrics setup
 	promExporter, err := prometheus.New()
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up Prometheus exporter", "error", err)
+		slog.ErrorContext(ctx, "setting up Prometheus exporter", "error", err)
 		os.Exit(1)
 	}
 	meterProvider := metric.NewMeterProvider(metric.WithReader(promExporter))
 	otel.SetMeterProvider(meterProvider)
 
+	// Sentry setup
+	if c.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn: c.SentryDSN,
+		}); err != nil {
+			slog.ErrorContext(ctx, "setting up Sentry", "error", err)
+			os.Exit(1)
+		}
+
+		defer sentry.Flush(2 * time.Second)
+	}
+
 	// Database setup
 	if c.DevMode {
 		if err := storage.StartPostgresContainer(ctx, c.Database); err != nil {
-			slog.ErrorContext(ctx, "error setting up dev database", "error", err)
+			slog.ErrorContext(ctx, "setting up dev database", "error", err)
 			os.Exit(1)
 		}
 	}
 	db, err := storage.New(ctx, c.Database.URL())
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up database", "error", err)
+		slog.ErrorContext(ctx, "setting up database", "error", err)
 		os.Exit(1)
 	}
 
 	// LLM setup
 	llmClient, err := llm.New(ctx, c.OpenAI)
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up LLM client", "error", err)
+		slog.ErrorContext(ctx, "setting up LLM client", "error", err)
 		os.Exit(1)
 	}
 
@@ -140,14 +156,14 @@ func main() {
 	// Slack integration setup
 	slackIntegration, err := slack_integration.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up Slack", "error", err)
+		slog.ErrorContext(ctx, "setting up Slack integration", "error", err)
 		os.Exit(1)
 	}
 
 	// Classifier setup
 	classifier, err := classifier_worker.New(c.Classifier, bot, llmClient)
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up classifier", "error", err)
+		slog.ErrorContext(ctx, "setting up classifier", "error", err)
 		os.Exit(1)
 	}
 
@@ -174,19 +190,19 @@ func main() {
 	river.AddWorker(workers, backfillThreadWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up background worker", "error", err)
+		slog.ErrorContext(ctx, "setting up background worker", "error", err)
 		os.Exit(1)
 	}
 
 	if err := bot.Init(riverClient); err != nil {
-		slog.ErrorContext(ctx, "error initializing bot", "error", err)
+		slog.ErrorContext(ctx, "initializing bot", "error", err)
 		os.Exit(1)
 	}
 
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient, slackIntegration)
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up HTTP server", "error", err)
+		slog.ErrorContext(ctx, "setting up HTTP server", "error", err)
 		os.Exit(1)
 	}
 
@@ -224,7 +240,7 @@ func main() {
 			cancel()
 
 			if err := server.Shutdown(ctx); err != nil {
-				return fmt.Errorf("error shutting down http server: %w", err)
+				return fmt.Errorf("shutting down http server: %w", err)
 			}
 		}
 
@@ -232,7 +248,7 @@ func main() {
 	})
 
 	if err := wg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-		slog.ErrorContext(ctx, "error running server", "error", err)
+		slog.ErrorContext(ctx, "running server", "error", err)
 		os.Exit(1)
 	}
 }
