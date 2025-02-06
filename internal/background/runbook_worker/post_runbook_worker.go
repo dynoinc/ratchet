@@ -7,6 +7,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack"
@@ -17,13 +18,15 @@ type postRunbookWorker struct {
 
 	bot          *internal.Bot
 	slackClient  *slack.Client
+	llmClient    *llm.Client
 	devChannelID string
 }
 
-func NewPostRunbookWorker(bot *internal.Bot, slackClient *slack.Client, devChannelID string) *postRunbookWorker {
+func NewPostRunbookWorker(bot *internal.Bot, slackClient *slack.Client, llmClient *llm.Client, devChannelID string) *postRunbookWorker {
 	return &postRunbookWorker{
 		bot:          bot,
 		slackClient:  slackClient,
+		llmClient:    llmClient,
 		devChannelID: devChannelID,
 	}
 }
@@ -49,26 +52,28 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		return fmt.Errorf("getting runbook: %w", err)
 	}
 
-	// get latest 5 notifications for the service by bots
+	runbookMessage := runbook.Attrs.Runbook
+	if runbookMessage == "" {
+		runbookMessage, err = updateRunbook(ctx, serviceName, alertName, false, schema.New(w.bot.DB), w.llmClient)
+		if err != nil {
+			return fmt.Errorf("updating runbook: %w", err)
+		}
+	}
+
+	// TODO: Use lexical+semantic search to get the most relevant updates
 	updates, err := schema.New(w.bot.DB).GetLatestServiceUpdates(ctx, serviceName)
 	if err != nil {
 		return fmt.Errorf("getting latest service updates: %w", err)
 	}
 
-	// post a message to the thread with the runbook and updates formatted nicely.
-	updatesMessage := "No updates found"
 	if len(updates) > 0 {
-		updatesMessage = "Latest bot updates:\n"
+		updatesMessage := "Recent activity:\n"
 		for _, update := range updates {
 			updatesMessage += fmt.Sprintf("- %s (%s)\n", update.Attrs.Message.Text, update.Attrs.Message.User)
 		}
-	}
 
-	runbookMessage := "No runbook found for this alert"
-	if runbook.Attrs.Runbook != "" {
-		runbookMessage = fmt.Sprintf("Runbook: %s", runbook.Attrs.Runbook)
+		runbookMessage = fmt.Sprintf("%s\n\n%s", runbookMessage, updatesMessage)
 	}
-	runbookMessage = fmt.Sprintf("%s\n\n%s", runbookMessage, updatesMessage)
 
 	channelID := job.Args.ChannelID
 	msgOptions := []slack.MsgOption{slack.MsgOptionText(runbookMessage, false)}
@@ -85,4 +90,20 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 	}
 
 	return nil
+}
+
+func getRunbook(ctx context.Context, bot *internal.Bot, serviceName, alertName string) (string, error) {
+	runbook, err := schema.New(bot.DB).GetRunbook(ctx, schema.GetRunbookParams{
+		ServiceName: serviceName,
+		AlertName:   alertName,
+	})
+	if err != nil {
+		return "", fmt.Errorf("getting runbook: %w", err)
+	}
+
+	if runbook.Attrs.Runbook == "" {
+		return "No runbook found for this alert", nil
+	}
+
+	return runbook.Attrs.Runbook, nil
 }

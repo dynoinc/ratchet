@@ -89,6 +89,7 @@ func New(
 	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
 	apiMux.HandleFunc("GET /services/{service}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}", handleJSON(handlers.getRunbook))
+	apiMux.HandleFunc("POST /services/{service}/refresh-runbooks", handleJSON(handlers.refreshRunbooks))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/refresh-runbook", handleJSON(handlers.refreshRunbook))
 
 	mux := http.NewServeMux()
@@ -161,14 +162,53 @@ func (h *httpHandlers) refreshRunbook(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
 
+	forceRecreate := r.URL.Query().Get("force_recreate") == "1"
 	if _, err := h.riverClient.Insert(r.Context(), background.UpdateRunbookWorkerArgs{
-		Service: serviceName,
-		Alert:   alertName,
+		Service:       serviceName,
+		Alert:         alertName,
+		ForceRecreate: forceRecreate,
 	}, nil); err != nil {
 		return nil, err
 	}
 
 	return nil, nil
+}
+
+func (h *httpHandlers) refreshRunbooks(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+	forceRecreate := r.URL.Query().Get("force_recreate") == "1"
+
+	alerts, err := schema.New(h.db).GetAlerts(r.Context(), serviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(alerts) == 0 {
+		return nil, nil
+	}
+
+	var params []river.InsertManyParams
+	for _, alert := range alerts {
+		params = append(params, river.InsertManyParams{
+			Args: background.UpdateRunbookWorkerArgs{
+				Service:       alert.Service,
+				Alert:         alert.Alert,
+				ForceRecreate: forceRecreate,
+			},
+		})
+	}
+
+	tx, err := h.db.Begin(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(r.Context())
+
+	if _, err := h.riverClient.InsertManyTx(r.Context(), tx, params); err != nil {
+		return nil, err
+	}
+
+	return nil, tx.Commit(r.Context())
 }
 
 func (h *httpHandlers) listServices(r *http.Request) (any, error) {

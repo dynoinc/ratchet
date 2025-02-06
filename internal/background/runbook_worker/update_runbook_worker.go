@@ -30,53 +30,15 @@ func NewUpdateRunbookWorker(bot *internal.Bot, llmClient *llm.Client) *updateRun
 }
 
 func (w *updateRunbookWorker) Work(ctx context.Context, job *river.Job[background.UpdateRunbookWorkerArgs]) error {
-	msgs, err := schema.New(w.bot.DB).GetThreadMessagesByServiceAndAlert(ctx, schema.GetThreadMessagesByServiceAndAlertParams{
-		Service: job.Args.Service,
-		Alert:   job.Args.Alert,
-	})
-	if err != nil {
-		return fmt.Errorf("getting thread messages: %w", err)
-	}
-
-	// get current runbook
-	runbook, err := schema.New(w.bot.DB).GetRunbook(ctx, schema.GetRunbookParams{
-		ServiceName: job.Args.Service,
-		AlertName:   job.Args.Alert,
-	})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("getting runbook: %w", err)
-	}
-
-	var updatedRunbook string
-	if runbook == (schema.IncidentRunbook{}) {
-		// create new runbook from scratch
-		updatedRunbook, err = w.llmClient.CreateRunbook(ctx, job.Args.Service, job.Args.Alert, msgs)
-		if err != nil {
-			return fmt.Errorf("creating runbook: %w", err)
-		}
-	} else {
-		// update existing runbook with new messages
-		updatedRunbook, err = w.llmClient.UpdateRunbook(ctx, runbook, msgs)
-		if err != nil {
-			return fmt.Errorf("updating runbook: %w", err)
-		}
-	}
-
 	tx, err := w.bot.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	if updatedRunbook != "" {
-		qtx := schema.New(tx)
-		if _, err := qtx.CreateRunbook(ctx, dto.RunbookAttrs{
-			ServiceName: job.Args.Service,
-			AlertName:   job.Args.Alert,
-			Runbook:     updatedRunbook,
-		}); err != nil {
-			return fmt.Errorf("writing updated runbook: %w", err)
-		}
+	qtx := schema.New(w.bot.DB).WithTx(tx)
+	if _, err = updateRunbook(ctx, job.Args.Service, job.Args.Alert, job.Args.ForceRecreate, qtx, w.llmClient); err != nil {
+		return fmt.Errorf("updating runbook: %w", err)
 	}
 
 	if _, err = river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job); err != nil {
@@ -84,4 +46,56 @@ func (w *updateRunbookWorker) Work(ctx context.Context, job *river.Job[backgroun
 	}
 
 	return tx.Commit(ctx)
+}
+
+func updateRunbook(
+	ctx context.Context,
+	serviceName, alertName string,
+	forceRecreate bool,
+	qtx *schema.Queries,
+	llmClient *llm.Client,
+) (string, error) {
+	msgs, err := qtx.GetThreadMessagesByServiceAndAlert(ctx, schema.GetThreadMessagesByServiceAndAlertParams{
+		Service: serviceName,
+		Alert:   alertName,
+	})
+	if err != nil {
+		return "", fmt.Errorf("getting thread messages: %w", err)
+	}
+
+	// get current runbook
+	runbook, err := qtx.GetRunbook(ctx, schema.GetRunbookParams{
+		ServiceName: serviceName,
+		AlertName:   alertName,
+	})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("getting runbook: %w", err)
+	}
+
+	var updatedRunbook string
+	if runbook == (schema.IncidentRunbook{}) || forceRecreate {
+		// create new runbook from scratch
+		updatedRunbook, err = llmClient.CreateRunbook(ctx, serviceName, alertName, msgs)
+		if err != nil {
+			return "", fmt.Errorf("creating runbook: %w", err)
+		}
+	} else {
+		// update existing runbook with new messages
+		updatedRunbook, err = llmClient.UpdateRunbook(ctx, runbook, msgs)
+		if err != nil {
+			return "", fmt.Errorf("updating runbook: %w", err)
+		}
+	}
+
+	if updatedRunbook != "" {
+		if _, err := qtx.CreateRunbook(ctx, dto.RunbookAttrs{
+			ServiceName: serviceName,
+			AlertName:   alertName,
+			Runbook:     updatedRunbook,
+		}); err != nil {
+			return "", fmt.Errorf("writing updated runbook: %w", err)
+		}
+	}
+
+	return updatedRunbook, nil
 }

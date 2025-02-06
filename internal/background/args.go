@@ -45,8 +45,9 @@ func (r PostRunbookWorkerArgs) Kind() string {
 }
 
 type UpdateRunbookWorkerArgs struct {
-	Service string `json:"service"`
-	Alert   string `json:"alert"`
+	Service       string `json:"service"`
+	Alert         string `json:"alert"`
+	ForceRecreate bool   `json:"force_recreate"`
 }
 
 func (u UpdateRunbookWorkerArgs) Kind() string {
