@@ -153,17 +153,18 @@ func (c *Client) CreateRunbook(ctx context.Context, service string, alert string
 - Brief description of the alert and its trigger conditions
 
 **Root Causes**
-- Identified causes from past incidents
-- Contributing factors
+- Identified causes from past incidents (cite specific sources/messages)
+- Contributing factors (with references to supporting messages)
 
 **Resolution Steps**
-- Specific troubleshooting steps taken
-- Commands used and their outcomes
-- Successful resolution actions
+- Specific troubleshooting steps taken (include references to the original messages)
+- Commands used and their outcomes (cite sources when derived from past cases)
+- Successful resolution actions (indicate where similar steps have worked before)
 
 RULES:
 - Format in Slack-friendly Markdown.
 - Include only information explicitly mentioned in the messages.
+- Cite sources when referencing historical incidents or previous actions.
 - Omit sections if no relevant information is available.
 - Keep the content focused and specific to what was discussed.
 - Do not include generic advice or steps that weren't mentioned in the messages.
