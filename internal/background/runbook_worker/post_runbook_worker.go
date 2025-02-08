@@ -9,6 +9,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/pgvector/pgvector-go"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack"
 )
@@ -41,8 +42,8 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		return fmt.Errorf("getting message: %w", err)
 	}
 
-	serviceName := msg.IncidentAction.Service
-	alertName := msg.IncidentAction.Alert
+	serviceName := msg.Attrs.IncidentAction.Service
+	alertName := msg.Attrs.IncidentAction.Alert
 
 	runbook, err := schema.New(w.bot.DB).GetRunbook(ctx, schema.GetRunbookParams{
 		ServiceName: serviceName,
@@ -62,8 +63,17 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		runbookMessage += "\n\n"
 	}
 
-	// TODO: Use lexical+semantic search to get the most relevant updates
-	updates, err := schema.New(w.bot.DB).GetLatestServiceUpdates(ctx, serviceName)
+	zeroVector := [1536]float32{}
+	queryEmbedding := pgvector.NewVector(zeroVector[:])
+	if msg.Embedding != nil {
+		queryEmbedding = *msg.Embedding
+	}
+
+	updates, err := schema.New(w.bot.DB).GetLatestServiceUpdates(ctx, schema.GetLatestServiceUpdatesParams{
+		QueryEmbedding: &queryEmbedding,
+		ServiceName:    serviceName,
+		QueryText:      msg.Attrs.Message.Text,
+	})
 	if err != nil {
 		return fmt.Errorf("getting latest service updates: %w", err)
 	}

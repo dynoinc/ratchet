@@ -15,6 +15,7 @@ require (
 	github.com/lmittmann/tint v1.0.7
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/openai/openai-go v0.1.0-alpha.51
+	github.com/pgvector/pgvector-go v0.2.3
 	github.com/prometheus/client_golang v1.20.5
 	github.com/riverqueue/river v0.16.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.16.0

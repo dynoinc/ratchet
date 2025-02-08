@@ -13,14 +13,15 @@ import (
 )
 
 type Config struct {
-	APIKey string `envconfig:"API_KEY"`
-	URL    string `default:"http://localhost:11434/v1/"`
-	Model  string `default:"qwen2.5:7b"`
+	APIKey         string `envconfig:"API_KEY"`
+	URL            string `default:"http://localhost:11434/v1/"`
+	Model          string `default:"qwen2.5:7b"`
+	EmbeddingModel string `default:"qwen2.5:7b"`
 }
 
 type Client struct {
 	client *openai.Client
-	model  string
+	cfg    Config
 }
 
 func New(ctx context.Context, cfg Config) (*Client, error) {
@@ -29,14 +30,18 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 	}
 
 	client := openai.NewClient(option.WithBaseURL(cfg.URL), option.WithAPIKey(cfg.APIKey))
-	model, err := client.Models.Get(ctx, cfg.Model)
+	_, err := client.Models.Get(ctx, cfg.Model)
 	if err != nil {
 		return nil, fmt.Errorf("getting model: %w", err)
+	}
+	_, err = client.Models.Get(ctx, cfg.EmbeddingModel)
+	if err != nil {
+		return nil, fmt.Errorf("getting embedding model: %w", err)
 	}
 
 	return &Client{
 		client: client,
-		model:  model.ID,
+		cfg:    cfg,
 	}, nil
 }
 
@@ -67,7 +72,7 @@ func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	`
 
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.model)),
+		Model: openai.F(openai.ChatModel(c.cfg.Model)),
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.ChatCompletionMessageParam{
 				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
@@ -110,7 +115,7 @@ Message to classify:
 ` + text
 
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.model)),
+		Model: openai.F(openai.ChatModel(c.cfg.Model)),
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.ChatCompletionMessageParam{
 				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
@@ -175,7 +180,7 @@ RULES:
 	}
 
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.model)),
+		Model: openai.F(openai.ChatModel(c.cfg.Model)),
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.ChatCompletionMessageParam{
 				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
@@ -231,7 +236,7 @@ RULES:
 	}
 
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.model)),
+		Model: openai.F(openai.ChatModel(c.cfg.Model)),
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.ChatCompletionMessageParam{
 				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
@@ -252,4 +257,31 @@ RULES:
 
 	slog.DebugContext(ctx, "updated runbook", "request", params, "response", resp.Choices[0].Message.Content)
 	return resp.Choices[0].Message.Content, nil
+}
+
+func (c *Client) GenerateEmbedding(ctx context.Context, text string) ([]float32, error) {
+	if c == nil {
+		return nil, nil
+	}
+
+	params := openai.EmbeddingNewParams{
+		Model: openai.F(openai.EmbeddingModel(c.cfg.EmbeddingModel)),
+		Input: openai.F(openai.EmbeddingNewParamsInputUnion(
+			openai.EmbeddingNewParamsInputArrayOfStrings([]string{text}),
+		)),
+		EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
+		Dimensions:     openai.F(int64(1536)),
+	}
+
+	resp, err := c.client.Embeddings.New(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("generating embedding: %w", err)
+	}
+
+	r := make([]float32, len(resp.Data[0].Embedding))
+	for i, v := range resp.Data[0].Embedding {
+		r[i] = float32(v)
+	}
+
+	return r[:1536], nil
 }

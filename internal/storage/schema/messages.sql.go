@@ -10,6 +10,7 @@ import (
 
 	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 const addMessage = `-- name: AddMessage :exec
@@ -111,15 +112,21 @@ WHERE
     channel_id = $1
 `
 
-func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]MessagesV2, error) {
+type GetAllMessagesRow struct {
+	ChannelID string
+	Ts        string
+	Attrs     dto.MessageAttrs
+}
+
+func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]GetAllMessagesRow, error) {
 	rows, err := q.db.Query(ctx, getAllMessages, channelID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MessagesV2
+	var items []GetAllMessagesRow
 	for rows.Next() {
-		var i MessagesV2
+		var i GetAllMessagesRow
 		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
 			return nil, err
 		}
@@ -153,15 +160,21 @@ type GetAllOpenIncidentMessagesParams struct {
 	Alert     string
 }
 
-func (q *Queries) GetAllOpenIncidentMessages(ctx context.Context, arg GetAllOpenIncidentMessagesParams) ([]MessagesV2, error) {
+type GetAllOpenIncidentMessagesRow struct {
+	ChannelID string
+	Ts        string
+	Attrs     dto.MessageAttrs
+}
+
+func (q *Queries) GetAllOpenIncidentMessages(ctx context.Context, arg GetAllOpenIncidentMessagesParams) ([]GetAllOpenIncidentMessagesRow, error) {
 	rows, err := q.db.Query(ctx, getAllOpenIncidentMessages, arg.ChannelID, arg.Service, arg.Alert)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MessagesV2
+	var items []GetAllOpenIncidentMessagesRow
 	for rows.Next() {
-		var i MessagesV2
+		var i GetAllOpenIncidentMessagesRow
 		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
 			return nil, err
 		}
@@ -174,27 +187,81 @@ func (q *Queries) GetAllOpenIncidentMessages(ctx context.Context, arg GetAllOpen
 }
 
 const getLatestServiceUpdates = `-- name: GetLatestServiceUpdates :many
+WITH semantic_matches AS (
+    SELECT
+        channel_id,
+        ts,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                messages_v2.embedding <=> $1
+        ) as semantic_rank
+    FROM
+        messages_v2
+    WHERE
+        messages_v2.attrs -> 'incident_action' ->> 'service' = $2 :: text
+        AND CAST(ts AS numeric) > EXTRACT(
+            epoch
+            FROM
+                NOW() - INTERVAL '30 minutes'
+        )
+),
+lexical_matches AS (
+    SELECT
+        channel_id,
+        ts,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                similarity(attrs -> 'message' ->> 'text', $3 :: text) DESC
+        ) as lexical_rank
+    FROM
+        messages_v2
+    WHERE
+        attrs -> 'incident_action' ->> 'service' = $2 :: text
+        AND CAST(ts AS numeric) > EXTRACT(
+            epoch
+            FROM
+                NOW() - INTERVAL '30 minutes'
+        )
+),
+combined_scores AS (
+    SELECT
+        s.channel_id :: text as channel_id,
+        s.ts :: text as ts,
+        0.4 / (60.0 + COALESCE(s.semantic_rank, 1000)) + 0.6 / (60.0 + COALESCE(l.lexical_rank, 1000)) as rrf_score
+    FROM
+        semantic_matches s FULL
+        OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
+),
+top_matches AS (
+    SELECT
+        channel_id,
+        ts
+    FROM
+        combined_scores
+    ORDER BY
+        rrf_score DESC
+    LIMIT
+        10
+)
 SELECT
-    channel_id,
-    ts,
-    attrs
+    m.channel_id,
+    m.ts,
+    m.attrs,
+    m.embedding
 FROM
-    messages_v2
-WHERE
-    attrs -> 'ai_classification' ->> 'service' = $1 :: text
-    AND CAST(ts AS numeric) > EXTRACT(
-        epoch
-        FROM
-            NOW() - INTERVAL '5 minutes'
-    )
-ORDER BY
-    CAST(ts AS numeric) DESC
-LIMIT
-    5
+    messages_v2 m
+    INNER JOIN top_matches t ON m.channel_id = t.channel_id :: text
+    AND m.ts = t.ts :: text
 `
 
-func (q *Queries) GetLatestServiceUpdates(ctx context.Context, service string) ([]MessagesV2, error) {
-	rows, err := q.db.Query(ctx, getLatestServiceUpdates, service)
+type GetLatestServiceUpdatesParams struct {
+	QueryEmbedding *pgvector.Vector
+	ServiceName    string
+	QueryText      string
+}
+
+func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServiceUpdatesParams) ([]MessagesV2, error) {
+	rows, err := q.db.Query(ctx, getLatestServiceUpdates, arg.QueryEmbedding, arg.ServiceName, arg.QueryText)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +269,12 @@ func (q *Queries) GetLatestServiceUpdates(ctx context.Context, service string) (
 	var items []MessagesV2
 	for rows.Next() {
 		var i MessagesV2
-		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.Ts,
+			&i.Attrs,
+			&i.Embedding,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -217,7 +289,8 @@ const getMessage = `-- name: GetMessage :one
 SELECT
     channel_id,
     ts,
-    attrs
+    attrs,
+    embedding
 FROM
     messages_v2
 WHERE
@@ -233,7 +306,12 @@ type GetMessageParams struct {
 func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (MessagesV2, error) {
 	row := q.db.QueryRow(ctx, getMessage, arg.ChannelID, arg.Ts)
 	var i MessagesV2
-	err := row.Scan(&i.ChannelID, &i.Ts, &i.Attrs)
+	err := row.Scan(
+		&i.ChannelID,
+		&i.Ts,
+		&i.Attrs,
+		&i.Embedding,
+	)
 	return i, err
 }
 
@@ -256,15 +334,21 @@ type GetMessagesWithinTSParams struct {
 	EndTs     string
 }
 
-func (q *Queries) GetMessagesWithinTS(ctx context.Context, arg GetMessagesWithinTSParams) ([]MessagesV2, error) {
+type GetMessagesWithinTSRow struct {
+	ChannelID string
+	Ts        string
+	Attrs     dto.MessageAttrs
+}
+
+func (q *Queries) GetMessagesWithinTS(ctx context.Context, arg GetMessagesWithinTSParams) ([]GetMessagesWithinTSRow, error) {
 	rows, err := q.db.Query(ctx, getMessagesWithinTS, arg.ChannelID, arg.StartTs, arg.EndTs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MessagesV2
+	var items []GetMessagesWithinTSRow
 	for rows.Next() {
-		var i MessagesV2
+		var i GetMessagesWithinTSRow
 		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
 			return nil, err
 		}
@@ -314,19 +398,26 @@ const updateMessageAttrs = `-- name: UpdateMessageAttrs :exec
 UPDATE
     messages_v2
 SET
-    attrs = COALESCE(attrs, '{}' :: jsonb) || $1
+    attrs = COALESCE(attrs, '{}' :: jsonb) || $1,
+    embedding = $2
 WHERE
-    channel_id = $2
-    AND ts = $3
+    channel_id = $3
+    AND ts = $4
 `
 
 type UpdateMessageAttrsParams struct {
 	Attrs     dto.MessageAttrs
+	Embedding *pgvector.Vector
 	ChannelID string
 	Ts        string
 }
 
 func (q *Queries) UpdateMessageAttrs(ctx context.Context, arg UpdateMessageAttrsParams) error {
-	_, err := q.db.Exec(ctx, updateMessageAttrs, arg.Attrs, arg.ChannelID, arg.Ts)
+	_, err := q.db.Exec(ctx, updateMessageAttrs,
+		arg.Attrs,
+		arg.Embedding,
+		arg.ChannelID,
+		arg.Ts,
+	)
 	return err
 }

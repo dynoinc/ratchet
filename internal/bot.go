@@ -184,20 +184,20 @@ func (b *Bot) Notify(ctx context.Context, ev *slackevents.MessageEvent) error {
 	return tx.Commit(ctx)
 }
 
-func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) (dto.MessageAttrs, error) {
+func (b *Bot) GetMessage(ctx context.Context, channelID string, slackTs string) (schema.MessagesV2, error) {
 	msg, err := schema.New(b.DB).GetMessage(ctx, schema.GetMessageParams{
 		ChannelID: channelID,
 		Ts:        slackTs,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return dto.MessageAttrs{}, fmt.Errorf("message not found (ts=%s) from channel %s: %w", slackTs, channelID, ErrMessageNotFound)
+			return schema.MessagesV2{}, fmt.Errorf("message not found (ts=%s) from channel %s: %w", slackTs, channelID, ErrMessageNotFound)
 		}
 
-		return dto.MessageAttrs{}, fmt.Errorf("getting message (ts=%s) from channel %s: %w", slackTs, channelID, err)
+		return schema.MessagesV2{}, fmt.Errorf("getting message (ts=%s) from channel %s: %w", slackTs, channelID, err)
 	}
 
-	return msg.Attrs, nil
+	return msg, nil
 }
 
 func TsToTime(ts string) (time.Time, error) {

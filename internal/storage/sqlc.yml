@@ -8,6 +8,7 @@ sql:
         package: "schema"
         out: "schema"
         sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
         overrides:
           - column: messages_v2.attrs
             go_type:
@@ -29,3 +30,4 @@ sql:
               import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
               package: "dto"
               type: "RunbookAttrs"
+

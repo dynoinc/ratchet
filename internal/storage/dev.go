@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	postgresImage = "postgres:16.6"
+	postgresImage = "pgvector/pgvector:pg12"
 	containerName = "ratchet-db"
 )
 
