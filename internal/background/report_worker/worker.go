@@ -11,6 +11,7 @@ import (
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/olekukonko/tablewriter"
@@ -21,18 +22,16 @@ import (
 type reportWorker struct {
 	river.WorkerDefaults[background.ReportWorkerArgs]
 
-	bot          *internal.Bot
-	slackClient  *slack.Client
-	llmClient    *llm.Client
-	devChannelID string
+	bot              *internal.Bot
+	slackIntegration *slack_integration.Integration
+	llmClient        *llm.Client
 }
 
-func New(bot *internal.Bot, slackClient *slack.Client, llmClient *llm.Client, devChannelID string) *reportWorker {
+func New(bot *internal.Bot, slackIntegration *slack_integration.Integration, llmClient *llm.Client) *reportWorker {
 	return &reportWorker{
-		bot:          bot,
-		slackClient:  slackClient,
-		llmClient:    llmClient,
-		devChannelID: devChannelID,
+		bot:              bot,
+		slackIntegration: slackIntegration,
+		llmClient:        llmClient,
 	}
 }
 
@@ -276,20 +275,7 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 	)
 
 	// Send everything in a single message
-	channelID := job.Args.ChannelID
-	if w.devChannelID != "" {
-		channelID = w.devChannelID
-	}
-
-	_, _, err = w.slackClient.PostMessage(
-		channelID,
-		slack.MsgOptionBlocks(messageBlocks...),
-	)
-	if err != nil {
-		return fmt.Errorf("posting report message: %w", err)
-	}
-
-	return nil
+	return w.slackIntegration.PostMessage(ctx, job.Args.ChannelID, messageBlocks...)
 }
 
 type kv struct {

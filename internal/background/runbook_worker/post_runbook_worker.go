@@ -10,38 +10,32 @@ import (
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"github.com/riverqueue/river"
-	"github.com/slack-go/slack"
 )
 
 type postRunbookWorker struct {
 	river.WorkerDefaults[background.PostRunbookWorkerArgs]
 
-	bot          *internal.Bot
-	slackClient  *slack.Client
-	llmClient    *llm.Client
-	devChannelID string
-	botID        string
+	bot              *internal.Bot
+	slackIntegration *slack_integration.Integration
+	llmClient        *llm.Client
 }
 
 func NewPostRunbookWorker(
 	bot *internal.Bot,
-	slackClient *slack.Client,
+	slackIntegration *slack_integration.Integration,
 	llmClient *llm.Client,
-	devChannelID string,
-	botID string,
 ) *postRunbookWorker {
 	return &postRunbookWorker{
-		bot:          bot,
-		slackClient:  slackClient,
-		llmClient:    llmClient,
-		devChannelID: devChannelID,
-		botID:        botID,
+		bot:              bot,
+		slackIntegration: slackIntegration,
+		llmClient:        llmClient,
 	}
 }
 
@@ -76,7 +70,7 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		runbookMessage += "\n\n"
 	}
 
-	updates, err := GetUpdates(ctx, w.bot.DB, w.llmClient, serviceName, alertName, time.Hour, w.botID)
+	updates, err := GetUpdates(ctx, w.bot.DB, w.llmClient, serviceName, alertName, time.Hour, w.slackIntegration.BotUserID)
 	if err != nil {
 		return fmt.Errorf("getting updates: %w", err)
 	}
@@ -94,21 +88,7 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		return nil
 	}
 
-	channelID := job.Args.ChannelID
-	msgOptions := []slack.MsgOption{slack.MsgOptionText(runbookMessage, false)}
-	if w.devChannelID != "" {
-		channelID = w.devChannelID
-	} else {
-		msgOptions = append(msgOptions, slack.MsgOptionTS(job.Args.SlackTS))
-	}
-
-	if _, _, err := w.slackClient.PostMessage(
-		channelID,
-		msgOptions...); err != nil {
-		return fmt.Errorf("posting runbook message: %w", err)
-	}
-
-	return nil
+	return w.slackIntegration.PostThreadReply(ctx, job.Args.ChannelID, job.Args.SlackTS, runbookMessage)
 }
 
 func GetUpdates(

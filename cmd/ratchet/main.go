@@ -54,9 +54,7 @@ type config struct {
 	SentryDSN string `envconfig:"SENTRY_DSN"`
 
 	// Slack configuration
-	SlackBotToken   string `split_words:"true" required:"true"`
-	SlackAppToken   string `split_words:"true" required:"true"`
-	SlackDevChannel string `split_words:"true" default:"ratchet-test"`
+	Slack slack_integration.Config
 
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:"127.0.0.1:5001"`
@@ -154,7 +152,7 @@ func main() {
 	bot := internal.New(db)
 
 	// Slack integration setup
-	slackIntegration, err := slack_integration.New(ctx, c.SlackAppToken, c.SlackBotToken, bot)
+	slackIntegration, err := slack_integration.New(ctx, c.Slack, bot)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up Slack integration", "error", err)
 		os.Exit(1)
@@ -168,21 +166,19 @@ func main() {
 	}
 
 	// Channel onboarding worker setup
-	channelOnboardWorker := channel_onboard_worker.New(bot, slackIntegration.Client())
+	channelOnboardWorker := channel_onboard_worker.New(bot, slackIntegration)
 
 	// Backfill thread worker setup
-	backfillThreadWorker := backfill_thread_worker.New(bot, slackIntegration.Client())
+	backfillThreadWorker := backfill_thread_worker.New(bot, slackIntegration)
 
 	// Report worker setup
-	reportWorker := report_worker.New(bot, slackIntegration.Client(), llmClient, c.SlackDevChannel)
+	reportWorker := report_worker.New(bot, slackIntegration, llmClient)
 
 	// Runbook worker setup
 	postRunbookWorker := runbook_worker.NewPostRunbookWorker(
 		bot,
-		slackIntegration.Client(),
+		slackIntegration,
 		llmClient,
-		c.SlackDevChannel,
-		slackIntegration.BotUserID,
 	)
 	updateRunbookWorker := runbook_worker.NewUpdateRunbookWorker(bot, llmClient)
 

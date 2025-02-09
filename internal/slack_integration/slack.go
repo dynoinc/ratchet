@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/slack-go/slack"
@@ -11,15 +12,23 @@ import (
 	"github.com/slack-go/slack/socketmode"
 )
 
+type Config struct {
+	BotToken     string `split_words:"true" required:"true"`
+	AppToken     string `split_words:"true" required:"true"`
+	DevChannelID string `split_words:"true" default:"ratchet-test"`
+}
+
 type Integration struct {
+	c Config
+
 	BotUserID string
 	client    *socketmode.Client
 
 	bot *internal.Bot
 }
 
-func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*Integration, error) {
-	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
+func New(ctx context.Context, c Config, bot *internal.Bot) (*Integration, error) {
+	api := slack.New(c.BotToken, slack.OptionAppLevelToken(c.AppToken))
 
 	authTest, err := api.AuthTestContext(ctx)
 	if err != nil {
@@ -29,6 +38,7 @@ func New(ctx context.Context, appToken, botToken string, bot *internal.Bot) (*In
 	socketClient := socketmode.New(api)
 
 	return &Integration{
+		c:         c,
 		BotUserID: authTest.UserID,
 		client:    socketClient,
 		bot:       bot,
@@ -85,6 +95,61 @@ func (b *Integration) Client() *slack.Client {
 	return &b.client.Client
 }
 
+func (b *Integration) GetConversationInfo(ctx context.Context, channelID string) (*slack.Channel, error) {
+	return b.client.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{
+		ChannelID: channelID,
+	})
+}
+
+func (b *Integration) GetConversationHistory(ctx context.Context, channelID string) ([]slack.Message, error) {
+	params := &slack.GetConversationHistoryParameters{
+		ChannelID: channelID,
+		Latest:    internal.TimeToTs(time.Now()),
+		Limit:     1000,
+	}
+	var messages []slack.Message
+	for {
+		history, err := b.client.GetConversationHistoryContext(ctx, params)
+		if err != nil {
+			return nil, fmt.Errorf("getting conversation history for channel ID %s: %w", channelID, err)
+		}
+
+		messages = append(messages, history.Messages...)
+		if !history.HasMore || len(messages) >= 10 {
+			break
+		}
+
+		params.Cursor = history.ResponseMetadata.Cursor
+		params.Latest = history.Messages[len(history.Messages)-1].Timestamp
+	}
+
+	return messages, nil
+}
+
+func (b *Integration) GetConversationReplies(ctx context.Context, channelID, ts string) ([]slack.Message, error) {
+	params := &slack.GetConversationRepliesParameters{
+		ChannelID: channelID,
+		Timestamp: ts,
+	}
+
+	var messages []slack.Message
+	for {
+		threadMessages, hasMore, nextCursor, err := b.client.GetConversationRepliesContext(ctx, params)
+		if err != nil {
+			return nil, fmt.Errorf("getting conversation replies for channel ID %s: %w", channelID, err)
+		}
+
+		messages = append(messages, threadMessages...)
+		if !hasMore {
+			break
+		}
+
+		params.Cursor = nextCursor
+	}
+
+	return messages, nil
+}
+
 func (b *Integration) GetBotChannels() ([]slack.Channel, error) {
 	params := &slack.GetConversationsForUserParameters{
 		UserID:          b.BotUserID,
@@ -109,4 +174,37 @@ func (b *Integration) GetBotChannels() ([]slack.Channel, error) {
 	}
 
 	return channels, nil
+}
+
+func (b *Integration) PostMessage(ctx context.Context, channelID string, messageBlocks ...slack.Block) error {
+	if b.c.DevChannelID != "" {
+		channelID = b.c.DevChannelID
+	}
+
+	_, _, err := b.client.PostMessage(
+		channelID,
+		slack.MsgOptionBlocks(messageBlocks...),
+	)
+	if err != nil {
+		return fmt.Errorf("posting report message: %w", err)
+	}
+
+	return nil
+}
+
+func (b *Integration) PostThreadReply(ctx context.Context, channelID, ts string, text string) error {
+	msgOptions := []slack.MsgOption{slack.MsgOptionText(text, false)}
+	if b.c.DevChannelID != "" {
+		channelID = b.c.DevChannelID
+	} else {
+		msgOptions = append(msgOptions, slack.MsgOptionTS(ts))
+	}
+
+	if _, _, err := b.client.PostMessage(
+		channelID,
+		msgOptions...); err != nil {
+		return fmt.Errorf("posting thread reply: %w", err)
+	}
+
+	return nil
 }

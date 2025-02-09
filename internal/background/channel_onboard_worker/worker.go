@@ -3,15 +3,14 @@ package channel_onboard_worker
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
-	"github.com/slack-go/slack"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
@@ -19,45 +18,26 @@ import (
 type ChannelOnboardWorker struct {
 	river.WorkerDefaults[background.ChannelOnboardWorkerArgs]
 
-	bot         *internal.Bot
-	slackClient *slack.Client
+	bot              *internal.Bot
+	slackIntegration *slack_integration.Integration
 }
 
-func New(bot *internal.Bot, slackClient *slack.Client) *ChannelOnboardWorker {
+func New(bot *internal.Bot, slackIntegration *slack_integration.Integration) *ChannelOnboardWorker {
 	return &ChannelOnboardWorker{
-		bot:         bot,
-		slackClient: slackClient,
+		bot:              bot,
+		slackIntegration: slackIntegration,
 	}
 }
 
 func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[background.ChannelOnboardWorkerArgs]) error {
-	channelInfo, err := w.slackClient.GetConversationInfo(&slack.GetConversationInfoInput{
-		ChannelID: job.Args.ChannelID,
-	})
+	channelInfo, err := w.slackIntegration.GetConversationInfo(ctx, job.Args.ChannelID)
 	if err != nil {
 		return fmt.Errorf("getting channel info for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
-	params := &slack.GetConversationHistoryParameters{
-		ChannelID: job.Args.ChannelID,
-		Latest:    internal.TimeToTs(time.Now()),
-		Limit:     1000,
-	}
-
-	var messages []slack.Message
-	for {
-		history, err := w.slackClient.GetConversationHistory(params)
-		if err != nil {
-			return fmt.Errorf("getting conversation history for channel ID %s: %w", job.Args.ChannelID, err)
-		}
-
-		messages = append(messages, history.Messages...)
-		if !history.HasMore || len(messages) >= 10 {
-			break
-		}
-
-		params.Cursor = history.ResponseMetadata.Cursor
-		params.Latest = history.Messages[len(history.Messages)-1].Timestamp
+	messages, err := w.slackIntegration.GetConversationHistory(ctx, job.Args.ChannelID)
+	if err != nil {
+		return fmt.Errorf("getting conversation history for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
 	addMessageParams := make([]schema.AddMessageParams, len(messages))
