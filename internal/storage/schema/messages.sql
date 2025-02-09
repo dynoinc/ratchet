@@ -8,7 +8,8 @@ VALUES
 UPDATE
     messages_v2
 SET
-    attrs = COALESCE(attrs, '{}' :: jsonb) || @attrs
+    attrs = COALESCE(attrs, '{}' :: jsonb) || @attrs,
+    embedding = @embedding
 WHERE
     channel_id = @channel_id
     AND ts = @ts;
@@ -17,7 +18,8 @@ WHERE
 SELECT
     channel_id,
     ts,
-    attrs
+    attrs,
+    embedding
 FROM
     messages_v2
 WHERE
@@ -95,25 +97,6 @@ FROM
             AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
     ) subq;
 
--- name: GetLatestServiceUpdates :many
-SELECT
-    channel_id,
-    ts,
-    attrs
-FROM
-    messages_v2
-WHERE
-    attrs -> 'ai_classification' ->> 'service' = @service :: text
-    AND CAST(ts AS numeric) > EXTRACT(
-        epoch
-        FROM
-            NOW() - INTERVAL '5 minutes'
-    )
-ORDER BY
-    CAST(ts AS numeric) DESC
-LIMIT
-    5;
-
 -- name: DeleteOldMessages :exec
 DELETE FROM
     messages_v2
@@ -124,3 +107,69 @@ WHERE
         FROM
             NOW() - @older_than :: interval
     );
+
+-- name: GetLatestServiceUpdates :many
+WITH semantic_matches AS (
+    SELECT
+        channel_id,
+        ts,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                messages_v2.embedding <=> @query_embedding
+        ) as semantic_rank
+    FROM
+        messages_v2
+    WHERE
+        CAST(ts AS numeric) > EXTRACT(
+            epoch
+            FROM
+                NOW() - @interval :: interval
+        )
+),
+lexical_matches AS (
+    SELECT
+        channel_id,
+        ts,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'), 
+                          plainto_tsquery('english', @query_text :: text)) DESC
+        ) as lexical_rank
+    FROM
+        messages_v2
+    WHERE
+        CAST(ts AS numeric) > EXTRACT(
+            epoch
+            FROM
+                NOW() - @interval :: interval
+        )
+),
+combined_scores AS (
+    SELECT
+        s.channel_id :: text as channel_id,
+        s.ts :: text as ts,
+        0.4 / (60.0 + COALESCE(s.semantic_rank, 1000)) + 0.6 / (60.0 + COALESCE(l.lexical_rank, 1000)) as rrf_score
+    FROM
+        semantic_matches s FULL
+        OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
+),
+top_matches AS (
+    SELECT
+        channel_id,
+        ts
+    FROM
+        combined_scores
+    ORDER BY
+        rrf_score DESC
+    LIMIT
+        10
+)
+SELECT
+    m.channel_id,
+    m.ts,
+    m.attrs,
+    m.embedding
+FROM
+    messages_v2 m
+    INNER JOIN top_matches t ON m.channel_id = t.channel_id :: text
+    AND m.ts = t.ts :: text;

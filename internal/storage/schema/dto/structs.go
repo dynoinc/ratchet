@@ -8,14 +8,9 @@ type SlackMessage struct {
 	BotUsername string `json:"bot_usernames,omitzero"`
 }
 
-type AIClassification struct {
-	Service string `json:"service,omitzero"`
-}
-
 type MessageAttrs struct {
-	Message          SlackMessage     `json:"message,omitzero"`
-	IncidentAction   IncidentAction   `json:"incident_action,omitzero"`
-	AIClassification AIClassification `json:"ai_classification,omitzero"`
+	Message        SlackMessage   `json:"message,omitzero"`
+	IncidentAction IncidentAction `json:"incident_action,omitzero"`
 }
 
 type ThreadMessageAttrs struct {

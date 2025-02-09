@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"runtime/debug"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/pgvector/pgvector-go"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
@@ -45,6 +47,13 @@ func New(c Config, bot *internal.Bot, llmClient *llm.Client) (river.Worker[backg
 }
 
 func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("stacktrace from panic: %+v\n", string(debug.Stack()))
+			panic(r)
+		}
+	}()
+
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		if errors.Is(err, internal.ErrMessageNotFound) {
@@ -55,37 +64,27 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		return fmt.Errorf("getting message: %w", err)
 	}
 
-	action, err := runIncidentBinary(w.incidentBinary, msg.Message.BotUsername, msg.Message.Text)
+	action, err := runIncidentBinary(w.incidentBinary, msg.Attrs.Message.BotUsername, msg.Attrs.Message.Text)
 	if err != nil {
 		return fmt.Errorf("classifying incident with binary: %w", err)
 	}
 
+	embedding, err := w.llmClient.GenerateEmbedding(ctx, msg.Attrs.Message.Text)
+	if err != nil {
+		return fmt.Errorf("generating embedding: %w", err)
+	}
+
+	vector := pgvector.NewVector(embedding)
 	params := schema.UpdateMessageAttrsParams{
 		ChannelID: job.Args.ChannelID,
 		Ts:        job.Args.SlackTS,
+		Embedding: &vector,
 	}
 	if action.Action != dto.ActionNone {
 		params.Attrs = dto.MessageAttrs{IncidentAction: action}
-	} else {
-		services, err := schema.New(w.bot.DB).GetServices(ctx)
-		if err != nil {
-			return fmt.Errorf("getting services: %w", err)
-		}
-
-		// Use llm to classify which service the message belongs to
-		service, err := w.llmClient.ClassifyService(ctx, msg.Message.Text, services)
-		if err != nil {
-			return fmt.Errorf("classifying service: %w", err)
-		}
-
-		if service == "" {
-			return nil
-		}
-
-		params.Attrs = dto.MessageAttrs{AIClassification: dto.AIClassification{Service: service}}
 	}
 
-	slog.DebugContext(ctx, "classified message", "channel_id", params.ChannelID, "slack_ts", params.Ts, "text", msg.Message.Text, "attrs", params.Attrs)
+	slog.DebugContext(ctx, "classified message", "channel_id", params.ChannelID, "slack_ts", params.Ts, "text", msg.Attrs.Message.Text, "attrs", params.Attrs)
 
 	tx, err := w.bot.DB.Begin(ctx)
 	if err != nil {
@@ -100,7 +99,6 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 
 	if params.Attrs.IncidentAction.Action == dto.ActionOpenIncident && !job.Args.IsBackfill {
 		riverclient := river.ClientFromContext[pgx.Tx](ctx)
-		// Only post runbook for new messages.
 		if _, err := riverclient.InsertTx(ctx, tx, background.PostRunbookWorkerArgs{
 			ChannelID: params.ChannelID,
 			SlackTS:   params.Ts,

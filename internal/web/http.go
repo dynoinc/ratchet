@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,8 @@ import (
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/background/runbook_worker"
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
@@ -52,6 +55,7 @@ type httpHandlers struct {
 	db               *pgxpool.Pool
 	riverClient      *river.Client[pgx.Tx]
 	slackIntegration *slack_integration.Integration
+	llmClient        *llm.Client
 }
 
 func New(
@@ -59,11 +63,13 @@ func New(
 	db *pgxpool.Pool,
 	riverClient *river.Client[pgx.Tx],
 	slackIntegration *slack_integration.Integration,
+	llmClient *llm.Client,
 ) (http.Handler, error) {
 	handlers := &httpHandlers{
 		db:               db,
 		riverClient:      riverClient,
 		slackIntegration: slackIntegration,
+		llmClient:        llmClient,
 	}
 
 	// River UI
@@ -92,7 +98,8 @@ func New(
 	// Services
 	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
 	apiMux.HandleFunc("GET /services/{service}/alerts", handleJSON(handlers.listAlerts))
-	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}", handleJSON(handlers.getRunbook))
+	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
+	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/updates", handleJSON(handlers.getUpdates))
 	apiMux.HandleFunc("POST /services/{service}/refresh-runbooks", handleJSON(handlers.refreshRunbooks))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/refresh-runbook", handleJSON(handlers.refreshRunbook))
 
@@ -307,4 +314,31 @@ func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
 	}
 
 	return runbook, nil
+}
+
+func (h *httpHandlers) getUpdates(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+	alertName := r.PathValue("alert")
+
+	interval := r.URL.Query().Get("interval")
+	if interval == "" {
+		interval = "1h"
+	}
+
+	intervalDuration, err := time.ParseDuration(interval)
+	if err != nil {
+		return nil, err
+	}
+
+	updates, err := runbook_worker.GetUpdates(r.Context(), h.db, h.llmClient, serviceName, alertName, intervalDuration)
+	if err != nil {
+		return nil, err
+	}
+
+	// remove embedding from updates, they are huge
+	for i := range updates {
+		updates[i].Embedding = nil
+	}
+
+	return updates, nil
 }

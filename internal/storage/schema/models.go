@@ -6,6 +6,7 @@ package schema
 
 import (
 	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+	"github.com/pgvector/pgvector-go"
 )
 
 type ChannelsV2 struct {
@@ -22,6 +23,7 @@ type MessagesV2 struct {
 	ChannelID string
 	Ts        string
 	Attrs     dto.MessageAttrs
+	Embedding *pgvector.Vector
 }
 
 type ThreadMessagesV2 struct {
