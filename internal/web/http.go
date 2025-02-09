@@ -335,5 +335,10 @@ func (h *httpHandlers) getUpdates(r *http.Request) (any, error) {
 		return nil, err
 	}
 
+	// remove embedding from updates, they are huge
+	for i := range updates {
+		updates[i].Embedding = nil
+	}
+
 	return updates, nil
 }
