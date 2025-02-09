@@ -187,22 +187,33 @@ func (q *Queries) GetAllOpenIncidentMessages(ctx context.Context, arg GetAllOpen
 }
 
 const getLatestServiceUpdates = `-- name: GetLatestServiceUpdates :many
-WITH semantic_matches AS (
+WITH valid_messages AS (
     SELECT
         channel_id,
         ts,
-        ROW_NUMBER() OVER (
-            ORDER BY
-                messages_v2.embedding <=> $1
-        ) as semantic_rank
+        attrs,
+        embedding
     FROM
         messages_v2
     WHERE
         CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - $2 :: interval
+                NOW() - $1 :: interval
         )
+        AND attrs -> 'message' ->> 'bot_id' != $2 :: text
+        AND attrs -> 'incident_action' ->> 'action' IS NULL 
+),
+semantic_matches AS (
+    SELECT
+        channel_id,
+        ts,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                embedding <=> $3
+        ) as semantic_rank
+    FROM
+        valid_messages
 ),
 lexical_matches AS (
     SELECT
@@ -211,16 +222,10 @@ lexical_matches AS (
         ROW_NUMBER() OVER (
             ORDER BY
                 ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'), 
-                          plainto_tsquery('english', $3 :: text)) DESC
+                          plainto_tsquery('english', $4 :: text)) DESC
         ) as lexical_rank
     FROM
-        messages_v2
-    WHERE
-        CAST(ts AS numeric) > EXTRACT(
-            epoch
-            FROM
-                NOW() - $2 :: interval
-        )
+        valid_messages
 ),
 combined_scores AS (
     SELECT
@@ -245,35 +250,41 @@ top_matches AS (
 SELECT
     m.channel_id,
     m.ts,
-    m.attrs,
-    m.embedding
+    m.attrs
 FROM
-    messages_v2 m
-    INNER JOIN top_matches t ON m.channel_id = t.channel_id :: text
-    AND m.ts = t.ts :: text
+    valid_messages m
+    INNER JOIN top_matches t ON m.channel_id = t.channel_id
+    AND m.ts = t.ts
 `
 
 type GetLatestServiceUpdatesParams struct {
-	QueryEmbedding *pgvector.Vector
 	Interval       pgtype.Interval
+	BotID          string
+	QueryEmbedding *pgvector.Vector
 	QueryText      string
 }
 
-func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServiceUpdatesParams) ([]MessagesV2, error) {
-	rows, err := q.db.Query(ctx, getLatestServiceUpdates, arg.QueryEmbedding, arg.Interval, arg.QueryText)
+type GetLatestServiceUpdatesRow struct {
+	ChannelID string
+	Ts        string
+	Attrs     []byte
+}
+
+func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServiceUpdatesParams) ([]GetLatestServiceUpdatesRow, error) {
+	rows, err := q.db.Query(ctx, getLatestServiceUpdates,
+		arg.Interval,
+		arg.BotID,
+		arg.QueryEmbedding,
+		arg.QueryText,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MessagesV2
+	var items []GetLatestServiceUpdatesRow
 	for rows.Next() {
-		var i MessagesV2
-		if err := rows.Scan(
-			&i.ChannelID,
-			&i.Ts,
-			&i.Attrs,
-			&i.Embedding,
-		); err != nil {
+		var i GetLatestServiceUpdatesRow
+		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

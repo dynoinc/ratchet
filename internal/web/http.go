@@ -330,14 +330,17 @@ func (h *httpHandlers) getUpdates(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	updates, err := runbook_worker.GetUpdates(r.Context(), h.db, h.llmClient, serviceName, alertName, intervalDuration)
+	updates, err := runbook_worker.GetUpdates(
+		r.Context(),
+		h.db,
+		h.llmClient,
+		serviceName,
+		alertName,
+		intervalDuration,
+		h.slackIntegration.BotUserID,
+	)
 	if err != nil {
 		return nil, err
-	}
-
-	// remove embedding from updates, they are huge
-	for i := range updates {
-		updates[i].Embedding = nil
 	}
 
 	return updates, nil

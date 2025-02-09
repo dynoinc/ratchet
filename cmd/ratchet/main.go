@@ -177,7 +177,13 @@ func main() {
 	reportWorker := report_worker.New(bot, slackIntegration.Client(), llmClient, c.SlackDevChannel)
 
 	// Runbook worker setup
-	postRunbookWorker := runbook_worker.NewPostRunbookWorker(bot, slackIntegration.Client(), llmClient, c.SlackDevChannel)
+	postRunbookWorker := runbook_worker.NewPostRunbookWorker(
+		bot,
+		slackIntegration.Client(),
+		llmClient,
+		c.SlackDevChannel,
+		slackIntegration.BotUserID,
+	)
 	updateRunbookWorker := runbook_worker.NewUpdateRunbookWorker(bot, llmClient)
 
 	// Background job setup
