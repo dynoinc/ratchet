@@ -29,7 +29,6 @@ AI bot to help reduce operational toil
 
 - [ ] Finish the feedback loop of persisting user reactions to bot responses.
 - [ ] Store detailed info about LLM calls to be able to fine-tune the model and create evals automatically.
-- [ ] Do lexical/semantic search over all messages to find recent activity relevant to incidents.
 - [ ] Add natural language based command support.
 - [ ] In channel report, point out alerts that are never acted on.
 - [ ] In channel report, point out alerts that are open for too long.
