@@ -192,17 +192,21 @@ WITH valid_messages AS (
         channel_id,
         ts,
         attrs,
-        embedding
+        embedding,
+        ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'),
+                   plainto_tsquery('english', $1 :: text)) as lexical_score
     FROM
         messages_v2
     WHERE
         CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - $1 :: interval
+                NOW() - $2 :: interval
         )
-        AND attrs -> 'message' ->> 'bot_id' != $2 :: text
+        AND attrs -> 'message' ->> 'bot_id' != $3 :: text
         AND attrs -> 'incident_action' ->> 'action' IS NULL 
+        -- Filter out messages with no lexical match at all
+        AND to_tsvector('english', attrs -> 'message' ->> 'text') @@ plainto_tsquery('english', $1 :: text)
 ),
 semantic_matches AS (
     SELECT
@@ -210,10 +214,12 @@ semantic_matches AS (
         ts,
         ROW_NUMBER() OVER (
             ORDER BY
-                embedding <=> $3
+                embedding <=> $4
         ) as semantic_rank
     FROM
         valid_messages
+    -- Filter out messages with very low semantic similarity
+    WHERE (embedding <=> $4) < 0.8
 ),
 lexical_matches AS (
     SELECT
@@ -221,20 +227,24 @@ lexical_matches AS (
         ts,
         ROW_NUMBER() OVER (
             ORDER BY
-                ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'), 
-                          plainto_tsquery('english', $4 :: text)) DESC
+                lexical_score DESC
         ) as lexical_rank
     FROM
         valid_messages
+    -- Filter out messages with very low lexical score
+    WHERE lexical_score > 0.01
 ),
 combined_scores AS (
     SELECT
         s.channel_id :: text as channel_id,
         s.ts :: text as ts,
-        0.4 / (60.0 + COALESCE(s.semantic_rank, 1000)) + 0.6 / (60.0 + COALESCE(l.lexical_rank, 1000)) as rrf_score
+        -- Reciprocal Rank Fusion with k=60
+        1 / (60 + COALESCE(s.semantic_rank, 1000)) + 1 / (60 + COALESCE(l.lexical_rank, 1000)) as rrf_score
     FROM
-        semantic_matches s FULL
-        OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
+        semantic_matches s
+        FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
+    -- Require at least one match type to have a reasonable rank
+    WHERE s.semantic_rank <= 100 OR l.lexical_rank <= 100
 ),
 top_matches AS (
     SELECT
@@ -258,10 +268,10 @@ FROM
 `
 
 type GetLatestServiceUpdatesParams struct {
+	QueryText      string
 	Interval       pgtype.Interval
 	BotID          string
 	QueryEmbedding *pgvector.Vector
-	QueryText      string
 }
 
 type GetLatestServiceUpdatesRow struct {
@@ -272,10 +282,10 @@ type GetLatestServiceUpdatesRow struct {
 
 func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServiceUpdatesParams) ([]GetLatestServiceUpdatesRow, error) {
 	rows, err := q.db.Query(ctx, getLatestServiceUpdates,
+		arg.QueryText,
 		arg.Interval,
 		arg.BotID,
 		arg.QueryEmbedding,
-		arg.QueryText,
 	)
 	if err != nil {
 		return nil, err

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -12,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
+	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -36,9 +38,16 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	}
 
 	// Pull PostgreSQL image if not available
-	_, err = cli.ImagePull(ctx, postgresImage, image.PullOptions{})
+	reader, err := cli.ImagePull(ctx, postgresImage, image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("pulling Docker image: %w", err)
+	}
+	defer reader.Close()
+
+	// Wait for image pull to complete and display progress
+	termFd := os.Stdout.Fd()
+	if err := jsonmessage.DisplayJSONMessagesStream(reader, os.Stdout, termFd, true, nil); err != nil {
+		return fmt.Errorf("displaying pull progress: %w", err)
 	}
 
 	// Define container configurations
