@@ -192,8 +192,8 @@ func (b *Integration) PostMessage(ctx context.Context, channelID string, message
 	return nil
 }
 
-func (b *Integration) PostThreadReply(ctx context.Context, channelID, ts string, text string) error {
-	msgOptions := []slack.MsgOption{slack.MsgOptionText(text, false)}
+func (b *Integration) PostThreadReply(ctx context.Context, channelID, ts string, messageBlocks ...slack.Block) error {
+	msgOptions := []slack.MsgOption{slack.MsgOptionBlocks(messageBlocks...)}
 	if b.c.DevChannelID != "" {
 		channelID = b.c.DevChannelID
 	} else {
