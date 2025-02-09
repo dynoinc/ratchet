@@ -19,6 +19,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/riverqueue/river v0.16.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.16.0
+	github.com/riverqueue/river/rivertype v0.16.0
 	github.com/slack-go/slack v0.15.0
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
@@ -83,7 +84,6 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/riverqueue/river/riverdriver v0.16.0 // indirect
 	github.com/riverqueue/river/rivershared v0.16.0 // indirect
-	github.com/riverqueue/river/rivertype v0.16.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
