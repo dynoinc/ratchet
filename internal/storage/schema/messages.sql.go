@@ -198,11 +198,10 @@ WITH semantic_matches AS (
     FROM
         messages_v2
     WHERE
-        messages_v2.attrs -> 'incident_action' ->> 'service' = $2 :: text
-        AND CAST(ts AS numeric) > EXTRACT(
+        CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - $3 :: interval
+                NOW() - $2 :: interval
         )
 ),
 lexical_matches AS (
@@ -212,16 +211,15 @@ lexical_matches AS (
         ROW_NUMBER() OVER (
             ORDER BY
                 ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'), 
-                          plainto_tsquery('english', $4 :: text)) DESC
+                          plainto_tsquery('english', $3 :: text)) DESC
         ) as lexical_rank
     FROM
         messages_v2
     WHERE
-        attrs -> 'incident_action' ->> 'service' = $2 :: text
-        AND CAST(ts AS numeric) > EXTRACT(
+        CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - $3 :: interval
+                NOW() - $2 :: interval
         )
 ),
 combined_scores AS (
@@ -257,18 +255,12 @@ FROM
 
 type GetLatestServiceUpdatesParams struct {
 	QueryEmbedding *pgvector.Vector
-	ServiceName    string
 	Interval       pgtype.Interval
 	QueryText      string
 }
 
 func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServiceUpdatesParams) ([]MessagesV2, error) {
-	rows, err := q.db.Query(ctx, getLatestServiceUpdates,
-		arg.QueryEmbedding,
-		arg.ServiceName,
-		arg.Interval,
-		arg.QueryText,
-	)
+	rows, err := q.db.Query(ctx, getLatestServiceUpdates, arg.QueryEmbedding, arg.Interval, arg.QueryText)
 	if err != nil {
 		return nil, err
 	}

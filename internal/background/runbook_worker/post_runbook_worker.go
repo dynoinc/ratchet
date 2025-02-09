@@ -110,10 +110,9 @@ func GetUpdates(ctx context.Context, db *pgxpool.Pool, llmClient *llm.Client, se
 
 	embedding := pgvector.NewVector(queryEmbedding)
 	updates, err := schema.New(db).GetLatestServiceUpdates(ctx, schema.GetLatestServiceUpdatesParams{
-		ServiceName:    serviceName,
 		QueryText:      queryText,
 		QueryEmbedding: &embedding,
-		Interval:       pgtype.Interval{Microseconds: interval.Microseconds()},
+		Interval:       pgtype.Interval{Microseconds: interval.Microseconds(), Valid: true},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("getting latest service updates: %w", err)

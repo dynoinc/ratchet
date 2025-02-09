@@ -120,8 +120,7 @@ WITH semantic_matches AS (
     FROM
         messages_v2
     WHERE
-        messages_v2.attrs -> 'incident_action' ->> 'service' = @service_name :: text
-        AND CAST(ts AS numeric) > EXTRACT(
+        CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
                 NOW() - @interval :: interval
@@ -139,8 +138,7 @@ lexical_matches AS (
     FROM
         messages_v2
     WHERE
-        attrs -> 'incident_action' ->> 'service' = @service_name :: text
-        AND CAST(ts AS numeric) > EXTRACT(
+        CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
                 NOW() - @interval :: interval
