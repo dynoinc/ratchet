@@ -124,7 +124,7 @@ WITH semantic_matches AS (
         AND CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - INTERVAL '30 minutes'
+                NOW() - @interval :: interval
         )
 ),
 lexical_matches AS (
@@ -133,7 +133,8 @@ lexical_matches AS (
         ts,
         ROW_NUMBER() OVER (
             ORDER BY
-                similarity(attrs -> 'message' ->> 'text', @query_text :: text) DESC
+                ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'), 
+                          plainto_tsquery('english', @query_text :: text)) DESC
         ) as lexical_rank
     FROM
         messages_v2
@@ -142,7 +143,7 @@ lexical_matches AS (
         AND CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - INTERVAL '30 minutes'
+                NOW() - @interval :: interval
         )
 ),
 combined_scores AS (

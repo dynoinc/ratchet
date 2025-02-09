@@ -202,7 +202,7 @@ WITH semantic_matches AS (
         AND CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - INTERVAL '30 minutes'
+                NOW() - $3 :: interval
         )
 ),
 lexical_matches AS (
@@ -211,7 +211,8 @@ lexical_matches AS (
         ts,
         ROW_NUMBER() OVER (
             ORDER BY
-                similarity(attrs -> 'message' ->> 'text', $3 :: text) DESC
+                ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'), 
+                          plainto_tsquery('english', $4 :: text)) DESC
         ) as lexical_rank
     FROM
         messages_v2
@@ -220,7 +221,7 @@ lexical_matches AS (
         AND CAST(ts AS numeric) > EXTRACT(
             epoch
             FROM
-                NOW() - INTERVAL '30 minutes'
+                NOW() - $3 :: interval
         )
 ),
 combined_scores AS (
@@ -257,11 +258,17 @@ FROM
 type GetLatestServiceUpdatesParams struct {
 	QueryEmbedding *pgvector.Vector
 	ServiceName    string
+	Interval       pgtype.Interval
 	QueryText      string
 }
 
 func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServiceUpdatesParams) ([]MessagesV2, error) {
-	rows, err := q.db.Query(ctx, getLatestServiceUpdates, arg.QueryEmbedding, arg.ServiceName, arg.QueryText)
+	rows, err := q.db.Query(ctx, getLatestServiceUpdates,
+		arg.QueryEmbedding,
+		arg.ServiceName,
+		arg.Interval,
+		arg.QueryText,
+	)
 	if err != nil {
 		return nil, err
 	}

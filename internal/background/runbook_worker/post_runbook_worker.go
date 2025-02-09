@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack"
@@ -63,19 +66,9 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		runbookMessage += "\n\n"
 	}
 
-	zeroVector := [1536]float32{}
-	queryEmbedding := pgvector.NewVector(zeroVector[:])
-	if msg.Embedding != nil {
-		queryEmbedding = *msg.Embedding
-	}
-
-	updates, err := schema.New(w.bot.DB).GetLatestServiceUpdates(ctx, schema.GetLatestServiceUpdatesParams{
-		QueryEmbedding: &queryEmbedding,
-		ServiceName:    serviceName,
-		QueryText:      msg.Attrs.Message.Text,
-	})
+	updates, err := GetUpdates(ctx, w.bot.DB, w.llmClient, serviceName, alertName, time.Hour)
 	if err != nil {
-		return fmt.Errorf("getting latest service updates: %w", err)
+		return fmt.Errorf("getting updates: %w", err)
 	}
 
 	if len(updates) > 0 {
@@ -108,18 +101,23 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 	return nil
 }
 
-func getRunbook(ctx context.Context, bot *internal.Bot, serviceName, alertName string) (string, error) {
-	runbook, err := schema.New(bot.DB).GetRunbook(ctx, schema.GetRunbookParams{
-		ServiceName: serviceName,
-		AlertName:   alertName,
+func GetUpdates(ctx context.Context, db *pgxpool.Pool, llmClient *llm.Client, serviceName, alertName string, interval time.Duration) ([]schema.MessagesV2, error) {
+	queryText := fmt.Sprintf("Service: %s, Alert: %s", serviceName, alertName)
+	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, queryText)
+	if err != nil {
+		return nil, fmt.Errorf("generating embedding: %w", err)
+	}
+
+	embedding := pgvector.NewVector(queryEmbedding)
+	updates, err := schema.New(db).GetLatestServiceUpdates(ctx, schema.GetLatestServiceUpdatesParams{
+		ServiceName:    serviceName,
+		QueryText:      queryText,
+		QueryEmbedding: &embedding,
+		Interval:       pgtype.Interval{Microseconds: interval.Microseconds()},
 	})
 	if err != nil {
-		return "", fmt.Errorf("getting runbook: %w", err)
+		return nil, fmt.Errorf("getting latest service updates: %w", err)
 	}
 
-	if runbook.Attrs.Runbook == "" {
-		return "No runbook found for this alert", nil
-	}
-
-	return runbook.Attrs.Runbook, nil
+	return updates, nil
 }
