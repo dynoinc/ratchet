@@ -60,10 +60,15 @@ func (b *Integration) Run(ctx context.Context) error {
 					}
 
 					if err := b.handleEventAPI(ctx, eventsAPI); err != nil {
-						slog.ErrorContext(ctx, "error handling event", "error", err)
+						slog.ErrorContext(ctx, "handling event", "error", err)
 					}
 
-					b.client.AckCtx(ctx, evt.Request.EnvelopeID, nil)
+					if err := b.client.AckCtx(ctx, evt.Request.EnvelopeID, nil); err != nil {
+						slog.ErrorContext(ctx, "acknowledging event",
+							"error", err,
+							"envelope_id", evt.Request.EnvelopeID,
+						)
+					}
 				}
 			}
 		}
