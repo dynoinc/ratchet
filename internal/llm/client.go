@@ -14,7 +14,7 @@ type Config struct {
 	APIKey         string `envconfig:"API_KEY"`
 	URL            string `default:"http://localhost:11434/v1/"`
 	Model          string `default:"qwen2.5:7b"`
-	EmbeddingModel string `default:"all-minilm"`
+	EmbeddingModel string `split_words:"true" default:"all-minilm"`
 }
 
 type Client struct {
