@@ -11,9 +11,24 @@ AI bot to help reduce operational toil
 * To post relevant messages with runbooks when an alert is triggered.
 * To provide a natural language interface to the bot.
 
+## Built with
+
+| Tool | Purpose |
+|------|---------|
+| [Go](https://go.dev/) | Main programming language for the application |
+| [Slack](https://slack.com/) | Platform for bot interaction and message handling |
+| [Ollama](https://ollama.com/) | Local LLM inference server for development |
+| [PostgreSQL](https://www.postgresql.org/) | Primary database for storing messages, runbooks and embeddings |
+| [SQLc](https://sqlc.dev/) | Type-safe SQL query generation from schema |
+| [Riverqueue](http://riverqueue.com/) | Background job processing and scheduling |
+| [pgvector](https://github.com/pgvector/pgvector) | Vector database for storing embeddings |
+| [Docker](https://www.docker.com/) | Containerization and deployment |
+| [Github Actions](https://github.com/features/actions) | CI/CD pipeline automation |
+
 ## Lessons learned
 
-* The idea to keep things simple by only using Postgres and Slack integration is working out.
+* PostgreSQL as database, queue and vector DB is working out.
+* Slack as data source seems to be enough to derive value.
   * Though Slack API is poorly documented and inconsistent.
 * Investing in building UI for visibility ended up wasting a lot of time. 
   * Even with AI tools, it is hard to get right for a backend engineer.
