@@ -12,6 +12,7 @@ func (c ClassifierArgs) Kind() string {
 
 type ChannelOnboardWorkerArgs struct {
 	ChannelID string `json:"channel_id"`
+	LastNMsgs int    `json:"last_n_msgs"`
 }
 
 func (c ChannelOnboardWorkerArgs) Kind() string {

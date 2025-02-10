@@ -149,7 +149,11 @@ func main() {
 	}
 
 	// Bot setup
-	bot := internal.New(db)
+	bot, err := internal.New(ctx, db, llmClient)
+	if err != nil {
+		slog.ErrorContext(ctx, "setting up bot", "error", err)
+		os.Exit(1)
+	}
 
 	// Slack integration setup
 	slackIntegration, err := slack_integration.New(ctx, c.Slack, bot)

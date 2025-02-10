@@ -4,6 +4,13 @@
 
 AI bot to help reduce operational toil
 
+## How AI is used?
+
+* To prepare a weekly report for a channel with suggestions of what to improve to reduce future support toil.
+* To maintain runbooks for alerts. Runbooks include historical causes and debugging steps.
+* To post relevant messages with runbooks when an alert is triggered.
+* To provide a natural language interface to the bot.
+
 ## Lessons learned
 
 * The idea to keep things simple by only using Postgres and Slack integration is working out.
@@ -29,7 +36,6 @@ AI bot to help reduce operational toil
 
 - [ ] Finish the feedback loop of persisting user reactions to bot responses.
 - [ ] Store detailed info about LLM calls to be able to fine-tune the model and create evals automatically.
-- [ ] Add natural language based command support.
 - [ ] In channel report, point out alerts that are never acted on.
 - [ ] In channel report, point out alerts that are open for too long.
 - [ ] In channel report, fix user/bot name formatting.

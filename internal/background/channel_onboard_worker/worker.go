@@ -35,7 +35,12 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 		return fmt.Errorf("getting channel info for channel ID %s: %w", job.Args.ChannelID, err)
 	}
 
-	messages, err := w.slackIntegration.GetConversationHistory(ctx, job.Args.ChannelID)
+	lastNMsgs := job.Args.LastNMsgs
+	if lastNMsgs == 0 {
+		lastNMsgs = 1000
+	}
+
+	messages, err := w.slackIntegration.GetConversationHistory(ctx, job.Args.ChannelID, lastNMsgs)
 	if err != nil {
 		return fmt.Errorf("getting conversation history for channel ID %s: %w", job.Args.ChannelID, err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -82,8 +83,12 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			err := b.bot.Notify(ctx, ev)
-			if err != nil {
+			// if message starts with bot ID mention, treat it as a command
+			if strings.HasPrefix(ev.Text, fmt.Sprintf("<@%s> ", b.BotUserID)) {
+				return b.bot.HandleCommand(ctx, ev)
+			}
+
+			if err := b.bot.Notify(ctx, ev); err != nil {
 				return fmt.Errorf("notifying update for channel: %w", err)
 			}
 		default:
@@ -106,11 +111,11 @@ func (b *Integration) GetConversationInfo(ctx context.Context, channelID string)
 	})
 }
 
-func (b *Integration) GetConversationHistory(ctx context.Context, channelID string) ([]slack.Message, error) {
+func (b *Integration) GetConversationHistory(ctx context.Context, channelID string, lastNMsgs int) ([]slack.Message, error) {
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: channelID,
 		Latest:    internal.TimeToTs(time.Now()),
-		Limit:     1000,
+		Limit:     lastNMsgs,
 	}
 	var messages []slack.Message
 	for {
@@ -120,7 +125,7 @@ func (b *Integration) GetConversationHistory(ctx context.Context, channelID stri
 		}
 
 		messages = append(messages, history.Messages...)
-		if !history.HasMore || len(messages) >= 10 {
+		if !history.HasMore || len(messages) >= lastNMsgs {
 			break
 		}
 

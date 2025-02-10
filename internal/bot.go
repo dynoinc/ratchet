@@ -17,6 +17,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
@@ -34,13 +35,22 @@ var (
 
 type Bot struct {
 	DB          *pgxpool.Pool
+	llmClient   *llm.Client
 	riverClient *river.Client[pgx.Tx]
+	commands    *commands
 }
 
-func New(db *pgxpool.Pool) *Bot {
-	return &Bot{
-		DB: db,
+func New(ctx context.Context, db *pgxpool.Pool, llmClient *llm.Client) (*Bot, error) {
+	commands, err := prepareCommands(ctx, llmClient)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Bot{
+		DB:        db,
+		llmClient: llmClient,
+		commands:  commands,
+	}, nil
 }
 
 func (b *Bot) Init(riverClient *river.Client[pgx.Tx]) error {
@@ -130,6 +140,26 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 
 			return fmt.Errorf("adding thread message to channel %s (ts=%s): %w", param.ChannelID, param.Ts, err)
 		}
+	}
+
+	return nil
+}
+
+func (b *Bot) HandleCommand(ctx context.Context, ev *slackevents.MessageEvent) error {
+	text := ev.Text
+	cmd, err := b.commands.findCommand(ctx, text)
+	if err != nil {
+		return fmt.Errorf("finding command: %w", err)
+	}
+
+	if cmd == cmdPostReport {
+		if _, err := b.riverClient.Insert(ctx, background.ReportWorkerArgs{
+			ChannelID: ev.Channel,
+		}, nil); err != nil {
+			return fmt.Errorf("scheduling report posting for channel %s: %w", ev.Channel, err)
+		}
+
+		return nil
 	}
 
 	return nil

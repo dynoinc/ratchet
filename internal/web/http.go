@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/carlmjohnson/versioninfo"
@@ -162,9 +163,16 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("channel not found")
 	}
 
+	lastNMsgs := cmp.Or(r.URL.Query().Get("n"), "1000")
+	lastNMsgsInt, err := strconv.Atoi(lastNMsgs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid last_n_msgs: %w", err)
+	}
+
 	// submit job to river to onboard channel
 	if _, err := h.riverClient.Insert(r.Context(), background.ChannelOnboardWorkerArgs{
 		ChannelID: channelID,
+		LastNMsgs: lastNMsgsInt,
 	}, nil); err != nil {
 		return nil, err
 	}
@@ -320,11 +328,7 @@ func (h *httpHandlers) getUpdates(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
 
-	interval := r.URL.Query().Get("interval")
-	if interval == "" {
-		interval = "1h"
-	}
-
+	interval := cmp.Or(r.URL.Query().Get("interval"), "1h")
 	intervalDuration, err := time.ParseDuration(interval)
 	if err != nil {
 		return nil, err
