@@ -69,7 +69,7 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		return fmt.Errorf("classifying incident with binary: %w", err)
 	}
 
-	embedding, err := w.llmClient.GenerateEmbedding(ctx, msg.Attrs.Message.Text)
+	embedding, err := w.llmClient.GenerateEmbedding(ctx, "search_document", msg.Attrs.Message.Text)
 	if err != nil {
 		return fmt.Errorf("generating embedding: %w", err)
 	}

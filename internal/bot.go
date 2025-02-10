@@ -146,8 +146,8 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 }
 
 func (b *Bot) HandleCommand(ctx context.Context, ev *slackevents.MessageEvent) error {
-	text := ev.Text
-	cmd, err := b.commands.findCommand(ctx, text)
+	text := strings.TrimPrefix(ev.Text, fmt.Sprintf("<@%s> ", ev.BotID))
+	cmd, _, err := b.commands.findCommand(ctx, text)
 	if err != nil {
 		return fmt.Errorf("finding command: %w", err)
 	}

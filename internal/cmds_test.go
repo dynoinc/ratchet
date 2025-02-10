@@ -5,14 +5,11 @@ import (
 	"testing"
 
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFindCommand(t *testing.T) {
-	llmClient, err := llm.New(context.Background(), llm.Config{
-		URL:            "http://localhost:11434/v1/",
-		Model:          "qwen2.5:7b",
-		EmbeddingModel: "all-minilm",
-	})
+	llmClient, err := llm.New(context.Background(), llm.DefaultConfig())
 	if err != nil {
 		t.Skip("ollama not running")
 	}
@@ -29,25 +26,22 @@ func TestFindCommand(t *testing.T) {
 	}{
 		{
 			name:    "post weekly report to slack channel",
-			message: "<@U0700000000> post report",
+			message: "post report",
 			want:    cmdPostReport,
 		},
 		{
 			name:    "how are you?",
-			message: "<@U0700000000> how are you?",
+			message: "how are you?",
 			want:    cmdNone,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := commands.findCommand(t.Context(), test.message)
-			if err != nil {
-				t.Fatalf("failed to find command: %v", err)
-			}
-			if got != test.want {
-				t.Errorf("got %v, want %v", got, test.want)
-			}
+			got, score, err := commands.findCommand(t.Context(), test.message)
+			require.NoError(t, err)
+			t.Logf("score: %v", score)
+			require.Equal(t, test.want, got)
 		})
 	}
 }

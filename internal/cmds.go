@@ -28,7 +28,7 @@ type commands struct {
 func prepareCommands(ctx context.Context, llmClient *llm.Client) (*commands, error) {
 	m := make(map[cmd][]float64)
 	for msg, cmd := range cmds {
-		embedding, err := llmClient.GenerateEmbedding(ctx, msg)
+		embedding, err := llmClient.GenerateEmbedding(ctx, "classification", msg)
 		if err != nil {
 			return nil, err
 		}
@@ -43,10 +43,10 @@ func prepareCommands(ctx context.Context, llmClient *llm.Client) (*commands, err
 	return &commands{llmClient: llmClient, embeddings: m}, nil
 }
 
-func (c *commands) findCommand(ctx context.Context, message string) (cmd, error) {
-	embedding, err := c.llmClient.GenerateEmbedding(ctx, message)
+func (c *commands) findCommand(ctx context.Context, message string) (cmd, float64, error) {
+	embedding, err := c.llmClient.GenerateEmbedding(ctx, "classification", message)
 	if err != nil {
-		return cmdNone, err
+		return cmdNone, 0, err
 	}
 
 	// Convert embedding to float64 slice
@@ -79,9 +79,9 @@ func (c *commands) findCommand(ctx context.Context, message string) (cmd, error)
 		}
 	}
 
-	if bestScore > 0.8 {
-		return cmdNone, nil
+	if bestScore > 0.3 {
+		return cmdNone, bestScore, nil
 	}
 
-	return bestMatch, nil
+	return bestMatch, bestScore, nil
 }

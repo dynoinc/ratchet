@@ -7,16 +7,12 @@ import (
 )
 
 func TestGenerateEmbedding(t *testing.T) {
-	llmClient, err := New(t.Context(), Config{
-		URL:            "http://localhost:11434/v1/",
-		Model:          "qwen2.5:7b",
-		EmbeddingModel: "all-minilm",
-	})
+	llmClient, err := New(t.Context(), DefaultConfig())
 	if err != nil {
 		t.Skip("Skipping test. Ollama not found")
 	}
 
-	embedding, err := llmClient.GenerateEmbedding(t.Context(), "Hello, world!")
+	embedding, err := llmClient.GenerateEmbedding(t.Context(), "classification", "Hello, world!")
 	require.NoError(t, err)
-	require.Equal(t, 384, len(embedding))
+	require.Equal(t, 768, len(embedding))
 }

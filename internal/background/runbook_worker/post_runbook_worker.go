@@ -160,7 +160,7 @@ func GetUpdates(
 	botID string,
 ) ([]schema.MessagesV2, error) {
 	queryText := fmt.Sprintf("%s %s", serviceName, alertName)
-	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, queryText)
+	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", queryText)
 	if err != nil {
 		return nil, fmt.Errorf("generating embedding: %w", err)
 	}

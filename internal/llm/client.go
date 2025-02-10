@@ -2,10 +2,16 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/kelseyhightower/envconfig"
+	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -14,7 +20,16 @@ type Config struct {
 	APIKey         string `envconfig:"API_KEY"`
 	URL            string `default:"http://localhost:11434/v1/"`
 	Model          string `default:"qwen2.5:7b"`
-	EmbeddingModel string `split_words:"true" default:"all-minilm"`
+	EmbeddingModel string `split_words:"true" default:"nomic-embed-text"`
+}
+
+func DefaultConfig() Config {
+	c := Config{}
+	if err := envconfig.Process("", &c); err != nil {
+		slog.Error("error processing environment variables", "error", err)
+		os.Exit(1)
+	}
+	return c
 }
 
 type Client struct {
@@ -28,19 +43,50 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 	}
 
 	client := openai.NewClient(option.WithBaseURL(cfg.URL), option.WithAPIKey(cfg.APIKey))
-	_, err := client.Models.Get(ctx, cfg.Model)
-	if err != nil {
-		return nil, fmt.Errorf("getting model: %w", err)
+	if _, err := client.Models.Get(ctx, cfg.Model); err != nil {
+		var aerr *openai.Error
+		if errors.As(err, &aerr) && aerr.StatusCode == http.StatusNotFound && cfg.URL == "http://localhost:11434/v1/" {
+			if err := downloadOllamaModel(ctx, cfg.Model); err != nil {
+				return nil, fmt.Errorf("downloading model %s: %w", cfg.Model, err)
+			}
+		} else {
+			return nil, fmt.Errorf("getting model: %w", err)
+		}
 	}
-	_, err = client.Models.Get(ctx, cfg.EmbeddingModel)
-	if err != nil {
-		return nil, fmt.Errorf("getting embedding model: %w", err)
+
+	if _, err := client.Models.Get(ctx, cfg.EmbeddingModel); err != nil {
+		var aerr *openai.Error
+		if errors.As(err, &aerr) && aerr.StatusCode == http.StatusNotFound && cfg.URL == "http://localhost:11434/v1/" {
+			if err := downloadOllamaModel(ctx, cfg.EmbeddingModel); err != nil {
+				return nil, fmt.Errorf("downloading embedding model %s: %w", cfg.EmbeddingModel, err)
+			}
+		} else {
+			return nil, fmt.Errorf("getting embedding model: %w", err)
+		}
 	}
 
 	return &Client{
 		client: client,
 		cfg:    cfg,
 	}, nil
+}
+
+func downloadOllamaModel(ctx context.Context, s string) error {
+	client := ollama.NewClient(&url.URL{
+		Scheme: "http",
+		Host:   "localhost:11434",
+	}, http.DefaultClient)
+	if err := client.Pull(ctx, &ollama.PullRequest{
+		Name: s,
+	}, func(resp ollama.ProgressResponse) error {
+		fmt.Fprintf(os.Stderr, "\r%s: %s [%d/%d]", s, resp.Status, resp.Completed, resp.Total)
+		return nil
+	}); err != nil {
+		return fmt.Errorf("downloading model %s: %w", s, err)
+	}
+
+	slog.DebugContext(ctx, "downloaded model", "model", s)
+	return nil
 }
 
 func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
@@ -207,7 +253,7 @@ RULES:
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (c *Client) GenerateEmbedding(ctx context.Context, text string) ([]float32, error) {
+func (c *Client) GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error) {
 	if c == nil {
 		return nil, nil
 	}
@@ -215,10 +261,10 @@ func (c *Client) GenerateEmbedding(ctx context.Context, text string) ([]float32,
 	params := openai.EmbeddingNewParams{
 		Model: openai.F(openai.EmbeddingModel(c.cfg.EmbeddingModel)),
 		Input: openai.F(openai.EmbeddingNewParamsInputUnion(
-			openai.EmbeddingNewParamsInputArrayOfStrings([]string{text}),
+			openai.EmbeddingNewParamsInputArrayOfStrings([]string{fmt.Sprintf("%s: %s", task, text)}),
 		)),
 		EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
-		Dimensions:     openai.F(int64(384)),
+		Dimensions:     openai.F(int64(768)),
 	}
 
 	resp, err := c.client.Embeddings.New(ctx, params)
