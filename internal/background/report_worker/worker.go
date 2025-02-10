@@ -68,10 +68,55 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 		}
 	}
 
+	textMessages := make([][]string, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Attrs.Message.BotID != "" {
+			continue
+		}
+
+		threadMessages, err := schema.New(w.bot.DB).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+			ChannelID: msg.ChannelID,
+			ParentTs:  msg.Ts,
+		})
+		if err != nil {
+			return fmt.Errorf("getting thread messages: %w", err)
+		}
+		fullThreadMessages := []string{msg.Attrs.Message.Text}
+		for _, threadMessage := range threadMessages {
+			fullThreadMessages = append(fullThreadMessages, threadMessage.Attrs.Message.Text)
+		}
+
+		textMessages = append(textMessages, fullThreadMessages)
+	}
+
+	suggestions, err := w.llmClient.GenerateChannelSuggestions(ctx, textMessages)
+	if err != nil {
+		return fmt.Errorf("generating suggestions: %w", err)
+	}
+
+	messageBlocks := w.formatSlackMessage(
+		job.Args.ChannelID,
+		userMsgCounts,
+		botMsgCounts,
+		incidentCounts,
+		incidentDurations,
+		suggestions,
+	)
+	return w.slackIntegration.PostMessage(ctx, job.Args.ChannelID, messageBlocks...)
+}
+
+func (w *reportWorker) formatSlackMessage(
+	channelID string,
+	userMsgCounts, botMsgCounts map[string]int,
+	incidentCounts map[string]int,
+	incidentDurations map[string][]time.Duration,
+	suggestions string,
+) []slack.Block {
+
 	// Build report sections
 	headerText := slack.NewTextBlockObject("mrkdwn",
 		fmt.Sprintf("*Weekly Channel Report*\nChannel: <#%s>\nPeriod: %s - %s",
-			job.Args.ChannelID,
+			channelID,
 			time.Now().AddDate(0, 0, -7).Format("2006-01-02"),
 			time.Now().Format("2006-01-02")),
 		false, false)
@@ -176,31 +221,6 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 	table.Render()
 	alertsTable.WriteString("```\n") // Add newline after closing code block
 
-	textMessages := make([][]string, 0, len(messages))
-	for _, msg := range messages {
-		if msg.Attrs.Message.BotID != "" {
-			continue
-		}
-
-		threadMessages, err := schema.New(w.bot.DB).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
-			ChannelID: msg.ChannelID,
-			ParentTs:  msg.Ts,
-		})
-		if err != nil {
-			return fmt.Errorf("getting thread messages: %w", err)
-		}
-		fullThreadMessages := []string{msg.Attrs.Message.Text}
-		for _, threadMessage := range threadMessages {
-			fullThreadMessages = append(fullThreadMessages, threadMessage.Attrs.Message.Text)
-		}
-
-		textMessages = append(textMessages, fullThreadMessages)
-	}
-	suggestions, err := w.llmClient.GenerateChannelSuggestions(ctx, textMessages)
-	if err != nil {
-		return fmt.Errorf("generating suggestions: %w", err)
-	}
-
 	// Format suggestions
 	var suggestionsSection *slack.SectionBlock
 	if len(suggestions) > 0 {
@@ -274,8 +294,7 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 		signatureSection,
 	)
 
-	// Send everything in a single message
-	return w.slackIntegration.PostMessage(ctx, job.Args.ChannelID, messageBlocks...)
+	return messageBlocks
 }
 
 type kv struct {

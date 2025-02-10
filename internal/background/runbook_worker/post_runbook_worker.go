@@ -40,7 +40,6 @@ func NewPostRunbookWorker(
 		llmClient:        llmClient,
 	}
 }
-
 func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.PostRunbookWorkerArgs]) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
@@ -50,7 +49,6 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 
 		return fmt.Errorf("getting message: %w", err)
 	}
-
 	serviceName := msg.Attrs.IncidentAction.Service
 	alertName := msg.Attrs.IncidentAction.Alert
 
@@ -69,6 +67,19 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		}
 	}
 
+	updates, err := GetUpdates(ctx, w.bot.DB, w.llmClient, serviceName, alertName, time.Hour, w.slackIntegration.BotUserID)
+	if err != nil {
+		return fmt.Errorf("getting updates: %w", err)
+	}
+
+	blocks := w.formatRunbookMessage(serviceName, alertName, runbookMessage, updates)
+	return w.slackIntegration.PostThreadReply(ctx, job.Args.ChannelID, job.Args.SlackTS, blocks...)
+}
+
+func (w *postRunbookWorker) formatRunbookMessage(
+	serviceName, alertName, runbookMessage string,
+	updates []schema.MessagesV2,
+) []slack.Block {
 	// Create blocks array and add header
 	blocks := []slack.Block{
 		slack.NewHeaderBlock(
@@ -94,12 +105,6 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 			slack.NewTextBlockObject(slack.MarkdownType, "_No runbook found for this alert_", false, false),
 			nil, nil,
 		))
-	}
-
-	// Get and format updates
-	updates, err := GetUpdates(ctx, w.bot.DB, w.llmClient, serviceName, alertName, time.Hour, w.slackIntegration.BotUserID)
-	if err != nil {
-		return fmt.Errorf("getting updates: %w", err)
 	}
 
 	// Add divider before updates section
@@ -143,7 +148,7 @@ func (w *postRunbookWorker) Work(ctx context.Context, job *river.Job[background.
 		nil, nil,
 	))
 
-	return w.slackIntegration.PostThreadReply(ctx, job.Args.ChannelID, job.Args.SlackTS, blocks...)
+	return blocks
 }
 
 func GetUpdates(
