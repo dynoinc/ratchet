@@ -24,6 +24,7 @@ AI bot to help reduce operational toil
 | [pgvector](https://github.com/pgvector/pgvector) | Vector database for storing embeddings |
 | [Docker](https://www.docker.com/) | Containerization and deployment |
 | [Github Actions](https://github.com/features/actions) | CI/CD pipeline automation |
+| [Cursor](https://www.cursor.com/) | IDE for writing code |
 
 ## Lessons learned
 
