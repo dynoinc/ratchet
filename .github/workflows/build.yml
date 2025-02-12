@@ -21,16 +21,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          cache: true
-
-      - name: Go Format
-        run: go fmt -w . && git diff --exit-code
-
-      - name: Go Vet
-        run: go vet ./...
-
-      - name: Go Tidy
-        run: go mod tidy && git diff --exit-code
 
       - name: Go Mod
         run: go mod download
@@ -40,6 +30,15 @@ jobs:
 
       - name: Go Generate
         run: go generate ./... && git diff --exit-code
+
+      - name: Go Format
+        run: go fmt ./... && git diff --exit-code
+
+      - name: Go Tidy
+        run: go mod tidy && git diff --exit-code
+
+      - name: Go Vet
+        run: go vet ./...
 
       - name: Go Build
         run: go build ./...
