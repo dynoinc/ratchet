@@ -7,11 +7,7 @@ import (
 )
 
 type Handler interface {
+	Name() string
+
 	Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error
-}
-
-type HandlerFunc func(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error
-
-func (f HandlerFunc) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	return f(ctx, channelID, slackTS, msg)
 }

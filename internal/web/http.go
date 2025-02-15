@@ -21,6 +21,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
@@ -101,7 +102,7 @@ func New(
 	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
 	apiMux.HandleFunc("GET /services/{service}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
-	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/updates", handleJSON(handlers.getUpdates))
+	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
 	apiMux.HandleFunc("POST /services/{service}/refresh-runbooks", handleJSON(handlers.refreshRunbooks))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/refresh-runbook", handleJSON(handlers.refreshRunbook))
 
@@ -318,7 +319,7 @@ func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
 	return runbook, nil
 }
 
-func (h *httpHandlers) getUpdates(r *http.Request) (any, error) {
+func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
 
@@ -328,7 +329,7 @@ func (h *httpHandlers) getUpdates(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	updates, err := runbook.GetUpdates(
+	updates, err := recent_activity.Get(
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,

@@ -2,7 +2,6 @@ package modules_worker
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -36,7 +35,7 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWork
 			sentry.WithScope(func(scope *sentry.Scope) {
 				scope.AddBreadcrumb(&sentry.Breadcrumb{
 					Category: "module",
-					Message:  fmt.Sprintf("%T", module),
+					Message:  module.Name(),
 					Level:    sentry.LevelInfo,
 				}, 100)
 				sentry.CaptureException(err)

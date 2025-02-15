@@ -50,6 +50,10 @@ func New(
 	}
 }
 
+func (c *commands) Name() string {
+	return "commands"
+}
+
 func (c *commands) commandEmbeddings(ctx context.Context) (map[cmd][]float64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
