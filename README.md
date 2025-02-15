@@ -6,10 +6,15 @@ AI bot to help reduce operational toil
 
 ## How AI is used?
 
-* To prepare a weekly report for a channel with suggestions of what to improve to reduce future support toil.
-* To maintain runbooks for alerts. Runbooks include historical causes and debugging steps.
-* To post relevant messages with runbooks when an alert is triggered.
-* To provide a natural language interface to the bot.
+By default, the bot persists messages in the database, classifies them as alerts open/close notifications 
+and computes embeddings for Slack messages. After that, a set of modules are ran on these messages. Currently, the modules are:
+
+| Module | Description |
+|--------|-------------|
+| commands | Provides a natural language interface to the bot. |
+| runbook | When an alert is triggered, the bot posts a message with the runbook for the alert. |
+| recent_activity | When an alert is triggered, the bot posts a message with the recent activity relevant to the alert. |
+| report | Provides a weekly report for a channel with suggestions of what to improve to reduce future support toil. |
 
 ## Built with
 
@@ -68,5 +73,6 @@ AI bot to help reduce operational toil
 * Install docker (for postgres) and ollama (for local LLM access).
 * Start the binary using 
 ```bash
+  go run ./cmd/ratchet --help
   go run ./cmd/ratchet
 ```
