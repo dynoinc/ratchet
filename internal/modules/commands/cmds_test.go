@@ -1,10 +1,11 @@
-package internal
+package commands
 
 import (
 	"context"
 	"testing"
 
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,10 +15,7 @@ func TestFindCommand(t *testing.T) {
 		t.Skip("ollama not running")
 	}
 
-	commands, err := prepareCommands(t.Context(), llmClient)
-	if err != nil {
-		t.Fatalf("failed to prepare commands: %v", err)
-	}
+	commands := New(nil, nil, llmClient)
 
 	tests := []struct {
 		name    string
@@ -38,7 +36,9 @@ func TestFindCommand(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, score, err := commands.findCommand(t.Context(), test.message)
+			got, score, err := commands.findCommand(t.Context(), dto.SlackMessage{
+				Text: test.message,
+			})
 			require.NoError(t, err)
 			t.Logf("score: %v", score)
 			require.Equal(t, test.want, got)

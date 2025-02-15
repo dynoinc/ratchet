@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -83,11 +82,6 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			// if message starts with bot ID mention, treat it as a command
-			if strings.HasPrefix(ev.Text, fmt.Sprintf("<@%s> ", b.BotUserID)) {
-				return b.bot.HandleCommand(ctx, ev)
-			}
-
 			if err := b.bot.Notify(ctx, ev); err != nil {
 				return fmt.Errorf("notifying update for channel: %w", err)
 			}

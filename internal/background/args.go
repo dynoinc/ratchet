@@ -28,29 +28,11 @@ func (b BackfillThreadWorkerArgs) Kind() string {
 	return "backfill_thread"
 }
 
-type ReportWorkerArgs struct {
-	ChannelID string `json:"channel_id"`
-}
-
-func (r ReportWorkerArgs) Kind() string {
-	return "report"
-}
-
-type PostRunbookWorkerArgs struct {
+type ModulesWorkerArgs struct {
 	ChannelID string `json:"channel_id"`
 	SlackTS   string `json:"slack_ts"`
 }
 
-func (r PostRunbookWorkerArgs) Kind() string {
-	return "post_runbook"
-}
-
-type UpdateRunbookWorkerArgs struct {
-	Service       string `json:"service"`
-	Alert         string `json:"alert"`
-	ForceRecreate bool   `json:"force_recreate"`
-}
-
-func (u UpdateRunbookWorkerArgs) Kind() string {
-	return "update_runbook"
+func (m ModulesWorkerArgs) Kind() string {
+	return "modules"
 }

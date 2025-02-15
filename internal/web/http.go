@@ -20,8 +20,9 @@ import (
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal/background"
-	"github.com/dynoinc/ratchet/internal/background/runbook_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules/report"
+	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
@@ -187,9 +188,7 @@ func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	if _, err := h.riverClient.Insert(r.Context(), background.ReportWorkerArgs{
-		ChannelID: channel.ID,
-	}, nil); err != nil {
+	if err := report.Post(r.Context(), schema.New(h.db), h.llmClient, h.slackIntegration, channel.ID); err != nil {
 		return nil, err
 	}
 
@@ -199,13 +198,16 @@ func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 func (h *httpHandlers) refreshRunbook(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
-
 	forceRecreate := r.URL.Query().Get("force_recreate") == "1"
-	if _, err := h.riverClient.Insert(r.Context(), background.UpdateRunbookWorkerArgs{
-		Service:       serviceName,
-		Alert:         alertName,
-		ForceRecreate: forceRecreate,
-	}, nil); err != nil {
+
+	if _, err := runbook.Update(
+		r.Context(),
+		schema.New(h.db),
+		h.llmClient,
+		serviceName,
+		alertName,
+		forceRecreate,
+	); err != nil {
 		return nil, err
 	}
 
@@ -225,28 +227,20 @@ func (h *httpHandlers) refreshRunbooks(r *http.Request) (any, error) {
 		return nil, nil
 	}
 
-	var params []river.InsertManyParams
 	for _, alert := range alerts {
-		params = append(params, river.InsertManyParams{
-			Args: background.UpdateRunbookWorkerArgs{
-				Service:       alert.Service,
-				Alert:         alert.Alert,
-				ForceRecreate: forceRecreate,
-			},
-		})
+		if _, err := runbook.Update(
+			r.Context(),
+			schema.New(h.db),
+			h.llmClient,
+			alert.Service,
+			alert.Alert,
+			forceRecreate,
+		); err != nil {
+			return nil, err
+		}
 	}
 
-	tx, err := h.db.Begin(r.Context())
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(r.Context())
-
-	if _, err := h.riverClient.InsertManyTx(r.Context(), tx, params); err != nil {
-		return nil, err
-	}
-
-	return nil, tx.Commit(r.Context())
+	return nil, nil
 }
 
 func (h *httpHandlers) listServices(r *http.Request) (any, error) {
@@ -334,9 +328,9 @@ func (h *httpHandlers) getUpdates(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	updates, err := runbook_worker.GetUpdates(
+	updates, err := runbook.GetUpdates(
 		r.Context(),
-		h.db,
+		schema.New(h.db),
 		h.llmClient,
 		serviceName,
 		alertName,

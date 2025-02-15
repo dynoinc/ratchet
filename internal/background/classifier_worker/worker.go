@@ -97,13 +97,13 @@ func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.C
 		return fmt.Errorf("updating message %s (ts=%s): %w", params.ChannelID, params.Ts, err)
 	}
 
-	if params.Attrs.IncidentAction.Action == dto.ActionOpenIncident && !job.Args.IsBackfill {
+	if !job.Args.IsBackfill {
 		riverclient := river.ClientFromContext[pgx.Tx](ctx)
-		if _, err := riverclient.InsertTx(ctx, tx, background.PostRunbookWorkerArgs{
+		if _, err := riverclient.InsertTx(ctx, tx, background.ModulesWorkerArgs{
 			ChannelID: params.ChannelID,
 			SlackTS:   params.Ts,
 		}, nil); err != nil {
-			return fmt.Errorf("scheduling runbook worker: %w", err)
+			return fmt.Errorf("scheduling modules worker: %w", err)
 		}
 	}
 

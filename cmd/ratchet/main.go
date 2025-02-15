@@ -30,9 +30,11 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
-	"github.com/dynoinc/ratchet/internal/background/report_worker"
-	"github.com/dynoinc/ratchet/internal/background/runbook_worker"
+	"github.com/dynoinc/ratchet/internal/background/modules_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules"
+	"github.com/dynoinc/ratchet/internal/modules/commands"
+	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
@@ -149,7 +151,7 @@ func main() {
 	}
 
 	// Bot setup
-	bot, err := internal.New(ctx, db, llmClient)
+	bot, err := internal.New(ctx, db)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up bot", "error", err)
 		os.Exit(1)
@@ -175,25 +177,18 @@ func main() {
 	// Backfill thread worker setup
 	backfillThreadWorker := backfill_thread_worker.New(bot, slackIntegration)
 
-	// Report worker setup
-	reportWorker := report_worker.New(bot, slackIntegration, llmClient)
-
-	// Runbook worker setup
-	postRunbookWorker := runbook_worker.NewPostRunbookWorker(
-		bot,
-		slackIntegration,
-		llmClient,
-	)
-	updateRunbookWorker := runbook_worker.NewUpdateRunbookWorker(bot, llmClient)
+	// Modules worker setup
+	modulesWorker := modules_worker.New(bot, []modules.Handler{
+		commands.New(bot, slackIntegration, llmClient),
+		runbook.New(bot, slackIntegration, llmClient),
+	})
 
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
 	river.AddWorker(workers, channelOnboardWorker)
-	river.AddWorker(workers, reportWorker)
-	river.AddWorker(workers, postRunbookWorker)
-	river.AddWorker(workers, updateRunbookWorker)
 	river.AddWorker(workers, backfillThreadWorker)
+	river.AddWorker(workers, modulesWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up background worker", "error", err)

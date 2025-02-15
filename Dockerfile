@@ -17,20 +17,16 @@ FROM public.ecr.aws/lts/ubuntu:edge AS runner
 # Update package lists
 RUN apt-get update
 
-# Install ca-certificates
-RUN apt-get install -y --no-install-recommends ca-certificates
-
 # Update libc-bin if needed
 RUN if dpkg --compare-versions "$(dpkg-query -f '${Version}' -W libc-bin)" lt "2.39-0ubuntu8.4"; then \
     apt-get install -y --no-install-recommends libc-bin=2.39-0ubuntu8.4; \
     fi
 
-# Update CA certificates
-RUN update-ca-certificates
+# Update ca-certificates
+RUN apt-get install -y --no-install-recommends ca-certificates && update-ca-certificates
 
 # Clean up
-RUN apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN useradd -r -u 10001 -g 0 appuser

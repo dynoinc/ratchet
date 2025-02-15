@@ -1,4 +1,4 @@
-package report_worker
+package report
 
 import (
 	"context"
@@ -8,36 +8,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dynoinc/ratchet/internal"
-	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/olekukonko/tablewriter"
-	"github.com/riverqueue/river"
 	"github.com/slack-go/slack"
 )
 
-type reportWorker struct {
-	river.WorkerDefaults[background.ReportWorkerArgs]
-
-	bot              *internal.Bot
-	slackIntegration *slack_integration.Integration
-	llmClient        *llm.Client
-}
-
-func New(bot *internal.Bot, slackIntegration *slack_integration.Integration, llmClient *llm.Client) *reportWorker {
-	return &reportWorker{
-		bot:              bot,
-		slackIntegration: slackIntegration,
-		llmClient:        llmClient,
-	}
-}
-
-func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.ReportWorkerArgs]) error {
-	messages, err := schema.New(w.bot.DB).GetMessagesWithinTS(ctx, schema.GetMessagesWithinTSParams{
-		ChannelID: job.Args.ChannelID,
+func Post(
+	ctx context.Context,
+	qtx *schema.Queries,
+	llmClient *llm.Client,
+	slackIntegration *slack_integration.Integration,
+	channelID string,
+) error {
+	messages, err := qtx.GetMessagesWithinTS(ctx, schema.GetMessagesWithinTSParams{
+		ChannelID: channelID,
 		StartTs:   fmt.Sprintf("%d.000000", time.Now().AddDate(0, 0, -7).Unix()),
 		EndTs:     fmt.Sprintf("%d.000000", time.Now().Unix()),
 	})
@@ -74,7 +61,7 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 			continue
 		}
 
-		threadMessages, err := schema.New(w.bot.DB).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+		threadMessages, err := qtx.GetThreadMessages(ctx, schema.GetThreadMessagesParams{
 			ChannelID: msg.ChannelID,
 			ParentTs:  msg.Ts,
 		})
@@ -89,30 +76,22 @@ func (w *reportWorker) Work(ctx context.Context, job *river.Job[background.Repor
 		textMessages = append(textMessages, fullThreadMessages)
 	}
 
-	suggestions, err := w.llmClient.GenerateChannelSuggestions(ctx, textMessages)
+	suggestions, err := llmClient.GenerateChannelSuggestions(ctx, textMessages)
 	if err != nil {
 		return fmt.Errorf("generating suggestions: %w", err)
 	}
 
-	messageBlocks := w.formatSlackMessage(
-		job.Args.ChannelID,
-		userMsgCounts,
-		botMsgCounts,
-		incidentCounts,
-		incidentDurations,
-		suggestions,
-	)
-	return w.slackIntegration.PostMessage(ctx, job.Args.ChannelID, messageBlocks...)
+	messageBlocks := format(channelID, userMsgCounts, botMsgCounts, incidentCounts, incidentDurations, suggestions)
+	return slackIntegration.PostMessage(ctx, channelID, messageBlocks...)
 }
 
-func (w *reportWorker) formatSlackMessage(
+func format(
 	channelID string,
 	userMsgCounts, botMsgCounts map[string]int,
 	incidentCounts map[string]int,
 	incidentDurations map[string][]time.Duration,
 	suggestions string,
 ) []slack.Block {
-
 	// Build report sections
 	headerText := slack.NewTextBlockObject("mrkdwn",
 		fmt.Sprintf("*Weekly Channel Report*\nChannel: <#%s>\nPeriod: %s - %s",
