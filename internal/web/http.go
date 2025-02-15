@@ -329,7 +329,7 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	updates, err := recent_activity.Get(
+	messages, err := recent_activity.Get(
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,
@@ -342,5 +342,5 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	return updates, nil
+	return messages, nil
 }

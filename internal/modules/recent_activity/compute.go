@@ -13,6 +13,15 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
+type Activity struct {
+	ChannelID    string
+	Ts           string
+	Attrs        dto.MessageAttrs
+	SemanticRank int
+	LexicalRank  int
+	RRFScore     float64
+}
+
 func Get(
 	ctx context.Context,
 	qtx *schema.Queries,
@@ -20,7 +29,7 @@ func Get(
 	serviceName, alertName string,
 	interval time.Duration,
 	botID string,
-) ([]schema.MessagesV2, error) {
+) ([]Activity, error) {
 	queryText := fmt.Sprintf("%s %s", serviceName, alertName)
 	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", queryText)
 	if err != nil {
@@ -38,17 +47,20 @@ func Get(
 		return nil, fmt.Errorf("getting latest service updates: %w", err)
 	}
 
-	messages := make([]schema.MessagesV2, len(updates))
+	messages := make([]Activity, len(updates))
 	for i, update := range updates {
 		var attrs dto.MessageAttrs
 		if err := json.Unmarshal(update.Attrs, &attrs); err != nil {
 			return nil, fmt.Errorf("unmarshalling message attrs: %w", err)
 		}
 
-		messages[i] = schema.MessagesV2{
-			ChannelID: update.ChannelID,
-			Ts:        update.Ts,
-			Attrs:     attrs,
+		messages[i] = Activity{
+			ChannelID:    update.ChannelID,
+			Ts:           update.Ts,
+			Attrs:        attrs,
+			SemanticRank: int(*update.SemanticRank),
+			LexicalRank:  int(*update.LexicalRank),
+			RRFScore:     update.CRrfScore,
 		}
 	}
 

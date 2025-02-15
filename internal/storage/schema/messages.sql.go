@@ -205,8 +205,6 @@ WITH valid_messages AS (
         )
         AND attrs -> 'message' ->> 'bot_id' != $3 :: text
         AND attrs -> 'incident_action' ->> 'action' IS NULL 
-        -- Filter out messages with no lexical match at all
-        AND to_tsvector('english', attrs -> 'message' ->> 'text') @@ plainto_tsquery('english', $1 :: text)
 ),
 semantic_matches AS (
     SELECT
@@ -218,8 +216,6 @@ semantic_matches AS (
         ) as semantic_rank
     FROM
         valid_messages
-    -- Filter out messages with very low semantic similarity
-    WHERE (embedding <=> $4) < 0.8
 ),
 lexical_matches AS (
     SELECT
@@ -231,40 +227,34 @@ lexical_matches AS (
         ) as lexical_rank
     FROM
         valid_messages
-    -- Filter out messages with very low lexical score
-    WHERE lexical_score > 0.01
 ),
 combined_scores AS (
     SELECT
         s.channel_id :: text as channel_id,
         s.ts :: text as ts,
-        -- Reciprocal Rank Fusion with k=60
-        1 / (60 + COALESCE(s.semantic_rank, 1000)) + 1 / (60 + COALESCE(l.lexical_rank, 1000)) as rrf_score
+        s.semantic_rank,
+        l.lexical_rank,
+        -- Reciprocal Rank Fusion with k=1 for small result sets
+        1.0 / (1 + COALESCE(s.semantic_rank, 1000)) + 1.0 / (1 + COALESCE(l.lexical_rank, 1000)) as rrf_score
     FROM
         semantic_matches s
         FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
     -- Require at least one match type to have a reasonable rank
-    WHERE s.semantic_rank <= 100 OR l.lexical_rank <= 100
-),
-top_matches AS (
-    SELECT
-        channel_id,
-        ts
-    FROM
-        combined_scores
-    ORDER BY
-        rrf_score DESC
-    LIMIT
-        10
+    WHERE s.semantic_rank <= 10 OR l.lexical_rank <= 10
 )
 SELECT
     m.channel_id,
     m.ts,
-    m.attrs
+    m.attrs,
+    c.semantic_rank,
+    c.lexical_rank,
+    c.rrf_score :: float
 FROM
     valid_messages m
-    INNER JOIN top_matches t ON m.channel_id = t.channel_id
-    AND m.ts = t.ts
+    INNER JOIN combined_scores c ON m.channel_id = c.channel_id AND m.ts = c.ts
+ORDER BY
+    c.rrf_score DESC
+LIMIT 5
 `
 
 type GetLatestServiceUpdatesParams struct {
@@ -275,9 +265,12 @@ type GetLatestServiceUpdatesParams struct {
 }
 
 type GetLatestServiceUpdatesRow struct {
-	ChannelID string
-	Ts        string
-	Attrs     []byte
+	ChannelID    string
+	Ts           string
+	Attrs        []byte
+	SemanticRank *int64
+	LexicalRank  *int64
+	CRrfScore    float64
 }
 
 func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServiceUpdatesParams) ([]GetLatestServiceUpdatesRow, error) {
@@ -294,7 +287,14 @@ func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServ
 	var items []GetLatestServiceUpdatesRow
 	for rows.Next() {
 		var i GetLatestServiceUpdatesRow
-		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.Ts,
+			&i.Attrs,
+			&i.SemanticRank,
+			&i.LexicalRank,
+			&i.CRrfScore,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

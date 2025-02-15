@@ -47,7 +47,7 @@ func Get(
 
 func format(
 	serviceName, alertName, runbookMessage string,
-	updates []schema.MessagesV2,
+	updates []recent_activity.Activity,
 ) []slack.Block {
 	// Create blocks array and add header
 	blocks := []slack.Block{
