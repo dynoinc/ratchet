@@ -29,6 +29,10 @@ func (h *Handler) Name() string {
 }
 
 func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+	if msg.IncidentAction.Action != dto.ActionOpenIncident {
+		return nil
+	}
+
 	qtx := schema.New(h.bot.DB)
 	blocks, err := Get(ctx, qtx, h.llmClient, msg.IncidentAction.Service, msg.IncidentAction.Alert, h.slackIntegration.BotUserID)
 	if err != nil {
