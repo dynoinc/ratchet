@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
@@ -44,10 +43,6 @@ func New(c Config, bot *internal.Bot, llmClient *llm.Client) (river.Worker[backg
 		bot:            bot,
 		llmClient:      llmClient,
 	}, nil
-}
-
-func (w *classifierWorker) Timeout(job *river.Job[background.ClassifierArgs]) time.Duration {
-	return 2 * time.Minute
 }
 
 func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
