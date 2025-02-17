@@ -57,16 +57,16 @@ func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 type httpHandlers struct {
 	db               *pgxpool.Pool
 	riverClient      *river.Client[pgx.Tx]
-	slackIntegration *slack_integration.Integration
-	llmClient        *llm.Client
+	slackIntegration slack_integration.Integration
+	llmClient        llm.Client
 }
 
 func New(
 	ctx context.Context,
 	db *pgxpool.Pool,
 	riverClient *river.Client[pgx.Tx],
-	slackIntegration *slack_integration.Integration,
-	llmClient *llm.Client,
+	slackIntegration slack_integration.Integration,
+	llmClient llm.Client,
 ) (http.Handler, error) {
 	handlers := &httpHandlers{
 		db:               db,
@@ -336,7 +336,7 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		serviceName,
 		alertName,
 		intervalDuration,
-		h.slackIntegration.BotUserID,
+		h.slackIntegration.BotUserID(),
 	)
 	if err != nil {
 		return nil, err

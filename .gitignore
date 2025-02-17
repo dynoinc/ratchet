@@ -28,3 +28,6 @@ bin/
 
 # Editor backup files
 *.orig
+
+# IntelliJ IDEA
+.idea

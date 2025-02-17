@@ -14,7 +14,7 @@ import (
 func Update(
 	ctx context.Context,
 	qtx *schema.Queries,
-	llmClient *llm.Client,
+	llmClient llm.Client,
 	serviceName, alertName string,
 	forceRecreate bool,
 ) (string, error) {

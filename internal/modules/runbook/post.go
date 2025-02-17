@@ -7,6 +7,6 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func Post(ctx context.Context, slackIntegration *slack_integration.Integration, channelID, slackTS string, blocks ...slack.Block) error {
+func Post(ctx context.Context, slackIntegration slack_integration.Integration, channelID, slackTS string, blocks ...slack.Block) error {
 	return slackIntegration.PostThreadReply(ctx, channelID, slackTS, blocks...)
 }
