@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"runtime/debug"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
@@ -47,13 +46,6 @@ func New(c Config, bot *internal.Bot, llmClient llm.Client) (river.Worker[backgr
 }
 
 func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("stacktrace from panic: %+v\n", string(debug.Stack()))
-			panic(r)
-		}
-	}()
-
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		if errors.Is(err, internal.ErrMessageNotFound) {

@@ -3,6 +3,7 @@ package channel_onboard_worker
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -27,6 +28,10 @@ func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *Cha
 		bot:              bot,
 		slackIntegration: slackIntegration,
 	}
+}
+
+func (w *ChannelOnboardWorker) Timeout(job *river.Job[background.ChannelOnboardWorkerArgs]) time.Duration {
+	return 5 * time.Minute
 }
 
 func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[background.ChannelOnboardWorkerArgs]) error {

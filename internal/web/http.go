@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/carlmjohnson/versioninfo"
@@ -90,6 +91,18 @@ func New(
 		return nil, fmt.Errorf("starting riverui server: %w", err)
 	}
 
+	withoutTrailingSlash := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
+				r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+				http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+
 	apiMux := http.NewServeMux()
 
 	// Channels
@@ -108,7 +121,7 @@ func New(
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
-	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
+	mux.Handle("/api/", withoutTrailingSlash(http.StripPrefix("/api", apiMux)))
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(versioninfo.Short()))
@@ -329,7 +342,7 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	updates, err := recent_activity.Get(
+	messages, err := recent_activity.Get(
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,
@@ -342,5 +355,5 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	return updates, nil
+	return messages, nil
 }

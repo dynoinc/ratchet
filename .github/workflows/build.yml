@@ -40,6 +40,9 @@ jobs:
       - name: Go Vet
         run: go vet ./...
 
+      - name: Staticcheck
+        run: go tool staticcheck ./...
+
       - name: Go Build
         run: go build ./...
 
