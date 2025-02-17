@@ -81,8 +81,8 @@ func (c *commands) commandEmbeddings(ctx context.Context) (map[cmd][]float64, er
 	return m, nil
 }
 
-func (c *commands) findCommand(ctx context.Context, msg dto.SlackMessage) (cmd, float64, error) {
-	embedding, err := c.llmClient.GenerateEmbedding(ctx, "classification", msg.Text)
+func (c *commands) findCommand(ctx context.Context, text string) (cmd, float64, error) {
+	embedding, err := c.llmClient.GenerateEmbedding(ctx, "classification", text)
 	if err != nil {
 		return cmdNone, 0, err
 	}
@@ -135,12 +135,13 @@ func (c *commands) Handle(ctx context.Context, channelID string, slackTS string,
 		return nil
 	}
 
-	bestMatch, score, err := c.findCommand(ctx, msg.Message)
+	text := strings.TrimPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
+	bestMatch, score, err := c.findCommand(ctx, text)
 	if err != nil {
 		return err
 	}
 
-	slog.Debug("best match", "text", msg.Message.Text, "bestMatch", bestMatch, "score", score)
+	slog.Debug("best match", "text", text, "bestMatch", bestMatch, "score", score)
 
 	switch bestMatch {
 	case cmdPostReport:
