@@ -43,6 +43,9 @@ jobs:
       - name: Staticcheck
         run: go tool staticcheck ./...
 
+      - name: SQLc Generate
+        run: go tool sqlc generate -f ./internal/storage/sqlc.yml && git diff --exit-code
+
       - name: Go Build
         run: go build ./...
 
