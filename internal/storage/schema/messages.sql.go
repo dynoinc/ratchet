@@ -203,7 +203,7 @@ WITH valid_messages AS (
             FROM
                 NOW() - $2 :: interval
         )
-        AND attrs -> 'message' ->> 'bot_id' != $3 :: text
+        AND attrs -> 'message' ->> 'user' != $3 :: text
         AND attrs -> 'incident_action' ->> 'action' IS NULL 
 ),
 semantic_matches AS (
