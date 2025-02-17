@@ -30,10 +30,10 @@ type classifierWorker struct {
 
 	incidentBinary string
 	bot            *internal.Bot
-	llmClient      *llm.Client
+	llmClient      llm.Client
 }
 
-func New(c Config, bot *internal.Bot, llmClient *llm.Client) (river.Worker[background.ClassifierArgs], error) {
+func New(c Config, bot *internal.Bot, llmClient llm.Client) (river.Worker[background.ClassifierArgs], error) {
 	if _, err := exec.LookPath(c.IncidentClassificationBinary); err != nil {
 		return nil, fmt.Errorf("looking up incident classification binary: %w", err)
 	}

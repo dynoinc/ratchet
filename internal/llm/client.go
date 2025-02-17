@@ -32,18 +32,25 @@ func DefaultConfig() Config {
 	return c
 }
 
-type Client struct {
+type Client interface {
+	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
+	CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error)
+	UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error)
+	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
+}
+
+type client struct {
 	client *openai.Client
 	cfg    Config
 }
 
-func New(ctx context.Context, cfg Config) (*Client, error) {
+func New(ctx context.Context, cfg Config) (Client, error) {
 	if cfg.URL != "http://localhost:11434/v1/" && cfg.APIKey == "" {
 		return nil, nil
 	}
 
-	client := openai.NewClient(option.WithBaseURL(cfg.URL), option.WithAPIKey(cfg.APIKey))
-	if _, err := client.Models.Get(ctx, cfg.Model); err != nil {
+	openaiClient := openai.NewClient(option.WithBaseURL(cfg.URL), option.WithAPIKey(cfg.APIKey))
+	if _, err := openaiClient.Models.Get(ctx, cfg.Model); err != nil {
 		var aerr *openai.Error
 		if errors.As(err, &aerr) && aerr.StatusCode == http.StatusNotFound && cfg.URL == "http://localhost:11434/v1/" {
 			if err := downloadOllamaModel(ctx, cfg.Model); err != nil {
@@ -54,7 +61,7 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 		}
 	}
 
-	if _, err := client.Models.Get(ctx, cfg.EmbeddingModel); err != nil {
+	if _, err := openaiClient.Models.Get(ctx, cfg.EmbeddingModel); err != nil {
 		var aerr *openai.Error
 		if errors.As(err, &aerr) && aerr.StatusCode == http.StatusNotFound && cfg.URL == "http://localhost:11434/v1/" {
 			if err := downloadOllamaModel(ctx, cfg.EmbeddingModel); err != nil {
@@ -65,8 +72,8 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 		}
 	}
 
-	return &Client{
-		client: client,
+	return &client{
+		client: openaiClient,
 		cfg:    cfg,
 	}, nil
 }
@@ -89,7 +96,7 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 	return nil
 }
 
-func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
+func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
 	if c == nil {
 		return "", nil
 	}
@@ -140,7 +147,7 @@ func (c *Client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (c *Client) CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error) {
+func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error) {
 	if c == nil {
 		return "", nil
 	}
@@ -197,7 +204,7 @@ RULES:
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (c *Client) UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error) {
+func (c *client) UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error) {
 	if c == nil {
 		return "", nil
 	}
@@ -253,7 +260,7 @@ RULES:
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (c *Client) GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error) {
+func (c *client) GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error) {
 	if c == nil {
 		return nil, nil
 	}

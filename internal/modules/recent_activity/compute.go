@@ -25,7 +25,7 @@ type Activity struct {
 func Get(
 	ctx context.Context,
 	qtx *schema.Queries,
-	llmClient *llm.Client,
+	llmClient llm.Client,
 	serviceName, alertName string,
 	interval time.Duration,
 	botID string,

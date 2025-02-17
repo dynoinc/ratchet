@@ -12,11 +12,11 @@ import (
 
 type Handler struct {
 	bot              *internal.Bot
-	slackIntegration *slack_integration.Integration
-	llmClient        *llm.Client
+	slackIntegration slack_integration.Integration
+	llmClient        llm.Client
 }
 
-func New(bot *internal.Bot, slackIntegration *slack_integration.Integration, llmClient *llm.Client) *Handler {
+func New(bot *internal.Bot, slackIntegration slack_integration.Integration, llmClient llm.Client) *Handler {
 	return &Handler{
 		bot:              bot,
 		slackIntegration: slackIntegration,
@@ -34,7 +34,7 @@ func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, 
 	}
 
 	qtx := schema.New(h.bot.DB)
-	blocks, err := Get(ctx, qtx, h.llmClient, msg.IncidentAction.Service, msg.IncidentAction.Alert, h.slackIntegration.BotUserID)
+	blocks, err := Get(ctx, qtx, h.llmClient, msg.IncidentAction.Service, msg.IncidentAction.Alert, h.slackIntegration.BotUserID())
 	if err != nil {
 		return err
 	}

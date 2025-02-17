@@ -19,8 +19,8 @@ import (
 func Post(
 	ctx context.Context,
 	qtx *schema.Queries,
-	llmClient *llm.Client,
-	slackIntegration *slack_integration.Integration,
+	llmClient llm.Client,
+	slackIntegration slack_integration.Integration,
 	channelID string,
 ) error {
 	messages, err := qtx.GetMessagesWithinTS(ctx, schema.GetMessagesWithinTSParams{

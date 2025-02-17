@@ -18,16 +18,28 @@ type Config struct {
 	DevChannelID string `split_words:"true" default:"ratchet-test"`
 }
 
-type Integration struct {
+type Integration interface {
+	Run(ctx context.Context) error
+	GetBotChannels() ([]slack.Channel, error)
+	PostMessage(ctx context.Context, channelID string, messageBlocks ...slack.Block) error
+	PostThreadReply(ctx context.Context, channelID, ts string, messageBlocks ...slack.Block) error
+	Client() *slack.Client
+	GetConversationInfo(ctx context.Context, channelID string) (*slack.Channel, error)
+	GetConversationHistory(ctx context.Context, channelID string, lastNMsgs int) ([]slack.Message, error)
+	GetConversationReplies(ctx context.Context, channelID, ts string) ([]slack.Message, error)
+	BotUserID() string
+}
+
+type integration struct {
 	c Config
 
-	BotUserID string
+	botUserID string
 	client    *socketmode.Client
 
 	bot *internal.Bot
 }
 
-func New(ctx context.Context, c Config, bot *internal.Bot) (*Integration, error) {
+func New(ctx context.Context, c Config, bot *internal.Bot) (Integration, error) {
 	api := slack.New(c.BotToken, slack.OptionAppLevelToken(c.AppToken))
 
 	authTest, err := api.AuthTestContext(ctx)
@@ -37,15 +49,15 @@ func New(ctx context.Context, c Config, bot *internal.Bot) (*Integration, error)
 
 	socketClient := socketmode.New(api)
 
-	return &Integration{
+	return &integration{
 		c:         c,
-		BotUserID: authTest.UserID,
+		botUserID: authTest.UserID,
 		client:    socketClient,
 		bot:       bot,
 	}, nil
 }
 
-func (b *Integration) Run(ctx context.Context) error {
+func (b *integration) Run(ctx context.Context) error {
 	go func() {
 		for {
 			select {
@@ -77,7 +89,7 @@ func (b *Integration) Run(ctx context.Context) error {
 	return b.client.RunContext(ctx)
 }
 
-func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) error {
+func (b *integration) handleEventAPI(ctx context.Context, event slackevents.EventsAPIEvent) error {
 	switch event.Type {
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
@@ -95,17 +107,17 @@ func (b *Integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	return nil
 }
 
-func (b *Integration) Client() *slack.Client {
+func (b *integration) Client() *slack.Client {
 	return &b.client.Client
 }
 
-func (b *Integration) GetConversationInfo(ctx context.Context, channelID string) (*slack.Channel, error) {
+func (b *integration) GetConversationInfo(ctx context.Context, channelID string) (*slack.Channel, error) {
 	return b.client.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{
 		ChannelID: channelID,
 	})
 }
 
-func (b *Integration) GetConversationHistory(ctx context.Context, channelID string, lastNMsgs int) ([]slack.Message, error) {
+func (b *integration) GetConversationHistory(ctx context.Context, channelID string, lastNMsgs int) ([]slack.Message, error) {
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: channelID,
 		Latest:    internal.TimeToTs(time.Now()),
@@ -130,7 +142,7 @@ func (b *Integration) GetConversationHistory(ctx context.Context, channelID stri
 	return messages, nil
 }
 
-func (b *Integration) GetConversationReplies(ctx context.Context, channelID, ts string) ([]slack.Message, error) {
+func (b *integration) GetConversationReplies(ctx context.Context, channelID, ts string) ([]slack.Message, error) {
 	params := &slack.GetConversationRepliesParameters{
 		ChannelID: channelID,
 		Timestamp: ts,
@@ -154,9 +166,9 @@ func (b *Integration) GetConversationReplies(ctx context.Context, channelID, ts 
 	return messages, nil
 }
 
-func (b *Integration) GetBotChannels() ([]slack.Channel, error) {
+func (b *integration) GetBotChannels() ([]slack.Channel, error) {
 	params := &slack.GetConversationsForUserParameters{
-		UserID:          b.BotUserID,
+		UserID:          b.botUserID,
 		Types:           []string{"public_channel"},
 		ExcludeArchived: true,
 	}
@@ -180,7 +192,7 @@ func (b *Integration) GetBotChannels() ([]slack.Channel, error) {
 	return channels, nil
 }
 
-func (b *Integration) PostMessage(ctx context.Context, channelID string, messageBlocks ...slack.Block) error {
+func (b *integration) PostMessage(ctx context.Context, channelID string, messageBlocks ...slack.Block) error {
 	if b.c.DevChannelID != "" {
 		channelID = b.c.DevChannelID
 	}
@@ -196,7 +208,7 @@ func (b *Integration) PostMessage(ctx context.Context, channelID string, message
 	return nil
 }
 
-func (b *Integration) PostThreadReply(ctx context.Context, channelID, ts string, messageBlocks ...slack.Block) error {
+func (b *integration) PostThreadReply(ctx context.Context, channelID, ts string, messageBlocks ...slack.Block) error {
 	msgOptions := []slack.MsgOption{slack.MsgOptionBlocks(messageBlocks...)}
 	if b.c.DevChannelID != "" {
 		channelID = b.c.DevChannelID
@@ -211,4 +223,8 @@ func (b *Integration) PostThreadReply(ctx context.Context, channelID, ts string,
 	}
 
 	return nil
+}
+
+func (b *integration) BotUserID() string {
+	return b.botUserID
 }
