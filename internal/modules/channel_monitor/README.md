@@ -1,6 +1,6 @@
 # Channel Monitor Module
 
-The channel monitor module allows you to monitor slack channels and send slack message based on the message, a prompt, and an executable.
+The channel monitor module allows you to monitor slack channels and send slack messages based on the message, a prompt, and an executable.
 
 ## Configuration
 To enable channel monitor, set the environment variable RATCHET_CHANNEL_MONITOR_CONFIG_FILE to the path of the configuration file. 
