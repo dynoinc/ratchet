@@ -41,9 +41,6 @@ func New(db *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error
 			river.QueueDefault: {
 				MaxWorkers: 10,
 			},
-			"update_runbook": {
-				MaxWorkers: 1,
-			},
 		},
 		Workers: workers,
 		WorkerMiddleware: []rivertype.WorkerMiddleware{

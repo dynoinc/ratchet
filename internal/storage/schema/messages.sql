@@ -125,7 +125,7 @@ WITH valid_messages AS (
             FROM
                 NOW() - @interval :: interval
         )
-        AND attrs -> 'message' ->> 'bot_id' != @bot_id :: text
+        AND attrs -> 'message' ->> 'user' != @bot_id :: text
         AND attrs -> 'incident_action' ->> 'action' IS NULL 
 ),
 semantic_matches AS (

@@ -36,6 +36,10 @@ func Get(
 		}
 	}
 
+	if runbookMessage == "" {
+		return nil, nil
+	}
+
 	updates, err := recent_activity.Get(ctx, qtx, llmClient, serviceName, alertName, time.Hour, botID)
 	if err != nil {
 		return nil, fmt.Errorf("getting updates: %w", err)
