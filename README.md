@@ -9,12 +9,13 @@ AI bot to help reduce operational toil
 By default, the bot persists messages in the database, classifies them as alerts open/close notifications 
 and computes embeddings for Slack messages. After that, a set of modules are ran on these messages. Currently, the modules are:
 
-| Module | Description |
-|--------|-------------|
-| commands | Provides a natural language interface to the bot. |
-| runbook | When an alert is triggered, the bot posts a message with the runbook for the alert. |
-| recent_activity | When an alert is triggered, the bot posts a message with the recent activity relevant to the alert. |
-| report | Provides a weekly report for a channel with suggestions of what to improve to reduce future support toil. |
+| Module                                                        | Description |
+|---------------------------------------------------------------|-------------|
+| commands                                                      | Provides a natural language interface to the bot. |
+| runbook                                                       | When an alert is triggered, the bot posts a message with the runbook for the alert. |
+| recent_activity                                               | When an alert is triggered, the bot posts a message with the recent activity relevant to the alert. |
+| report                                                        | Provides a weekly report for a channel with suggestions of what to improve to reduce future support toil. |
+| [channel_monitor](internal/modules/channel_monitor/README.md) | When a message is posted to a channel, the bot will run a prompt on the message and call an external tool to determine the appropriate action to take. |
 
 ## Built with
 

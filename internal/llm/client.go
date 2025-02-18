@@ -9,11 +9,13 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/kelseyhightower/envconfig"
 	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/qri-io/jsonschema"
+
+	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
 type Config struct {
@@ -37,6 +39,7 @@ type Client interface {
 	CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error)
 	UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
+	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
 }
 
 type client struct {
@@ -285,4 +288,37 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	}
 
 	return r, nil
+}
+
+func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchema *jsonschema.Schema) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	params := openai.ChatCompletionNewParams{
+		Model: openai.F(openai.ChatModel(c.cfg.Model)),
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
+				Content: openai.F(any(prompt)),
+			},
+		}),
+		Temperature: openai.F(0.7),
+		ResponseFormat: openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](
+			openai.ResponseFormatJSONObjectParam{
+				Type: openai.F[openai.ResponseFormatJSONObjectType](openai.ResponseFormatJSONObjectTypeJSONObject),
+			},
+		)}
+
+	resp, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return "", fmt.Errorf("running JSON mode prompt: %w", err)
+	}
+	respMsg := resp.Choices[0].Message.Content
+	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
+	if jsonSchema != nil {
+		if keyErr, err := jsonSchema.ValidateBytes(ctx, []byte(respMsg)); err != nil || len(keyErr) > 0 {
+			return "", fmt.Errorf("validating response: %v %w", keyErr, err)
+		}
+	}
+	return respMsg, nil
 }

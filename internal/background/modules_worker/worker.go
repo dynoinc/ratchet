@@ -2,6 +2,7 @@ package modules_worker
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -32,6 +33,7 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWork
 
 	for _, module := range w.modules {
 		if err := module.Handle(ctx, job.Args.ChannelID, job.Args.SlackTS, msg.Attrs); err != nil {
+			slog.Info("module error", "module", module.Name(), "error", err)
 			sentry.WithScope(func(scope *sentry.Scope) {
 				scope.AddBreadcrumb(&sentry.Breadcrumb{
 					Category: "module",
