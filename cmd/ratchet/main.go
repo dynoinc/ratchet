@@ -33,6 +33,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
+	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
@@ -60,6 +61,9 @@ type config struct {
 
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:"127.0.0.1:5001"`
+
+	// Channel Monitor Configuration
+	ChannelMonitor channel_monitor.Config `split_words:"true"`
 }
 
 func main() {
@@ -181,6 +185,7 @@ func main() {
 	modulesWorker := modules_worker.New(bot, []modules.Handler{
 		commands.New(bot, slackIntegration, llmClient),
 		runbook.New(bot, slackIntegration, llmClient),
+		channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient),
 	})
 
 	// Background job setup

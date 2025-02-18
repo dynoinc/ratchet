@@ -1,6 +1,9 @@
 package llm
 
 import (
+	"encoding/json"
+	"github.com/qri-io/jsonschema"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,4 +18,31 @@ func TestGenerateEmbedding(t *testing.T) {
 	embedding, err := llmClient.GenerateEmbedding(t.Context(), "classification", "Hello, world!")
 	require.NoError(t, err)
 	require.Equal(t, 768, len(embedding))
+}
+
+func TestJSONSchemaValidator(t *testing.T) {
+	llmClient, err := New(t.Context(), DefaultConfig())
+	if err != nil {
+		t.Skip("Skipping test. Ollama not found")
+	}
+	schemaJSON := `{
+		"type": "object",
+		"properties": {
+			"hello": {
+				"type": "string"
+			}
+		}	
+	}`
+	schema := &jsonschema.Schema{}
+	err = json.Unmarshal([]byte(schemaJSON), schema)
+	require.NoError(t, err)
+
+	resp, err := llmClient.RunJSONModePrompt(t.Context(), `Return the json message {"hello": "world"}`, schema)
+	require.NoError(t, err)
+	space := regexp.MustCompile(`\s+`)
+	require.Equal(t, `{"hello":"world"}`, space.ReplaceAllString(resp, ""))
+
+	resp, err = llmClient.RunJSONModePrompt(t.Context(), `Return the json message {"hello": 1}`, schema)
+	require.Error(t, err)
+	require.Empty(t, resp)
 }

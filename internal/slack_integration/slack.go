@@ -28,6 +28,7 @@ type Integration interface {
 	GetConversationHistory(ctx context.Context, channelID string, lastNMsgs int) ([]slack.Message, error)
 	GetConversationReplies(ctx context.Context, channelID, ts string) ([]slack.Message, error)
 	BotUserID() string
+	GetUserIDByEmail(ctx context.Context, email string) (string, error)
 }
 
 type integration struct {
@@ -227,4 +228,12 @@ func (b *integration) PostThreadReply(ctx context.Context, channelID, ts string,
 
 func (b *integration) BotUserID() string {
 	return b.botUserID
+}
+
+func (b *integration) GetUserIDByEmail(ctx context.Context, email string) (string, error) {
+	user, err := b.client.GetUserByEmail(email)
+	if err != nil {
+		return "", fmt.Errorf("getting user by email %s: %w", email, err)
+	}
+	return user.ID, nil
 }

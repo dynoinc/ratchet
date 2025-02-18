@@ -12,7 +12,10 @@ oauth_config:
       - channels:history
       - channels:read
       - reactions:read
+      - im:write
       - chat:write
+      - users:read
+      - users:read.email
 settings:
   event_subscriptions:
     bot_events:
