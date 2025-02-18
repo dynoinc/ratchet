@@ -122,8 +122,13 @@ func (c *commands) findCommand(ctx context.Context, text string) (cmd, float64, 
 		}
 	}
 
-	if bestScore > 0.3 {
-		return cmdNone, 0, nil
+	scoreCutoff := 0.5
+	if c.llmClient.Config().EmbeddingModel == "nomic-embed-text" {
+		scoreCutoff = 0.3
+	}
+
+	if bestScore > scoreCutoff {
+		return cmdNone, bestScore, nil
 	}
 
 	return bestMatch, bestScore, nil

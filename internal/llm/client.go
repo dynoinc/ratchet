@@ -35,6 +35,7 @@ func DefaultConfig() Config {
 }
 
 type Client interface {
+	Config() Config
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
 	CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error)
 	UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error)
@@ -97,6 +98,10 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 
 	slog.DebugContext(ctx, "downloaded model", "model", s)
 	return nil
+}
+
+func (c *client) Config() Config {
+	return c.cfg
 }
 
 func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {

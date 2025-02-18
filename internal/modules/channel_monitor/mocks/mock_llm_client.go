@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	llm "github.com/dynoinc/ratchet/internal/llm"
 	schema "github.com/dynoinc/ratchet/internal/storage/schema"
 	jsonschema "github.com/qri-io/jsonschema"
 	gomock "go.uber.org/mock/gomock"
@@ -40,6 +41,20 @@ func NewMockClient(ctrl *gomock.Controller) *MockClient {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
+}
+
+// Config mocks base method.
+func (m *MockClient) Config() llm.Config {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Config")
+	ret0, _ := ret[0].(llm.Config)
+	return ret0
+}
+
+// Config indicates an expected call of Config.
+func (mr *MockClientMockRecorder) Config() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Config", reflect.TypeOf((*MockClient)(nil).Config))
 }
 
 // CreateRunbook mocks base method.

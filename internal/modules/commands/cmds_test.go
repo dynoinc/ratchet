@@ -9,7 +9,8 @@ import (
 )
 
 func TestFindCommand(t *testing.T) {
-	llmClient, err := llm.New(context.Background(), llm.DefaultConfig())
+	cfg := llm.DefaultConfig()
+	llmClient, err := llm.New(context.Background(), cfg)
 	if err != nil {
 		t.Skip("ollama not running")
 	}
@@ -17,24 +18,33 @@ func TestFindCommand(t *testing.T) {
 	commands := New(nil, nil, llmClient)
 
 	tests := []struct {
-		name    string
 		message string
 		want    cmd
 	}{
-		{
-			name:    "post weekly report to slack channel",
-			message: "post report",
-			want:    cmdPostReport,
-		},
-		{
-			name:    "how are you?",
-			message: "how are you?",
-			want:    cmdNone,
-		},
+		// Valid report requests
+		{"post report", cmdPostReport},
+		{"please post the weekly report", cmdPostReport},
+		{"can you share the weekly report", cmdPostReport},
+		{"what's the status report", cmdPostReport},
+		{"hey show me the report", cmdPostReport},
+		{"need the weekly report asap", cmdPostReport},
+		{"could you please post the report", cmdPostReport},
+		{"give me an update on the report", cmdPostReport},
+		{"generate a report", cmdPostReport},
+		{"create a new report", cmdPostReport},
+		{"publish the weekly report", cmdPostReport},
+		{"send me the report", cmdPostReport},
+
+		// Invalid/unrelated requests
+		{"how are you?", cmdNone},
+		{"let's have a conversation", cmdNone},
+		{"what can you do?", cmdNone},
+		{"tell me a joke", cmdNone},
+		{"", cmdNone},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.message, func(t *testing.T) {
 			got, score, err := commands.findCommand(t.Context(), test.message)
 			require.NoError(t, err)
 			t.Logf("score: %v", score)
