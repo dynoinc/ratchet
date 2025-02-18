@@ -20,10 +20,10 @@ type ChannelOnboardWorker struct {
 	river.WorkerDefaults[background.ChannelOnboardWorkerArgs]
 
 	bot              *internal.Bot
-	slackIntegration *slack_integration.Integration
+	slackIntegration slack_integration.Integration
 }
 
-func New(bot *internal.Bot, slackIntegration *slack_integration.Integration) *ChannelOnboardWorker {
+func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *ChannelOnboardWorker {
 	return &ChannelOnboardWorker{
 		bot:              bot,
 		slackIntegration: slackIntegration,

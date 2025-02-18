@@ -17,10 +17,10 @@ type backfillThreadWorker struct {
 	river.WorkerDefaults[background.BackfillThreadWorkerArgs]
 
 	bot              *internal.Bot
-	slackIntegration *slack_integration.Integration
+	slackIntegration slack_integration.Integration
 }
 
-func New(bot *internal.Bot, slackIntegration *slack_integration.Integration) *backfillThreadWorker {
+func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *backfillThreadWorker {
 	return &backfillThreadWorker{
 		bot:              bot,
 		slackIntegration: slackIntegration,

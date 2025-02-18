@@ -31,8 +31,8 @@ var (
 
 type commands struct {
 	bot              *internal.Bot
-	slackIntegration *slack_integration.Integration
-	llmClient        *llm.Client
+	slackIntegration slack_integration.Integration
+	llmClient        llm.Client
 
 	mu         sync.Mutex
 	embeddings map[cmd][]float64
@@ -40,8 +40,8 @@ type commands struct {
 
 func New(
 	bot *internal.Bot,
-	slackIntegration *slack_integration.Integration,
-	llmClient *llm.Client,
+	slackIntegration slack_integration.Integration,
+	llmClient llm.Client,
 ) *commands {
 	return &commands{
 		bot:              bot,
@@ -130,7 +130,7 @@ func (c *commands) findCommand(ctx context.Context, text string) (cmd, float64, 
 }
 
 func (c *commands) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	botID := c.slackIntegration.BotUserID
+	botID := c.slackIntegration.BotUserID()
 	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) {
 		return nil
 	}

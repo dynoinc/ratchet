@@ -16,7 +16,7 @@ import (
 func Get(
 	ctx context.Context,
 	qtx *schema.Queries,
-	llmClient *llm.Client,
+	llmClient llm.Client,
 	serviceName, alertName string,
 	botID string,
 ) ([]slack.Block, error) {
