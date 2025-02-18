@@ -86,8 +86,13 @@ func Post(
 		if err != nil {
 			return fmt.Errorf("getting thread messages: %w", err)
 		}
+
 		fullThreadMessages := []string{msg.Attrs.Message.Text}
 		for _, threadMessage := range threadMessages {
+			if threadMessage.Attrs.Message.BotID != "" {
+				continue
+			}
+
 			fullThreadMessages = append(fullThreadMessages, threadMessage.Attrs.Message.Text)
 		}
 
