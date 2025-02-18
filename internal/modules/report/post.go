@@ -16,6 +16,12 @@ import (
 	"github.com/slack-go/slack"
 )
 
+type alertEntry struct {
+	service, alert string
+	count          int
+	duration       time.Duration
+}
+
 func Post(
 	ctx context.Context,
 	qtx *schema.Queries,
@@ -32,15 +38,17 @@ func Post(
 		return fmt.Errorf("getting messages for channel: %w", err)
 	}
 
-	// TODO: Figure out how to handle bots and users in the same report
 	userMsgCounts := make(map[string]int)
 	botMsgCounts := make(map[string]int)
 	incidentCounts := make(map[string]int)                // key: "service/alert"
 	incidentDurations := make(map[string][]time.Duration) // key: "service/alert"
+	triageMsgCounts := make(map[string]int)               // key: "service/alert"
 
 	for _, msg := range messages {
 		if msg.Attrs.Message.BotID != "" {
-			botMsgCounts[msg.Attrs.Message.BotUsername]++
+			if msg.Attrs.Message.BotUsername != "" {
+				botMsgCounts[msg.Attrs.Message.BotUsername]++
+			}
 		} else {
 			userMsgCounts[msg.Attrs.Message.User]++
 		}
@@ -50,6 +58,16 @@ func Post(
 		switch msg.Attrs.IncidentAction.Action {
 		case dto.ActionOpenIncident:
 			incidentCounts[incidentKey]++
+
+			msgs, err := qtx.GetThreadMessagesByServiceAndAlert(ctx, schema.GetThreadMessagesByServiceAndAlertParams{
+				Service: msg.Attrs.IncidentAction.Service,
+				Alert:   msg.Attrs.IncidentAction.Alert,
+			})
+			if err != nil {
+				return fmt.Errorf("getting thread messages: %w", err)
+			}
+
+			triageMsgCounts[incidentKey] += len(msgs)
 		case dto.ActionCloseIncident:
 			incidentDurations[incidentKey] = append(incidentDurations[incidentKey], msg.Attrs.IncidentAction.Duration.Duration)
 		}
@@ -81,7 +99,35 @@ func Post(
 		return fmt.Errorf("generating suggestions: %w", err)
 	}
 
-	messageBlocks := format(channelID, userMsgCounts, botMsgCounts, incidentCounts, incidentDurations, suggestions)
+	// Compute long-running alerts
+	var longRunningAlerts []alertEntry
+	for alert, durations := range incidentDurations {
+		avgDuration := calculateAverage(durations)
+		if avgDuration > 72*time.Hour { // 3 days
+			service, alertName, _ := strings.Cut(alert, "/")
+			longRunningAlerts = append(longRunningAlerts, alertEntry{
+				service:  service,
+				alert:    alertName,
+				count:    incidentCounts[alert],
+				duration: avgDuration,
+			})
+		}
+	}
+
+	// Compute untriaged alerts
+	var untriagedAlerts []alertEntry
+	for alert, count := range incidentCounts {
+		if triageMsgCounts[alert] == 0 {
+			service, alertName, _ := strings.Cut(alert, "/")
+			untriagedAlerts = append(untriagedAlerts, alertEntry{
+				service: service,
+				alert:   alertName,
+				count:   count,
+			})
+		}
+	}
+
+	messageBlocks := format(channelID, userMsgCounts, botMsgCounts, incidentCounts, incidentDurations, suggestions, longRunningAlerts, untriagedAlerts)
 	return slackIntegration.PostMessage(ctx, channelID, messageBlocks...)
 }
 
@@ -91,7 +137,11 @@ func format(
 	incidentCounts map[string]int,
 	incidentDurations map[string][]time.Duration,
 	suggestions string,
+	longRunningAlerts []alertEntry,
+	untriagedAlerts []alertEntry,
 ) []slack.Block {
+	var messageBlocks []slack.Block
+
 	// Build report sections
 	headerText := slack.NewTextBlockObject("mrkdwn",
 		fmt.Sprintf("*Weekly Channel Report*\nChannel: <#%s>\nPeriod: %s - %s",
@@ -99,109 +149,200 @@ func format(
 			time.Now().AddDate(0, 0, -7).Format("2006-01-02"),
 			time.Now().Format("2006-01-02")),
 		false, false)
-	headerSection := slack.NewSectionBlock(headerText, nil, nil)
+	messageBlocks = append(messageBlocks, slack.NewSectionBlock(headerText, nil, nil))
 
 	// Users section
-	var usersList strings.Builder
-	for user, count := range sortMapByValue(userMsgCounts, 5) {
-		usersList.WriteString(fmt.Sprintf("• <@%s>: %d messages\n", user, count))
+	if len(userMsgCounts) > 0 {
+		var usersList strings.Builder
+		for user, count := range sortMapByValue(userMsgCounts, 5) {
+			usersList.WriteString(fmt.Sprintf("• <@%s>: %d messages\n", user, count))
+		}
+		usersText := slack.NewTextBlockObject("mrkdwn",
+			fmt.Sprintf("*Top Active Users:*\n%s", usersList.String()),
+			false, false)
+		messageBlocks = append(messageBlocks,
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(usersText, nil, nil))
 	}
-	usersText := slack.NewTextBlockObject("mrkdwn",
-		fmt.Sprintf("*Top Active Users:*\n%s", usersList.String()),
-		false, false)
-	usersSection := slack.NewSectionBlock(usersText, nil, nil)
 
 	// Bots section
-	var botsList strings.Builder
-	for bot, count := range sortMapByValue(botMsgCounts, 5) {
-		botsList.WriteString(fmt.Sprintf("• <@%s>: %d messages\n", bot, count))
+	if len(botMsgCounts) > 0 {
+		var botsList strings.Builder
+		for bot, count := range sortMapByValue(botMsgCounts, 5) {
+			botsList.WriteString(fmt.Sprintf("• %s: %d messages\n", bot, count))
+		}
+		botsText := slack.NewTextBlockObject("mrkdwn",
+			fmt.Sprintf("*Top Active Bots:*\n%s", botsList.String()),
+			false, false)
+		messageBlocks = append(messageBlocks,
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(botsText, nil, nil))
 	}
-	botsText := slack.NewTextBlockObject("mrkdwn",
-		fmt.Sprintf("*Top Active Bots:*\n%s", botsList.String()),
-		false, false)
-	botsSection := slack.NewSectionBlock(botsText, nil, nil)
 
 	// Alerts section
-	var alertsTable strings.Builder
-	alertsTable.WriteString("```\n") // Start code block
-	table := tablewriter.NewWriter(&alertsTable)
-	table.SetHeader([]string{"SERVICE", "ALERT", "COUNT", "AVG DURATION"}) // Shortened headers
-	table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-	table.SetCenterSeparator("|")
-	table.SetColumnSeparator("|")
-	table.SetRowSeparator("-")
+	if len(incidentCounts) > 0 {
+		var alertsTable strings.Builder
+		alertsTable.WriteString("```\n") // Start code block
+		table := tablewriter.NewWriter(&alertsTable)
+		table.SetHeader([]string{"SERVICE", "ALERT", "COUNT", "AVG DURATION"}) // Shortened headers
+		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
+		table.SetCenterSeparator("|")
+		table.SetColumnSeparator("|")
+		table.SetRowSeparator("-")
 
-	// Disable auto formatting to have more control
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
+		// Disable auto formatting to have more control
+		table.SetAutoWrapText(false)
+		table.SetAutoFormatHeaders(true)
+		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+		table.SetAlignment(tablewriter.ALIGN_LEFT)
 
-	// Set specific column widths to prevent wrapping
-	table.SetColWidth(10) // Minimum width for all columns
-	table.SetColumnAlignment([]int{
-		tablewriter.ALIGN_LEFT,  // SERVICE
-		tablewriter.ALIGN_LEFT,  // ALERT
-		tablewriter.ALIGN_RIGHT, // COUNT
-		tablewriter.ALIGN_RIGHT, // AVG DURATION
-	})
-
-	// Sort alerts by service name first, then by alert name
-	type alertEntry struct {
-		service, alert string
-		count          int
-		duration       time.Duration
-	}
-
-	alerts := make([]alertEntry, 0, len(incidentCounts))
-	for alert, count := range incidentCounts {
-		service, alertName, _ := strings.Cut(alert, "/")
-		avgDuration := calculateAverage(incidentDurations[alert])
-		alerts = append(alerts, alertEntry{
-			service:  service,
-			alert:    alertName,
-			count:    count,
-			duration: avgDuration,
+		// Set specific column widths to prevent wrapping
+		table.SetColWidth(10) // Minimum width for all columns
+		table.SetColumnAlignment([]int{
+			tablewriter.ALIGN_LEFT,  // SERVICE
+			tablewriter.ALIGN_LEFT,  // ALERT
+			tablewriter.ALIGN_RIGHT, // COUNT
+			tablewriter.ALIGN_RIGHT, // AVG DURATION
 		})
-	}
 
-	// Sort alerts by count (descending), then by service name, then by alert name
-	slices.SortFunc(alerts, func(a, b alertEntry) int {
-		if a.count != b.count {
-			return b.count - a.count // Descending order
-		}
-		if a.service != b.service {
-			return strings.Compare(a.service, b.service)
-		}
-		return strings.Compare(a.alert, b.alert)
-	})
-
-	// Take top 5
-	if len(alerts) > 5 {
-		alerts = alerts[:5]
-	}
-
-	// Add to table with controlled string lengths
-	for _, entry := range alerts {
-		// Truncate alert name if too long (with ellipsis)
-		alertName := entry.alert
-		if len(alertName) > 30 {
-			alertName = alertName[:27] + "..."
+		alerts := make([]alertEntry, 0, len(incidentCounts))
+		for alert, count := range incidentCounts {
+			service, alertName, _ := strings.Cut(alert, "/")
+			avgDuration := calculateAverage(incidentDurations[alert])
+			alerts = append(alerts, alertEntry{
+				service:  service,
+				alert:    alertName,
+				count:    count,
+				duration: avgDuration,
+			})
 		}
 
-		table.Append([]string{
-			entry.service,
-			alertName,
-			fmt.Sprintf("%d", entry.count),
-			entry.duration.Round(time.Second).String(),
+		// Sort alerts by count (descending), then by service name, then by alert name
+		slices.SortFunc(alerts, func(a, b alertEntry) int {
+			if a.count != b.count {
+				return b.count - a.count // Descending order
+			}
+			if a.service != b.service {
+				return strings.Compare(a.service, b.service)
+			}
+			return strings.Compare(a.alert, b.alert)
 		})
+
+		// Take top 5
+		if len(alerts) > 5 {
+			alerts = alerts[:5]
+		}
+
+		// Add to table with controlled string lengths
+		for _, entry := range alerts {
+			// Truncate alert name if too long (with ellipsis)
+			alertName := entry.alert
+			if len(alertName) > 30 {
+				alertName = alertName[:27] + "..."
+			}
+
+			table.Append([]string{
+				entry.service,
+				alertName,
+				fmt.Sprintf("%d", entry.count),
+				entry.duration.Round(time.Second).String(),
+			})
+		}
+
+		table.Render()
+		alertsTable.WriteString("```\n") // Add newline after closing code block
+
+		messageBlocks = append(messageBlocks,
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", "*Top Alerts:*", false, false),
+				nil, nil),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", alertsTable.String(), false, false),
+				nil, nil))
 	}
 
-	table.Render()
-	alertsTable.WriteString("```\n") // Add newline after closing code block
+	// Long-running alerts section
+	if len(longRunningAlerts) > 0 {
+		var longAlertsTable strings.Builder
+		longAlertsTable.WriteString("*Alerts with Long Resolution Times:*\n")
+		longAlertsTable.WriteString("The following alerts consistently take more than 3 days to resolve and may need review:\n\n```\n")
+
+		table := tablewriter.NewWriter(&longAlertsTable)
+		table.SetHeader([]string{"SERVICE", "ALERT", "AVG DURATION"})
+		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
+		table.SetCenterSeparator("|")
+		table.SetColumnSeparator("|")
+		table.SetRowSeparator("-")
+		table.SetAutoWrapText(false)
+		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+		table.SetAlignment(tablewriter.ALIGN_LEFT)
+		table.SetColumnAlignment([]int{
+			tablewriter.ALIGN_LEFT,  // SERVICE
+			tablewriter.ALIGN_LEFT,  // ALERT
+			tablewriter.ALIGN_RIGHT, // AVG DURATION
+		})
+
+		for _, entry := range longRunningAlerts {
+			table.Append([]string{
+				entry.service,
+				entry.alert,
+				entry.duration.Round(time.Hour).String(),
+			})
+		}
+
+		table.Render()
+		longAlertsTable.WriteString("```\n")
+		longAlertsTable.WriteString("Consider reviewing and potentially removing these alerts if they're not providing value.\n")
+
+		messageBlocks = append(messageBlocks,
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", longAlertsTable.String(), false, false),
+				nil, nil))
+	}
+
+	// Untriaged alerts section
+	if len(untriagedAlerts) > 0 {
+		var untriagedAlertsTable strings.Builder
+		untriagedAlertsTable.WriteString("*Alerts with No Triage Activity:*\n")
+		untriagedAlertsTable.WriteString("The following alerts had no team interaction and may be unnecessary:\n\n```\n")
+
+		table := tablewriter.NewWriter(&untriagedAlertsTable)
+		table.SetHeader([]string{"SERVICE", "ALERT", "COUNT"})
+		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
+		table.SetCenterSeparator("|")
+		table.SetColumnSeparator("|")
+		table.SetRowSeparator("-")
+		table.SetAutoWrapText(false)
+		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+		table.SetAlignment(tablewriter.ALIGN_LEFT)
+		table.SetColumnAlignment([]int{
+			tablewriter.ALIGN_LEFT,  // SERVICE
+			tablewriter.ALIGN_LEFT,  // ALERT
+			tablewriter.ALIGN_RIGHT, // COUNT
+		})
+
+		for _, entry := range untriagedAlerts {
+			table.Append([]string{
+				entry.service,
+				entry.alert,
+				fmt.Sprintf("%d", entry.count),
+			})
+		}
+
+		table.Render()
+		untriagedAlertsTable.WriteString("```\n")
+		untriagedAlertsTable.WriteString("Consider removing these alerts as they don't seem to require team attention.\n")
+
+		messageBlocks = append(messageBlocks,
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", untriagedAlertsTable.String(), false, false),
+				nil, nil))
+	}
 
 	// Format suggestions
-	var suggestionsSection *slack.SectionBlock
 	if len(suggestions) > 0 {
 		suggestionLines := strings.Split(suggestions, "\n")
 		var formattedSuggestions strings.Builder
@@ -219,59 +360,22 @@ func format(
 			formattedSuggestions.WriteString("\n")
 		}
 
-		suggestionsText := slack.NewTextBlockObject("mrkdwn",
-			formattedSuggestions.String(),
-			false, false)
-		suggestionsSection = slack.NewSectionBlock(suggestionsText, nil, nil)
-	}
-
-	// Add signature
-	signatureText := slack.NewTextBlockObject("mrkdwn",
-		fmt.Sprintf("_Generated by Ratchet Bot at %s_",
-			time.Now().Format("2006-01-02 15:04:05 MST")),
-		false, false)
-	signatureSection := slack.NewSectionBlock(signatureText, nil, nil)
-
-	// Create divider
-	divider := slack.NewDividerBlock()
-
-	// Create all message components
-	var messageBlocks []slack.Block
-
-	// Add header and user/bot sections
-	messageBlocks = append(messageBlocks,
-		headerSection,
-		divider,
-		usersSection,
-		divider,
-		botsSection,
-		divider,
-	)
-
-	// Add alerts section as a text block
-	alertsHeaderText := slack.NewTextBlockObject("mrkdwn", "*Top Alerts:*", false, false)
-	alertsHeaderSection := slack.NewSectionBlock(alertsHeaderText, nil, nil)
-	alertsContentText := slack.NewTextBlockObject("mrkdwn", alertsTable.String(), false, false)
-	alertsContentSection := slack.NewSectionBlock(alertsContentText, nil, nil)
-
-	messageBlocks = append(messageBlocks,
-		alertsHeaderSection,
-		alertsContentSection,
-	)
-
-	// Add suggestions if present
-	if suggestionsSection != nil {
 		messageBlocks = append(messageBlocks,
-			divider,
-			suggestionsSection,
-		)
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", formattedSuggestions.String(), false, false),
+				nil, nil))
 	}
 
 	// Add signature
 	messageBlocks = append(messageBlocks,
-		divider,
-		signatureSection,
-	)
+		slack.NewDividerBlock(),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn",
+				fmt.Sprintf("_Generated by Ratchet Bot at %s_",
+					time.Now().Format("2006-01-02 15:04:05 MST")),
+				false, false),
+			nil, nil))
 
 	return messageBlocks
 }

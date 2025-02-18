@@ -39,5 +39,10 @@ func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, 
 		return err
 	}
 
+	if len(blocks) == 0 {
+		// do not paste runbook if it's empty
+		return nil
+	}
+
 	return Post(ctx, h.slackIntegration, channelID, slackTS, blocks...)
 }

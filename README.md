@@ -53,14 +53,6 @@ and computes embeddings for Slack messages. After that, a set of modules are ran
   * Using paid models like Claude Sonnet to improve your own prompt does wonders.
   * Giving LLM as much context as possible (like all historical messages instead of only new ones) helps.
 
-## Things left to do for v0.1
-
-- [ ] Finish the feedback loop of persisting user reactions to bot responses.
-- [ ] Store detailed info about LLM calls to be able to fine-tune the model and create evals automatically.
-- [ ] In channel report, point out alerts that are never acted on.
-- [ ] In channel report, point out alerts that are open for too long.
-- [ ] In channel report, fix user/bot name formatting.
-
 ## Contributing
 
 * To a slack workspace where you are admin, add an app using the manifest from `app-manifest.yaml`.
