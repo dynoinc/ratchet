@@ -254,7 +254,7 @@ combined_scores AS (
         semantic_matches s
         FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
     -- Require at least one match type to have a reasonable rank
-    -- WHERE s.semantic_rank <= 10 OR l.lexical_rank <= 10
+    WHERE s.semantic_rank <= 10 OR l.lexical_rank <= 10
 )
 SELECT
     m.channel_id,
