@@ -114,8 +114,10 @@ func New(
 	// Services
 	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
 	apiMux.HandleFunc("GET /services/{service}/alerts", handleJSON(handlers.listAlerts))
+	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/messages", handleJSON(handlers.listThreadMessages))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
+	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -246,6 +248,23 @@ func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
 	return alerts, nil
 }
 
+func (h *httpHandlers) listThreadMessages(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+	alertName := r.PathValue("alert")
+
+	qtx := schema.New(h.db)
+	msgs, err := qtx.GetThreadMessagesByServiceAndAlert(r.Context(), schema.GetThreadMessagesByServiceAndAlertParams{
+		Service: serviceName,
+		Alert:   alertName,
+		BotID:   h.slackIntegration.BotUserID(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return msgs, nil
+}
+
 func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
@@ -282,4 +301,53 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 	}
 
 	return messages, nil
+}
+
+func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
+	serviceName := r.PathValue("service")
+	alertName := r.PathValue("alert")
+
+	channelID := r.URL.Query().Get("channel_id")
+	interval := cmp.Or(r.URL.Query().Get("interval"), "1h")
+	intervalDuration, err := time.ParseDuration(interval)
+	if err != nil {
+		return nil, err
+	}
+
+	qtx := schema.New(h.db)
+	runbookMessage, err := runbook.Get(
+		r.Context(),
+		qtx,
+		h.llmClient,
+		serviceName,
+		alertName,
+		h.slackIntegration.BotUserID(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting runbook: %w", err)
+	}
+
+	updates, err := recent_activity.Get(
+		r.Context(),
+		qtx,
+		h.llmClient,
+		serviceName,
+		alertName,
+		intervalDuration,
+		h.slackIntegration.BotUserID(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting updates: %w", err)
+	}
+
+	if len(runbookMessage) == 0 && len(updates) == 0 {
+		return nil, fmt.Errorf("no runbook or updates found")
+	}
+
+	blocks := runbook.Format(serviceName, alertName, runbookMessage, updates)
+	if err := h.slackIntegration.PostMessage(r.Context(), channelID, blocks...); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }

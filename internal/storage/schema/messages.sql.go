@@ -57,15 +57,18 @@ const getAlerts = `-- name: GetAlerts :many
 SELECT
     service :: text,
     alert :: text,
-    priority :: text
+    priority :: text,
+    COUNT(t.ts) as thread_message_count
 FROM
     (
         SELECT
-            DISTINCT attrs -> 'incident_action' ->> 'service' as service,
+            DISTINCT m.channel_id,
+            m.ts,
+            attrs -> 'incident_action' ->> 'service' as service,
             attrs -> 'incident_action' ->> 'alert' as alert,
             attrs -> 'incident_action' ->> 'priority' as priority
         FROM
-            messages_v2
+            messages_v2 m
         WHERE
             (
                 $1 :: text = '*'
@@ -73,12 +76,18 @@ FROM
             )
             AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
     ) subq
+    LEFT JOIN thread_messages_v2 t ON t.channel_id = subq.channel_id AND t.parent_ts = subq.ts
+GROUP BY
+    service,
+    alert,
+    priority
 `
 
 type GetAlertsRow struct {
-	Service  string
-	Alert    string
-	Priority string
+	Service            string
+	Alert              string
+	Priority           string
+	ThreadMessageCount int64
 }
 
 func (q *Queries) GetAlerts(ctx context.Context, service string) ([]GetAlertsRow, error) {
@@ -90,7 +99,12 @@ func (q *Queries) GetAlerts(ctx context.Context, service string) ([]GetAlertsRow
 	var items []GetAlertsRow
 	for rows.Next() {
 		var i GetAlertsRow
-		if err := rows.Scan(&i.Service, &i.Alert, &i.Priority); err != nil {
+		if err := rows.Scan(
+			&i.Service,
+			&i.Alert,
+			&i.Priority,
+			&i.ThreadMessageCount,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -240,7 +254,7 @@ combined_scores AS (
         semantic_matches s
         FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
     -- Require at least one match type to have a reasonable rank
-    WHERE s.semantic_rank <= 10 OR l.lexical_rank <= 10
+    -- WHERE s.semantic_rank <= 10 OR l.lexical_rank <= 10
 )
 SELECT
     m.channel_id,

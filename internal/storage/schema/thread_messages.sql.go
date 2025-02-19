@@ -91,7 +91,7 @@ FROM
 WHERE
     m.attrs -> 'incident_action' ->> 'service' = $1 :: text
     AND m.attrs -> 'incident_action' ->> 'alert' = $2 :: text
-    AND attrs -> 'message' ->> 'user' != $3 :: text
+    AND t.attrs -> 'message' ->> 'user' != $3 :: text
 `
 
 type GetThreadMessagesByServiceAndAlertParams struct {

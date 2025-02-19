@@ -29,4 +29,4 @@ FROM
 WHERE
     m.attrs -> 'incident_action' ->> 'service' = @service :: text
     AND m.attrs -> 'incident_action' ->> 'alert' = @alert :: text
-    AND attrs -> 'message' ->> 'user' != @bot_id :: text;
+    AND t.attrs -> 'message' ->> 'user' != @bot_id :: text;

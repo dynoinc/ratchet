@@ -80,22 +80,30 @@ FROM
 SELECT
     service :: text,
     alert :: text,
-    priority :: text
+    priority :: text,
+    COUNT(t.ts) as thread_message_count
 FROM
     (
         SELECT
-            DISTINCT attrs -> 'incident_action' ->> 'service' as service,
+            DISTINCT m.channel_id,
+            m.ts,
+            attrs -> 'incident_action' ->> 'service' as service,
             attrs -> 'incident_action' ->> 'alert' as alert,
             attrs -> 'incident_action' ->> 'priority' as priority
         FROM
-            messages_v2
+            messages_v2 m
         WHERE
             (
                 @service :: text = '*'
                 OR attrs -> 'incident_action' ->> 'service' = @service :: text
             )
             AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
-    ) subq;
+    ) subq
+    LEFT JOIN thread_messages_v2 t ON t.channel_id = subq.channel_id AND t.parent_ts = subq.ts
+GROUP BY
+    service,
+    alert,
+    priority;
 
 -- name: DeleteOldMessages :exec
 DELETE FROM
