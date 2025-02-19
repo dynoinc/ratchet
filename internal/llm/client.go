@@ -38,7 +38,6 @@ type Client interface {
 	Config() Config
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
 	CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error)
-	UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
 }
@@ -209,62 +208,6 @@ RULES:
 	}
 
 	slog.DebugContext(ctx, "created runbook", "request", params, "response", resp.Choices[0].Message.Content)
-	return resp.Choices[0].Message.Content, nil
-}
-
-func (c *client) UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error) {
-	if c == nil {
-		return "", nil
-	}
-
-	prompt := `You are updating an existing runbook for an incident alert. Review the existing runbook and new messages to make incremental updates.
-
-**Overview**
-- Brief description of the alert and its trigger conditions
-
-**Root Causes** 
-- Identified causes from past incidents
-- Contributing factors
-
-**Resolution Steps**
-- Specific troubleshooting steps taken
-- Commands used and their outcomes
-- Successful resolution actions
-
-RULES:
-- Format in Slack-friendly Markdown
-- Only add new information from the messages
-- Keep existing valid information
-- Remove outdated/incorrect information
-- Be concise and specific
-- Only include information explicitly mentioned`
-
-	content := fmt.Sprintf("Current runbook:\n%s\n\nNew messages:\n", runbook.Attrs.Runbook)
-	for _, msg := range msgs {
-		content += fmt.Sprintf("%s\n", msg.Attrs.Message.Text)
-	}
-
-	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.cfg.Model)),
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
-				Content: openai.F(any(prompt)),
-			},
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
-				Content: openai.F(any(content)),
-			},
-		}),
-		Temperature: openai.F(0.7),
-	}
-
-	resp, err := c.client.Chat.Completions.New(ctx, params)
-	if err != nil {
-		return "", fmt.Errorf("updating runbook: %w", err)
-	}
-
-	slog.DebugContext(ctx, "updated runbook", "request", params, "response", resp.Choices[0].Message.Content)
 	return resp.Choices[0].Message.Content, nil
 }
 

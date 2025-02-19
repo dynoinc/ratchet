@@ -91,15 +91,17 @@ FROM
 WHERE
     m.attrs -> 'incident_action' ->> 'service' = $1 :: text
     AND m.attrs -> 'incident_action' ->> 'alert' = $2 :: text
+    AND attrs -> 'message' ->> 'user' != $3 :: text
 `
 
 type GetThreadMessagesByServiceAndAlertParams struct {
 	Service string
 	Alert   string
+	BotID   string
 }
 
 func (q *Queries) GetThreadMessagesByServiceAndAlert(ctx context.Context, arg GetThreadMessagesByServiceAndAlertParams) ([]ThreadMessagesV2, error) {
-	rows, err := q.db.Query(ctx, getThreadMessagesByServiceAndAlert, arg.Service, arg.Alert)
+	rows, err := q.db.Query(ctx, getThreadMessagesByServiceAndAlert, arg.Service, arg.Alert, arg.BotID)
 	if err != nil {
 		return nil, err
 	}

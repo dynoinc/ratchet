@@ -28,4 +28,5 @@ FROM
     AND m.ts = t.parent_ts
 WHERE
     m.attrs -> 'incident_action' ->> 'service' = @service :: text
-    AND m.attrs -> 'incident_action' ->> 'alert' = @alert :: text;
+    AND m.attrs -> 'incident_action' ->> 'alert' = @alert :: text
+    AND attrs -> 'message' ->> 'user' != @bot_id :: text;

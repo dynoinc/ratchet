@@ -116,8 +116,6 @@ func New(
 	apiMux.HandleFunc("GET /services/{service}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
-	apiMux.HandleFunc("POST /services/{service}/refresh-runbooks", handleJSON(handlers.refreshRunbooks))
-	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/refresh-runbook", handleJSON(handlers.refreshRunbook))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -209,54 +207,6 @@ func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 	return nil, nil
 }
 
-func (h *httpHandlers) refreshRunbook(r *http.Request) (any, error) {
-	serviceName := r.PathValue("service")
-	alertName := r.PathValue("alert")
-	forceRecreate := r.URL.Query().Get("force_recreate") == "1"
-
-	if _, err := runbook.Update(
-		r.Context(),
-		schema.New(h.db),
-		h.llmClient,
-		serviceName,
-		alertName,
-		forceRecreate,
-	); err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-func (h *httpHandlers) refreshRunbooks(r *http.Request) (any, error) {
-	serviceName := r.PathValue("service")
-	forceRecreate := r.URL.Query().Get("force_recreate") == "1"
-
-	alerts, err := schema.New(h.db).GetAlerts(r.Context(), serviceName)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(alerts) == 0 {
-		return nil, nil
-	}
-
-	for _, alert := range alerts {
-		if _, err := runbook.Update(
-			r.Context(),
-			schema.New(h.db),
-			h.llmClient,
-			alert.Service,
-			alert.Alert,
-			forceRecreate,
-		); err != nil {
-			return nil, err
-		}
-	}
-
-	return nil, nil
-}
-
 func (h *httpHandlers) listServices(r *http.Request) (any, error) {
 	services, err := schema.New(h.db).GetServices(r.Context())
 	if err != nil {
@@ -293,38 +243,14 @@ func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
 		)
 	})
 
-	type alertWithRunbook struct {
-		schema.GetAlertsRow
-		Runbook string
-	}
-
-	alertsWithRunbooks := make([]alertWithRunbook, len(alerts))
-	for i, alert := range alerts {
-		runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
-			ServiceName: alert.Service,
-			AlertName:   alert.Alert,
-		})
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return nil, err
-		}
-
-		alertsWithRunbooks[i] = alertWithRunbook{
-			GetAlertsRow: alert,
-			Runbook:      runbook.Attrs.Runbook,
-		}
-	}
-
-	return alertsWithRunbooks, nil
+	return alerts, nil
 }
 
 func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
 
-	runbook, err := schema.New(h.db).GetRunbook(r.Context(), schema.GetRunbookParams{
-		ServiceName: serviceName,
-		AlertName:   alertName,
-	})
+	runbook, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
 	if err != nil {
 		return nil, err
 	}

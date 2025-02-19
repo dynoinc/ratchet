@@ -116,18 +116,3 @@ func (mr *MockClientMockRecorder) RunJSONModePrompt(ctx, prompt, schema any) *go
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunJSONModePrompt", reflect.TypeOf((*MockClient)(nil).RunJSONModePrompt), ctx, prompt, schema)
 }
-
-// UpdateRunbook mocks base method.
-func (m *MockClient) UpdateRunbook(ctx context.Context, runbook schema.IncidentRunbook, msgs []schema.ThreadMessagesV2) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRunbook", ctx, runbook, msgs)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateRunbook indicates an expected call of UpdateRunbook.
-func (mr *MockClientMockRecorder) UpdateRunbook(ctx, runbook, msgs any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunbook", reflect.TypeOf((*MockClient)(nil).UpdateRunbook), ctx, runbook, msgs)
-}

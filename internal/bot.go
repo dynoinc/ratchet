@@ -87,7 +87,7 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 	// Delete old messages
 	if err := qtx.DeleteOldMessages(ctx, schema.DeleteOldMessagesParams{
 		ChannelID: channelID,
-		OlderThan: pgtype.Interval{Days: 180},
+		OlderThan: pgtype.Interval{Days: 2 * 365, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("deleting old messages for channel %s: %w", channelID, err)
 	}
