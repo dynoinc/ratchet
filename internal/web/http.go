@@ -287,12 +287,17 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		return nil, err
 	}
 
+	runbook, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
+	if err != nil {
+		return nil, err
+	}
+
 	messages, err := recent_activity.Get(
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,
 		serviceName,
-		alertName,
+		runbook.SemanticSearchSummary,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)
