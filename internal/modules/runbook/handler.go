@@ -48,7 +48,7 @@ func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, 
 		return nil
 	}
 
-	updates, err := recent_activity.Get(ctx, qtx, h.llmClient, msg.IncidentAction.Service, runbook.SemanticSearchSummary, time.Hour, h.slackIntegration.BotUserID())
+	updates, err := recent_activity.Get(ctx, qtx, h.llmClient, runbook.SearchQuery, time.Hour, h.slackIntegration.BotUserID())
 	if err != nil {
 		return fmt.Errorf("getting updates: %w", err)
 	}
@@ -96,7 +96,7 @@ func Format(
 				nil, nil,
 			),
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "*Semantic Search Summary*\n"+runbook.SemanticSearchSummary, false, false),
+				slack.NewTextBlockObject(slack.MarkdownType, "*Search Query*\n"+runbook.SearchQuery, false, false),
 				nil, nil,
 			),
 			slack.NewDividerBlock(),

@@ -156,10 +156,10 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 }
 
 type RunbookResponse struct {
-	AlertOverview         string   `json:"alert_overview"`
-	HistoricalRootCauses  []string `json:"historical_root_causes"`
-	ResolutionSteps       []string `json:"resolution_steps"`
-	SemanticSearchSummary string   `json:"semantic_search_summary"`
+	AlertOverview        string   `json:"alert_overview"`
+	HistoricalRootCauses []string `json:"historical_root_causes"`
+	ResolutionSteps      []string `json:"resolution_steps"`
+	SearchQuery          string   `json:"search_query"`
 }
 
 func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (*RunbookResponse, error) {
@@ -167,21 +167,20 @@ func (c *client) CreateRunbook(ctx context.Context, service string, alert string
 		return nil, nil
 	}
 
-	prompt := `Create a structured runbook based on the provided incident messages. Return a JSON object with these exact fields:
+	prompt := `Create a structured runbook based on the provided service, alert, and incident messages. Return a JSON object with these exact fields:
 
 {
   "alert_overview": "Brief description of the alert and what triggers it (2-3 sentences)",
-  "historical_root_causes": ["List of specific causes from past incidents, with message references"],
+  "historical_root_causes": ["List of specific causes from past incidents"],
   "resolution_steps": ["Concrete troubleshooting steps that were successful, with commands and outcomes"],
-  "semantic_search_summary": "2-3 sentence technical summary focused on error patterns, components, and resolutions"
+  "search_query": "A search query containing key technical terms, error patterns, and components involved in this alert"
 }
 
 RULES:
 - Include only information explicitly mentioned in the messages
 - Keep content specific and actionable
-- Cite message sources when referencing past incidents
-- Return empty arrays if no relevant information exists for a section
 - Focus on technical details and specific patterns
+- Return empty arrays if no relevant information exists for a section
 
 EXAMPLES:
 
@@ -189,31 +188,61 @@ Example 1:
 {
   "alert_overview": "High latency alert for the payment processing service. Triggers when p99 latency exceeds 500ms for 5 consecutive minutes.",
   "historical_root_causes": [
-    "Database connection pool exhaustion due to connection leaks (ref: msg-123)",
-    "Redis cache misses causing increased DB load (ref: msg-456)"
+    "Database connection pool exhaustion due to connection leaks",
+    "Redis cache misses causing increased DB load"
   ],
   "resolution_steps": [
     "Check connection pool metrics: kubectl get metrics -n payments | grep pool_size",
     "Restart affected pods if connection count > 80%: kubectl rollout restart deployment/payment-svc"
   ],
-  "semantic_search_summary": "Payment service latency spikes related to database connection management and cache efficiency. Resolution typically involves connection pool monitoring and pod restarts."
+  "search_query": "payment service latency database connection pool redis cache performance"
 }
 
 Example 2:
 {
   "alert_overview": "Memory usage exceeded threshold on authentication service. Alert fires when memory usage is above 85% for 10 minutes.",
   "historical_root_causes": [
-    "Memory leak in JWT validation routine (ref: msg-789)",
-    "Large session objects not being garbage collected (ref: msg-012)"
+    "Memory leak in JWT validation routine",
+    "Large session objects not being garbage collected"
   ],
   "resolution_steps": [
     "Review memory profile: curl localhost:6060/debug/pprof/heap > heap.out",
     "Temporary mitigation: kubectl rollout restart deployment/auth-svc"
   ],
-  "semantic_search_summary": "Authentication service memory issues stemming from JWT handling and session management. Memory profiling and pod restarts are common resolution steps."
+  "search_query": "auth service memory leak JWT validation session objects garbage collection OOM"
+}
+
+Example 3:
+{
+  "alert_overview": "Disk usage alert for logging service. Triggers when disk utilization exceeds 90% on logging nodes.",
+  "historical_root_causes": [
+    "Log rotation not cleaning up old files properly",
+    "Sudden spike in debug logging from application"
+  ],
+  "resolution_steps": [
+    "Check disk usage: df -h /var/log",
+    "Force log rotation: logrotate -f /etc/logrotate.d/application",
+    "Compress old logs: find /var/log -name '*.log.*' -exec gzip {} \\;"
+  ],
+  "search_query": "logging service disk usage log rotation cleanup compression storage"
+}
+
+Example 4:
+{
+  "alert_overview": "API error rate alert for user service. Triggers when 5xx errors exceed 5% over 5 minutes.",
+  "historical_root_causes": [
+    "Rate limiting configuration too aggressive",
+    "Database deadlocks during peak traffic"
+  ],
+  "resolution_steps": [
+    "Check error distribution: kubectl logs -l app=user-svc | grep ERROR | sort | uniq -c",
+    "Analyze rate limit metrics: curl -s localhost:9090/metrics | grep rate_limit",
+    "Scale up replicas if needed: kubectl scale deployment/user-svc --replicas=5"
+  ],
+  "search_query": "user service API 5xx errors rate limiting database deadlocks high traffic"
 }`
 
-	content := "Messages:\n"
+	content := fmt.Sprintf("Service: %s\nAlert: %s\nMessages:\n", service, alert)
 	for _, msg := range msgs {
 		content += fmt.Sprintf("%s\n", msg.Attrs.Message.Text)
 	}
