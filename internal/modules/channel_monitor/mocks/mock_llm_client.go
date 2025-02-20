@@ -58,10 +58,10 @@ func (mr *MockClientMockRecorder) Config() *gomock.Call {
 }
 
 // CreateRunbook mocks base method.
-func (m *MockClient) CreateRunbook(ctx context.Context, service, alert string, msgs []schema.ThreadMessagesV2) (string, error) {
+func (m *MockClient) CreateRunbook(ctx context.Context, service, alert string, msgs []schema.ThreadMessagesV2) (*llm.RunbookResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateRunbook", ctx, service, alert, msgs)
-	ret0, _ := ret[0].(string)
+	ret0, _ := ret[0].(*llm.RunbookResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

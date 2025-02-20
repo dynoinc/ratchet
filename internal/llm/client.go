@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -37,7 +38,7 @@ func DefaultConfig() Config {
 type Client interface {
 	Config() Config
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
-	CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error)
+	CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (*RunbookResponse, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
 }
@@ -154,33 +155,63 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (string, error) {
+type RunbookResponse struct {
+	AlertOverview         string   `json:"alert_overview"`
+	HistoricalRootCauses  []string `json:"historical_root_causes"`
+	ResolutionSteps       []string `json:"resolution_steps"`
+	SemanticSearchSummary string   `json:"semantic_search_summary"`
+}
+
+func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (*RunbookResponse, error) {
 	if c == nil {
-		return "", nil
+		return nil, nil
 	}
 
-	prompt := `Create a concise runbook based on the provided incident messages from past triaging. Structure as follows:
+	prompt := `Create a structured runbook based on the provided incident messages. Return a JSON object with these exact fields:
 
-**Overview**
-- Brief description of the alert and its trigger conditions
-
-**Root Causes**
-- Identified causes from past incidents (cite specific sources/messages)
-- Contributing factors (with references to supporting messages)
-
-**Resolution Steps**
-- Specific troubleshooting steps taken (include references to the original messages)
-- Commands used and their outcomes (cite sources when derived from past cases)
-- Successful resolution actions (indicate where similar steps have worked before)
+{
+  "alert_overview": "Brief description of the alert and what triggers it (2-3 sentences)",
+  "historical_root_causes": ["List of specific causes from past incidents, with message references"],
+  "resolution_steps": ["Concrete troubleshooting steps that were successful, with commands and outcomes"],
+  "semantic_search_summary": "2-3 sentence technical summary focused on error patterns, components, and resolutions"
+}
 
 RULES:
-- Format in Slack-friendly Markdown.
-- Include only information explicitly mentioned in the messages.
-- Cite sources when referencing historical incidents or previous actions.
-- Omit sections if no relevant information is available.
-- Keep the content focused and specific to what was discussed.
-- Do not include generic advice or steps that weren't mentioned in the messages.
-`
+- Include only information explicitly mentioned in the messages
+- Keep content specific and actionable
+- Cite message sources when referencing past incidents
+- Return empty arrays if no relevant information exists for a section
+- Focus on technical details and specific patterns
+
+EXAMPLES:
+
+Example 1:
+{
+  "alert_overview": "High latency alert for the payment processing service. Triggers when p99 latency exceeds 500ms for 5 consecutive minutes.",
+  "historical_root_causes": [
+    "Database connection pool exhaustion due to connection leaks (ref: msg-123)",
+    "Redis cache misses causing increased DB load (ref: msg-456)"
+  ],
+  "resolution_steps": [
+    "Check connection pool metrics: kubectl get metrics -n payments | grep pool_size",
+    "Restart affected pods if connection count > 80%: kubectl rollout restart deployment/payment-svc"
+  ],
+  "semantic_search_summary": "Payment service latency spikes related to database connection management and cache efficiency. Resolution typically involves connection pool monitoring and pod restarts."
+}
+
+Example 2:
+{
+  "alert_overview": "Memory usage exceeded threshold on authentication service. Alert fires when memory usage is above 85% for 10 minutes.",
+  "historical_root_causes": [
+    "Memory leak in JWT validation routine (ref: msg-789)",
+    "Large session objects not being garbage collected (ref: msg-012)"
+  ],
+  "resolution_steps": [
+    "Review memory profile: curl localhost:6060/debug/pprof/heap > heap.out",
+    "Temporary mitigation: kubectl rollout restart deployment/auth-svc"
+  ],
+  "semantic_search_summary": "Authentication service memory issues stemming from JWT handling and session management. Memory profiling and pod restarts are common resolution steps."
+}`
 
 	content := "Messages:\n"
 	for _, msg := range msgs {
@@ -200,15 +231,26 @@ RULES:
 			},
 		}),
 		Temperature: openai.F(0.7),
+		ResponseFormat: openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](
+			openai.ResponseFormatJSONObjectParam{
+				Type: openai.F[openai.ResponseFormatJSONObjectType](openai.ResponseFormatJSONObjectTypeJSONObject),
+			},
+		),
 	}
 
 	resp, err := c.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return "", fmt.Errorf("creating runbook: %w", err)
+		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
 
 	slog.DebugContext(ctx, "created runbook", "request", params, "response", resp.Choices[0].Message.Content)
-	return resp.Choices[0].Message.Content, nil
+
+	var runbook RunbookResponse
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &runbook); err != nil {
+		return nil, fmt.Errorf("unmarshaling runbook response: %w", err)
+	}
+
+	return &runbook, nil
 }
 
 func (c *client) GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error) {

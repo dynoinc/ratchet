@@ -327,21 +327,21 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("getting runbook: %w", err)
 	}
 
+	if runbookMessage == nil {
+		return nil, fmt.Errorf("no runbook found")
+	}
+
 	updates, err := recent_activity.Get(
 		r.Context(),
 		qtx,
 		h.llmClient,
 		serviceName,
-		alertName,
+		runbookMessage.SemanticSearchSummary,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("getting updates: %w", err)
-	}
-
-	if len(runbookMessage) == 0 && len(updates) == 0 {
-		return nil, fmt.Errorf("no runbook or updates found")
 	}
 
 	blocks := runbook.Format(serviceName, alertName, runbookMessage, updates)

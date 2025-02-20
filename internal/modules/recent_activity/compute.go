@@ -26,11 +26,11 @@ func Get(
 	ctx context.Context,
 	qtx *schema.Queries,
 	llmClient llm.Client,
-	serviceName, alertName string,
+	service, queryText string,
 	interval time.Duration,
 	botID string,
 ) ([]Activity, error) {
-	queryText := fmt.Sprintf("%s %s", serviceName, alertName)
+	queryText = fmt.Sprintf("%s %s", service, queryText)
 	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", queryText)
 	if err != nil {
 		return nil, fmt.Errorf("generating embedding: %w", err)

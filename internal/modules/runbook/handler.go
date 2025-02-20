@@ -44,13 +44,13 @@ func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, 
 		return err
 	}
 
-	updates, err := recent_activity.Get(ctx, qtx, h.llmClient, msg.IncidentAction.Service, msg.IncidentAction.Alert, time.Hour, h.slackIntegration.BotUserID())
-	if err != nil {
-		return fmt.Errorf("getting updates: %w", err)
+	if runbook == nil {
+		return nil
 	}
 
-	if len(runbook) == 0 && len(updates) == 0 {
-		return nil
+	updates, err := recent_activity.Get(ctx, qtx, h.llmClient, msg.IncidentAction.Service, runbook.SemanticSearchSummary, time.Hour, h.slackIntegration.BotUserID())
+	if err != nil {
+		return fmt.Errorf("getting updates: %w", err)
 	}
 
 	blocks := Format(msg.IncidentAction.Service, msg.IncidentAction.Alert, runbook, updates)
@@ -58,7 +58,8 @@ func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, 
 }
 
 func Format(
-	serviceName, alertName, runbookMessage string,
+	serviceName, alertName string,
+	runbook *llm.RunbookResponse,
 	updates []recent_activity.Activity,
 ) []slack.Block {
 	blocks := []slack.Block{
@@ -68,14 +69,34 @@ func Format(
 		slack.NewDividerBlock(),
 	}
 
-	if len(runbookMessage) > 0 {
+	if runbook != nil {
 		blocks = append(blocks,
 			slack.NewSectionBlock(
 				slack.NewTextBlockObject(slack.MarkdownType, "*Runbook:*", false, false),
 				nil, nil,
 			),
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, runbookMessage, false, false),
+				slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("*Alert Overview*\n%s", runbook.AlertOverview), false, false),
+				nil, nil,
+			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, "*Historical Root Causes*", false, false),
+				nil, nil,
+			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, "• "+strings.Join(runbook.HistoricalRootCauses, "\n• "), false, false),
+				nil, nil,
+			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, "*Resolution Steps*", false, false),
+				nil, nil,
+			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, "• "+strings.Join(runbook.ResolutionSteps, "\n• "), false, false),
+				nil, nil,
+			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, "*Semantic Search Summary*\n"+runbook.SemanticSearchSummary, false, false),
 				nil, nil,
 			),
 			slack.NewDividerBlock(),
@@ -91,13 +112,11 @@ func Format(
 		)
 
 		for _, update := range updates {
-			messageLink := fmt.Sprintf("<https://slack.com/archives/%s/%s|%s>",
-				update.ChannelID, strings.Replace(update.Ts, ".", "", 1),
-				update.Attrs.Message.Text)
-			updateText := fmt.Sprintf("• %s (%s)", messageLink, update.Attrs.Message.User)
+			messageLink := fmt.Sprintf("• https://slack.com/archives/%s/%s",
+				update.ChannelID, strings.Replace(update.Ts, ".", "", 1))
 
 			blocks = append(blocks, slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, updateText, false, false),
+				slack.NewTextBlockObject(slack.MarkdownType, messageLink, false, false),
 				nil, nil,
 			))
 		}
