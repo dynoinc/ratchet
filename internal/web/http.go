@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/carlmjohnson/versioninfo"
+	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -296,7 +296,7 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,
-		runbook.SemanticSearchSummary,
+		runbook.SearchQuery,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)
@@ -339,7 +339,7 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 		r.Context(),
 		qtx,
 		h.llmClient,
-		runbookMessage.SemanticSearchSummary,
+		runbookMessage.SearchQuery,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)
