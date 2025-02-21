@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Go
         uses: actions/setup-go@v5
@@ -40,8 +42,11 @@ jobs:
       - name: Go Vet
         run: go vet ./...
 
-      - name: Staticcheck
+      - name: Go Staticcheck
         run: go tool staticcheck ./...
+
+      - name: Go Vulncheck
+        run: go tool govulncheck
 
       - name: SQLc Generate
         run: go tool sqlc generate -f ./internal/storage/sqlc.yml && git diff --exit-code
