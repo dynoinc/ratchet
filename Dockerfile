@@ -10,6 +10,7 @@ RUN go mod download
 
 COPY . .
 RUN go build ./cmd/ratchet
+RUN ./ratchet --version
 
 # Stage 2: Create the final image
 FROM public.ecr.aws/lts/ubuntu:edge AS runner

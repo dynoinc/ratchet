@@ -68,10 +68,16 @@ type config struct {
 
 func main() {
 	help := flag.Bool("help", false, "Show help")
+	version := flag.Bool("version", false, "Show version")
 	flag.Parse()
 
 	if *help {
 		_ = envconfig.Usage("ratchet", &config{})
+		return
+	}
+
+	if *version {
+		fmt.Println(versioninfo.Short())
 		return
 	}
 
