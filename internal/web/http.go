@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/olekukonko/tablewriter"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/riverqueue/river"
 	"riverqueue.com/riverui"
@@ -118,6 +120,8 @@ func New(
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
+
+	apiMux.HandleFunc("GET /search", handlers.search)
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -353,4 +357,117 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 	}
 
 	return nil, nil
+}
+
+func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
+	var query string
+	serviceName := r.URL.Query().Get("service")
+	alertName := r.URL.Query().Get("alert")
+
+	if serviceName != "" && alertName != "" {
+		qtx := schema.New(h.db)
+		runbookMessage, err := runbook.Get(
+			r.Context(),
+			qtx,
+			h.llmClient,
+			serviceName,
+			alertName,
+			h.slackIntegration.BotUserID(),
+		)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("getting runbook: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if runbookMessage == nil {
+			http.Error(w, "no runbook found", http.StatusNotFound)
+			return
+		}
+		query = runbookMessage.SearchQuery
+	} else {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("reading request body: %v", err), http.StatusInternalServerError)
+			return
+		}
+		query = string(body)
+	}
+
+	interval := cmp.Or(r.URL.Query().Get("interval"), "1h")
+	intervalDuration, err := time.ParseDuration(interval)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid interval: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	n := cmp.Or(r.URL.Query().Get("n"), "10")
+	nInt, err := strconv.Atoi(n)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid n: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	updates, err := recent_activity.GetDebug(
+		r.Context(),
+		schema.New(h.db),
+		h.llmClient,
+		query,
+		intervalDuration,
+		h.slackIntegration.BotUserID(),
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("getting updates: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	table := tablewriter.NewWriter(w)
+	table.SetHeader([]string{"Link", "Text", "Text Tokens", "Query Tokens", "Lexical Score", "Lexical Rank", "Semantic Score", "Semantic Rank", "RRF Score"})
+	table.SetBorder(true)
+	table.SetRowLine(true)
+	table.SetAutoWrapText(false)
+	table.SetColWidth(120)
+
+	limit := nInt
+	if limit > len(updates) {
+		limit = len(updates)
+	}
+
+	for _, update := range updates[:limit] {
+		text := update.MessageText
+		if len(text) > 100 {
+			text = text[:97] + "..."
+		}
+		messageLink := fmt.Sprintf("https://slack.com/archives/%s/p%s", update.ChannelID, strings.ReplaceAll(update.Ts, ".", ""))
+
+		// Get text tokens
+		textTokens := ""
+		if update.TextTokens != "" {
+			textTokens = update.TextTokens
+		}
+		if len(textTokens) > 100 {
+			textTokens = textTokens[:97] + "..."
+		}
+
+		// Get query tokens
+		queryTokens := ""
+		if update.QueryTokens != "" {
+			queryTokens = update.QueryTokens
+		}
+		if len(queryTokens) > 100 {
+			queryTokens = queryTokens[:97] + "..."
+		}
+
+		table.Append([]string{
+			messageLink,
+			text,
+			textTokens,
+			queryTokens,
+			fmt.Sprintf("%.4f", update.LexicalScore),
+			fmt.Sprintf("%d", update.LexicalRank),
+			fmt.Sprintf("%.4f", update.SemanticDistance),
+			fmt.Sprintf("%d", update.SemanticRank),
+			fmt.Sprintf("%.4f", update.RrfScore),
+		})
+	}
+
+	table.Render()
 }

@@ -84,7 +84,17 @@ func Format(
 				nil, nil,
 			),
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "• "+strings.Join(runbook.HistoricalRootCauses, "\n• "), false, false),
+				slack.NewTextBlockObject(
+					slack.MarkdownType,
+					func() string {
+						if len(runbook.HistoricalRootCauses) == 0 {
+							return "No historical root causes found"
+						}
+						return "• " + strings.Join(runbook.HistoricalRootCauses, "\n• ")
+					}(),
+					false,
+					false,
+				),
 				nil, nil,
 			),
 			slack.NewSectionBlock(
@@ -92,7 +102,17 @@ func Format(
 				nil, nil,
 			),
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "• "+strings.Join(runbook.ResolutionSteps, "\n• "), false, false),
+				slack.NewTextBlockObject(
+					slack.MarkdownType,
+					func() string {
+						if len(runbook.ResolutionSteps) == 0 {
+							return "No resolution steps available"
+						}
+						return "• " + strings.Join(runbook.ResolutionSteps, "\n• ")
+					}(),
+					false,
+					false,
+				),
 				nil, nil,
 			),
 			slack.NewSectionBlock(

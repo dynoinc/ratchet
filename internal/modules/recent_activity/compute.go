@@ -17,8 +17,8 @@ type Activity struct {
 	ChannelID    string
 	Ts           string
 	Attrs        dto.MessageAttrs
-	SemanticRank int
-	LexicalRank  int
+	SemanticRank int64
+	LexicalRank  int64
 	RRFScore     float64
 }
 
@@ -57,11 +57,39 @@ func Get(
 			ChannelID:    update.ChannelID,
 			Ts:           update.Ts,
 			Attrs:        attrs,
-			SemanticRank: int(*update.SemanticRank),
-			LexicalRank:  int(*update.LexicalRank),
+			SemanticRank: update.SemanticRank,
+			LexicalRank:  update.LexicalRank,
 			RRFScore:     update.CRrfScore,
 		}
 	}
 
 	return messages, nil
+}
+
+// GetDebug performs the same search as Get but returns additional debug information
+func GetDebug(
+	ctx context.Context,
+	qtx *schema.Queries,
+	llmClient llm.Client,
+	queryText string,
+	interval time.Duration,
+	botID string,
+) ([]schema.DebugGetLatestServiceUpdatesRow, error) {
+	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", queryText)
+	if err != nil {
+		return nil, fmt.Errorf("generating embedding: %w", err)
+	}
+
+	embedding := pgvector.NewVector(queryEmbedding)
+	updates, err := qtx.DebugGetLatestServiceUpdates(ctx, schema.DebugGetLatestServiceUpdatesParams{
+		QueryText:      queryText,
+		QueryEmbedding: &embedding,
+		Interval:       pgtype.Interval{Microseconds: interval.Microseconds(), Valid: true},
+		BotID:          botID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting latest service updates: %w", err)
+	}
+
+	return updates, nil
 }

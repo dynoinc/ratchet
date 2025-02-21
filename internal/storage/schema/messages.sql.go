@@ -31,6 +31,144 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 	return err
 }
 
+const debugGetLatestServiceUpdates = `-- name: DebugGetLatestServiceUpdates :many
+WITH valid_messages AS (
+    SELECT
+        channel_id,
+        ts,
+        embedding,
+        CASE 
+            WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
+            ELSE ts_rank(to_tsvector('english', attrs -> 'message' ->> 'text'),
+                          plainto_tsquery('english', $1 :: text))
+        END as lexical_score,
+        -- Include the text and tokens for debugging
+        attrs -> 'message' ->> 'text' as message_text,
+        to_tsvector('english', attrs -> 'message' ->> 'text') as text_tokens,
+        plainto_tsquery('english', $1 :: text) as query_tokens
+    FROM
+        messages_v2
+    WHERE
+        CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
+            epoch
+            FROM
+                NOW() - $2 :: interval
+        )
+        AND attrs -> 'message' ->> 'user' != $3 :: text
+        AND attrs -> 'incident_action' ->> 'action' IS NULL 
+),
+semantic_matches AS (
+    SELECT
+        channel_id,
+        ts,
+        embedding <=> $4 as semantic_distance,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                embedding <=> $4
+        ) as semantic_rank
+    FROM
+        valid_messages
+),
+lexical_matches AS (
+    SELECT
+        channel_id,
+        ts,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                lexical_score DESC
+        ) as lexical_rank
+    FROM
+        valid_messages
+),
+results AS (
+    SELECT
+        m.channel_id,
+        m.ts,
+        COALESCE(s.semantic_rank, 1000) as semantic_rank,
+        COALESCE(s.semantic_distance, 2.0) as semantic_distance,
+        COALESCE(l.lexical_rank, 1000) as lexical_rank,
+        1.0 / (1 + COALESCE(s.semantic_rank, 1000)) + 1.0 / (1 + COALESCE(l.lexical_rank, 1000)) as rrf_score,
+        COALESCE(m.message_text, 'NULL') as message_text,
+        COALESCE(m.text_tokens, 'NULL') as text_tokens,
+        COALESCE(m.query_tokens, 'NULL') as query_tokens,
+        m.lexical_score
+    FROM
+        valid_messages m
+        LEFT JOIN semantic_matches s ON m.channel_id = s.channel_id AND m.ts = s.ts
+        LEFT JOIN lexical_matches l ON m.channel_id = l.channel_id AND m.ts = l.ts
+)
+SELECT 
+    channel_id,
+    ts,
+    semantic_rank,
+    semantic_distance::float as semantic_distance,
+    lexical_rank,
+    rrf_score::float as rrf_score,
+    message_text::text as message_text,
+    text_tokens::text as text_tokens,
+    query_tokens::text as query_tokens,
+    lexical_score::float as lexical_score
+FROM results
+ORDER BY
+    rrf_score DESC
+`
+
+type DebugGetLatestServiceUpdatesParams struct {
+	QueryText      string
+	Interval       pgtype.Interval
+	BotID          string
+	QueryEmbedding *pgvector.Vector
+}
+
+type DebugGetLatestServiceUpdatesRow struct {
+	ChannelID        string
+	Ts               string
+	SemanticRank     int64
+	SemanticDistance float64
+	LexicalRank      int64
+	RrfScore         float64
+	MessageText      string
+	TextTokens       string
+	QueryTokens      string
+	LexicalScore     float64
+}
+
+func (q *Queries) DebugGetLatestServiceUpdates(ctx context.Context, arg DebugGetLatestServiceUpdatesParams) ([]DebugGetLatestServiceUpdatesRow, error) {
+	rows, err := q.db.Query(ctx, debugGetLatestServiceUpdates,
+		arg.QueryText,
+		arg.Interval,
+		arg.BotID,
+		arg.QueryEmbedding,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DebugGetLatestServiceUpdatesRow
+	for rows.Next() {
+		var i DebugGetLatestServiceUpdatesRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.Ts,
+			&i.SemanticRank,
+			&i.SemanticDistance,
+			&i.LexicalRank,
+			&i.RrfScore,
+			&i.MessageText,
+			&i.TextTokens,
+			&i.QueryTokens,
+			&i.LexicalScore,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteOldMessages = `-- name: DeleteOldMessages :exec
 DELETE FROM
     messages_v2
@@ -207,12 +345,15 @@ WITH valid_messages AS (
         ts,
         attrs,
         embedding,
-        ts_rank_cd(to_tsvector('english', attrs -> 'message' ->> 'text'),
-                   plainto_tsquery('english', $1 :: text)) as lexical_score
+        CASE 
+            WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
+            ELSE ts_rank(to_tsvector('english', attrs -> 'message' ->> 'text'),
+                          plainto_tsquery('english', $1 :: text))
+        END as lexical_score
     FROM
         messages_v2
     WHERE
-        CAST(ts AS numeric) > EXTRACT(
+        CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
             epoch
             FROM
                 NOW() - $2 :: interval
@@ -246,15 +387,13 @@ combined_scores AS (
     SELECT
         s.channel_id :: text as channel_id,
         s.ts :: text as ts,
-        s.semantic_rank,
-        l.lexical_rank,
+        COALESCE(s.semantic_rank, 1000) as semantic_rank,
+        COALESCE(l.lexical_rank, 1000) as lexical_rank,
         -- Reciprocal Rank Fusion with k=1 for small result sets
         1.0 / (1 + COALESCE(s.semantic_rank, 1000)) + 1.0 / (1 + COALESCE(l.lexical_rank, 1000)) as rrf_score
     FROM
         semantic_matches s
         FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
-    -- Require at least one match type to have a reasonable rank
-    WHERE s.semantic_rank <= 10 OR l.lexical_rank <= 10
 )
 SELECT
     m.channel_id,
@@ -282,8 +421,8 @@ type GetLatestServiceUpdatesRow struct {
 	ChannelID    string
 	Ts           string
 	Attrs        []byte
-	SemanticRank *int64
-	LexicalRank  *int64
+	SemanticRank int64
+	LexicalRank  int64
 	CRrfScore    float64
 }
 
