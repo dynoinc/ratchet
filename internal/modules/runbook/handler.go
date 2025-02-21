@@ -72,10 +72,6 @@ func Format(
 	if runbook != nil {
 		blocks = append(blocks,
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "*Runbook:*", false, false),
-				nil, nil,
-			),
-			slack.NewSectionBlock(
 				slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("*Alert Overview*\n%s", runbook.AlertOverview), false, false),
 				nil, nil,
 			),
