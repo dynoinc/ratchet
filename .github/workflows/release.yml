@@ -18,7 +18,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Set Up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -118,6 +118,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump_version.outputs.COMMIT_HASH }}
+          fetch-depth: 1
+          fetch-tags: true
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
