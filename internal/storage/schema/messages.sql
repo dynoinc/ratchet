@@ -125,8 +125,7 @@ WITH valid_messages AS (
         embedding,
         CASE 
             WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(to_tsvector('english', attrs -> 'message' ->> 'text'),
-                          plainto_tsquery('english', @query_text :: text))
+            ELSE ts_rank(text_search, plainto_tsquery('english', @query_text :: text))
         END as lexical_score
     FROM
         messages_v2
@@ -195,12 +194,11 @@ WITH valid_messages AS (
         embedding,
         CASE 
             WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(to_tsvector('english', attrs -> 'message' ->> 'text'),
-                          plainto_tsquery('english', @query_text :: text))
+            ELSE ts_rank(text_search, plainto_tsquery('english', @query_text :: text))
         END as lexical_score,
         -- Include the text and tokens for debugging
         attrs -> 'message' ->> 'text' as message_text,
-        to_tsvector('english', attrs -> 'message' ->> 'text') as text_tokens,
+        text_search as text_tokens,
         plainto_tsquery('english', @query_text :: text) as query_tokens
     FROM
         messages_v2
