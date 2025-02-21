@@ -15,10 +15,11 @@ type ChannelsV2 struct {
 }
 
 type MessagesV2 struct {
-	ChannelID string
-	Ts        string
-	Attrs     dto.MessageAttrs
-	Embedding *pgvector.Vector
+	ChannelID  string
+	Ts         string
+	Attrs      dto.MessageAttrs
+	Embedding  *pgvector.Vector
+	TextSearch interface{}
 }
 
 type ThreadMessagesV2 struct {
