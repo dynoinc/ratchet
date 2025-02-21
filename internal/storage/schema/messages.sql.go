@@ -463,8 +463,7 @@ SELECT
     channel_id,
     ts,
     attrs,
-    embedding,
-    text_search
+    embedding
 FROM
     messages_v2
 WHERE
@@ -477,15 +476,21 @@ type GetMessageParams struct {
 	Ts        string
 }
 
-func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (MessagesV2, error) {
+type GetMessageRow struct {
+	ChannelID string
+	Ts        string
+	Attrs     dto.MessageAttrs
+	Embedding *pgvector.Vector
+}
+
+func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (GetMessageRow, error) {
 	row := q.db.QueryRow(ctx, getMessage, arg.ChannelID, arg.Ts)
-	var i MessagesV2
+	var i GetMessageRow
 	err := row.Scan(
 		&i.ChannelID,
 		&i.Ts,
 		&i.Attrs,
 		&i.Embedding,
-		&i.TextSearch,
 	)
 	return i, err
 }

@@ -19,8 +19,7 @@ SELECT
     channel_id,
     ts,
     attrs,
-    embedding,
-    text_search
+    embedding
 FROM
     messages_v2
 WHERE
