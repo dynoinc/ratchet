@@ -29,6 +29,7 @@ type Integration interface {
 	GetConversationReplies(ctx context.Context, channelID, ts string) ([]slack.Message, error)
 	BotUserID() string
 	GetUserIDByEmail(ctx context.Context, email string) (string, error)
+	LeaveChannel(ctx context.Context, channelID string) error
 }
 
 type integration struct {
@@ -236,4 +237,13 @@ func (b *integration) GetUserIDByEmail(ctx context.Context, email string) (strin
 		return "", fmt.Errorf("getting user by email %s: %w", email, err)
 	}
 	return user.ID, nil
+}
+
+func (b *integration) LeaveChannel(ctx context.Context, channelID string) error {
+	_, err := b.client.LeaveConversationContext(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("leaving channel %s: %w", channelID, err)
+	}
+
+	return nil
 }

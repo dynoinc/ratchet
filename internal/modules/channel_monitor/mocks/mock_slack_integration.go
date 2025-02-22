@@ -144,6 +144,20 @@ func (mr *MockIntegrationMockRecorder) GetUserIDByEmail(ctx, email any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserIDByEmail", reflect.TypeOf((*MockIntegration)(nil).GetUserIDByEmail), ctx, email)
 }
 
+// LeaveChannel mocks base method.
+func (m *MockIntegration) LeaveChannel(ctx context.Context, channelID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LeaveChannel", ctx, channelID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LeaveChannel indicates an expected call of LeaveChannel.
+func (mr *MockIntegrationMockRecorder) LeaveChannel(ctx, channelID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LeaveChannel", reflect.TypeOf((*MockIntegration)(nil).LeaveChannel), ctx, channelID)
+}
+
 // PostMessage mocks base method.
 func (m *MockIntegration) PostMessage(ctx context.Context, channelID string, messageBlocks ...slack.Block) error {
 	m.ctrl.T.Helper()

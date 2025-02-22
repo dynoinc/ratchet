@@ -21,11 +21,13 @@ type cmd int
 const (
 	cmdNone cmd = iota
 	cmdPostReport
+	cmdLeaveChannel
 )
 
 var (
 	cmds = map[string]cmd{
 		"post weekly report to slack channel": cmdPostReport,
+		"leave channel":                       cmdLeaveChannel,
 	}
 )
 
@@ -82,6 +84,11 @@ func (c *commands) commandEmbeddings(ctx context.Context) (map[cmd][]float64, er
 }
 
 func (c *commands) findCommand(ctx context.Context, text string) (cmd, float64, error) {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "" {
+		return cmdNone, 0, nil
+	}
+
 	embedding, err := c.llmClient.GenerateEmbedding(ctx, "classification", text)
 	if err != nil {
 		return cmdNone, 0, err
@@ -151,6 +158,8 @@ func (c *commands) Handle(ctx context.Context, channelID string, slackTS string,
 	switch bestMatch {
 	case cmdPostReport:
 		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
+	case cmdLeaveChannel:
+		return c.slackIntegration.LeaveChannel(ctx, channelID)
 	}
 
 	return nil
