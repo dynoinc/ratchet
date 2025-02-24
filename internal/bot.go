@@ -135,7 +135,7 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 	return nil
 }
 
-func (b *Bot) Notify(ctx context.Context, ev *slackevents.MessageEvent) error {
+func (b *Bot) NotifyMessage(ctx context.Context, ev *slackevents.MessageEvent) error {
 	tx, err := b.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -182,6 +182,14 @@ func (b *Bot) Notify(ctx context.Context, ev *slackevents.MessageEvent) error {
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (b *Bot) NotifyReactionRemoved(ctx context.Context, ev *slackevents.ReactionRemovedEvent) error {
+	panic("unimplemented")
+}
+
+func (b *Bot) NotifyReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {
+	panic("unimplemented")
 }
 
 func (b *Bot) GetMessage(

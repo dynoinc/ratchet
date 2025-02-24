@@ -10,9 +10,11 @@ type SlackMessage struct {
 
 type MessageAttrs struct {
 	Message        SlackMessage   `json:"message,omitzero"`
+	Reactions      map[string]int `json:"reactions,omitzero"`
 	IncidentAction IncidentAction `json:"incident_action,omitzero"`
 }
 
 type ThreadMessageAttrs struct {
-	Message SlackMessage `json:"message,omitzero"`
+	Message   SlackMessage   `json:"message,omitzero"`
+	Reactions map[string]int `json:"reactions,omitzero"`
 }
