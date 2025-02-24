@@ -4,6 +4,38 @@
 
 AI bot to help reduce operational toil
 
+## Architecture
+
+```
+                                    ┌──────────────────┐
+                                    │     Slack API    │
+                                    └────────┬─────────┘
+                                             │
+                                    ┌────────▼─────────┐
+                                    │ Slack Integration│
+                                    └────────┬─────────┘
+                                             │
+┌──────────────┐                   ┌────────▼─────────┐                ┌──────────────┐
+│   OpenAI/    │◄──────────────────┤       Bot        ├───────────────►│  PostgreSQL  │
+│   Ollama     │                   │    (Coordinator)  │                │   Database   │
+└──────────────┘                   └────────┬─────────┘                └──────────────┘
+                                             │
+                    ┌────────────────────────┼────────────────────────┐
+                    │                        │                        │
+            ┌───────▼──────┐         ┌──────▼───────┐         ┌─────▼─────┐
+            │   Modules    │         │  Background   │         │    Web    │
+            │             │         │   Workers     │         │  Server   │
+            └──────┬──────┘         └──────┬───────┘         └───────────┘
+                   │                       │
+     ┌────────────┴──────────┐   ┌───────┴────────────┐
+     │  ● channel_monitor    │   │  ● classifier      │
+     │  ● commands          │   │  ● backfill        │
+     │  ● recent_activity   │   │  ● channel_onboard │
+     │  ● report           │   │  ● modules         │
+     │  ● runbook          │   └────────────────────┘
+     └─────────────────────┘
+```
+
 ## How AI is used?
 
 By default, the bot persists messages in the database, classifies them as alerts open/close notifications 
