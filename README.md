@@ -11,29 +11,29 @@ AI bot to help reduce operational toil
                                     │     Slack API    │
                                     └────────┬─────────┘
                                              │
-                                    ┌────────▼─────────┐
-                                    │ Slack Integration│
-                                    └────────┬─────────┘
+                                    ┌────────▼──────────┐
+                                    │ Slack Integration │
+                                    └────────┬──────────┘
                                              │
 ┌──────────────┐                   ┌────────▼─────────┐                ┌──────────────┐
 │   OpenAI/    │◄──────────────────┤       Bot        ├───────────────►│  PostgreSQL  │
-│   Ollama     │                   │    (Coordinator)  │                │   Database   │
+│   Ollama     │                   │    (Coordinator) │                │   Database   │
 └──────────────┘                   └────────┬─────────┘                └──────────────┘
                                              │
                     ┌────────────────────────┼────────────────────────┐
                     │                        │                        │
             ┌───────▼──────┐         ┌──────▼───────┐         ┌─────▼─────┐
-            │   Modules    │         │  Background   │         │    Web    │
-            │             │         │   Workers     │         │  Server   │
-            └──────┬──────┘         └──────┬───────┘         └───────────┘
-                   │                       │
-     ┌────────────┴──────────┐   ┌───────┴────────────┐
-     │  ● channel_monitor    │   │  ● classifier      │
-     │  ● commands          │   │  ● backfill        │
-     │  ● recent_activity   │   │  ● channel_onboard │
-     │  ● report           │   │  ● modules         │
-     │  ● runbook          │   └────────────────────┘
-     └─────────────────────┘
+            │   Modules    │         │  Background  │         │    Web    │
+            │              │         │   Workers    │         │  Server   │
+            └──────┬───────┘         └──────┬───────┘         └───────────┘
+                   │                        │
+      ┌────────────┴──────────┐   ┌─────────┴──────────┐
+      │  ● channel_monitor    │   │  ● classifier      │
+      │  ● commands           │   │  ● backfill        │
+      │  ● recent_activity    │   │  ● channel_onboard │
+      │  ● report             │   │  ● modules         │
+      │  ● runbook            │   └────────────────────┘
+      └───────────────────────┘
 ```
 
 ## How AI is used?
