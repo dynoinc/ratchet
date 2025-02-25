@@ -11,9 +11,9 @@ oauth_config:
     bot:
       - channels:history
       - channels:read
-      - reactions:read
-      - im:write
       - chat:write
+      - im:write
+      - reactions:read
       - users:read
       - users:read.email
 settings:
