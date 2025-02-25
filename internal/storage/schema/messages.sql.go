@@ -287,7 +287,15 @@ FROM
     messages_v3
 WHERE
     channel_id = $1 AND parent_ts IS NULL
+ORDER BY
+    (ts::float) DESC
+LIMIT $2
 `
+
+type GetAllMessagesParams struct {
+	ChannelID string
+	N         int32
+}
 
 type GetAllMessagesRow struct {
 	ChannelID string
@@ -295,8 +303,8 @@ type GetAllMessagesRow struct {
 	Attrs     dto.MessageAttrs
 }
 
-func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]GetAllMessagesRow, error) {
-	rows, err := q.db.Query(ctx, getAllMessages, channelID)
+func (q *Queries) GetAllMessages(ctx context.Context, arg GetAllMessagesParams) ([]GetAllMessagesRow, error) {
+	rows, err := q.db.Query(ctx, getAllMessages, arg.ChannelID, arg.N)
 	if err != nil {
 		return nil, err
 	}
@@ -471,6 +479,50 @@ func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (GetMess
 	return i, err
 }
 
+const getMessagesByUser = `-- name: GetMessagesByUser :many
+SELECT
+    channel_id,
+    ts,
+    attrs
+FROM 
+    messages_v3
+WHERE
+    ts::float BETWEEN $1 AND $2
+    AND attrs -> 'message' ->> 'user' = $3 :: text
+`
+
+type GetMessagesByUserParams struct {
+	StartTs string
+	EndTs   string
+	UserID  string
+}
+
+type GetMessagesByUserRow struct {
+	ChannelID string
+	Ts        string
+	Attrs     dto.MessageAttrs
+}
+
+func (q *Queries) GetMessagesByUser(ctx context.Context, arg GetMessagesByUserParams) ([]GetMessagesByUserRow, error) {
+	rows, err := q.db.Query(ctx, getMessagesByUser, arg.StartTs, arg.EndTs, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMessagesByUserRow
+	for rows.Next() {
+		var i GetMessagesByUserRow
+		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMessagesWithinTS = `-- name: GetMessagesWithinTS :many
 SELECT
     channel_id,
@@ -480,7 +532,7 @@ FROM
     messages_v3
 WHERE
     channel_id = $1
-    AND ts BETWEEN $2
+    AND ts::float BETWEEN $2
     AND $3
 `
 
@@ -680,6 +732,47 @@ func (q *Queries) UpdateMessageAttrs(ctx context.Context, arg UpdateMessageAttrs
 		arg.Embedding,
 		arg.ChannelID,
 		arg.Ts,
+	)
+	return err
+}
+
+const updateReaction = `-- name: UpdateReaction :exec
+WITH reaction_count AS (
+  SELECT COALESCE((attrs->'reactions'->>($1::text))::int, 0) + $4::int AS new_count
+  FROM messages_v3 
+  WHERE channel_id = $2 AND ts = $3
+)
+UPDATE messages_v3 m
+SET attrs = jsonb_set(
+  COALESCE(m.attrs, '{}'::jsonb),
+  '{reactions}'::text[],
+  CASE
+    WHEN (SELECT new_count FROM reaction_count) <= 0 THEN
+      COALESCE(m.attrs->'reactions', '{}'::jsonb) - $1::text
+    ELSE
+      jsonb_set(
+        COALESCE(m.attrs->'reactions', '{}'::jsonb),
+        array[$1::text],
+        to_jsonb((SELECT new_count FROM reaction_count))
+      )
+  END
+)
+WHERE m.channel_id = $2 AND m.ts = $3
+`
+
+type UpdateReactionParams struct {
+	Reaction  string
+	ChannelID string
+	Ts        string
+	Count     int32
+}
+
+func (q *Queries) UpdateReaction(ctx context.Context, arg UpdateReactionParams) error {
+	_, err := q.db.Exec(ctx, updateReaction,
+		arg.Reaction,
+		arg.ChannelID,
+		arg.Ts,
+		arg.Count,
 	)
 	return err
 }

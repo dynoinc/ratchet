@@ -22,18 +22,25 @@ func TestFindCommand(t *testing.T) {
 		want    cmd
 	}{
 		// Valid report requests
-		{"post report", cmdPostReport},
-		{"please post the weekly report", cmdPostReport},
-		{"can you share the weekly report", cmdPostReport},
-		{"what's the status report", cmdPostReport},
-		{"hey show me the report", cmdPostReport},
-		{"need the weekly report asap", cmdPostReport},
-		{"could you please post the report", cmdPostReport},
-		{"give me an update on the report", cmdPostReport},
-		{"generate a report", cmdPostReport},
-		{"create a new report", cmdPostReport},
-		{"publish the weekly report", cmdPostReport},
-		{"send me the report", cmdPostReport},
+		{"post report", cmdPostWeeklyReport},
+		{"please post the weekly report", cmdPostWeeklyReport},
+		{"can you share the weekly report", cmdPostWeeklyReport},
+		{"what's the status report", cmdPostWeeklyReport},
+		{"hey show me the report", cmdPostWeeklyReport},
+		{"need the weekly report asap", cmdPostWeeklyReport},
+		{"could you please post the report", cmdPostWeeklyReport},
+		{"give me an update on the report", cmdPostWeeklyReport},
+		{"generate a report", cmdPostWeeklyReport},
+		{"create a new report", cmdPostWeeklyReport},
+		{"publish the weekly report", cmdPostWeeklyReport},
+		{"send me the report", cmdPostWeeklyReport},
+
+		// Valid usage report requests
+		{"post usage report", cmdPostUsageReport},
+		{"please post the usage report", cmdPostUsageReport},
+		{"can you share the usage report", cmdPostUsageReport},
+		{"what's the usage report", cmdPostUsageReport},
+		{"hey show me the usage report", cmdPostUsageReport},
 
 		// Leave channel requests
 		{"leave the channel", cmdLeaveChannel},

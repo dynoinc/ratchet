@@ -96,8 +96,16 @@ func (b *integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			if err := b.bot.Notify(ctx, ev); err != nil {
-				return fmt.Errorf("notifying update for channel: %w", err)
+			if err := b.bot.NotifyMessage(ctx, ev); err != nil {
+				return fmt.Errorf("notifying message for channel: %w", err)
+			}
+		case *slackevents.ReactionAddedEvent:
+			if err := b.bot.NotifyReactionAdded(ctx, ev); err != nil {
+				return fmt.Errorf("notifying reaction added: %w", err)
+			}
+		case *slackevents.ReactionRemovedEvent:
+			if err := b.bot.NotifyReactionRemoved(ctx, ev); err != nil {
+				return fmt.Errorf("notifying reaction removed: %w", err)
 			}
 		default:
 			return fmt.Errorf("unhandled event: %T", ev)

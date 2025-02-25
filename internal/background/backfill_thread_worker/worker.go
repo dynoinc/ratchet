@@ -35,6 +35,11 @@ func (w *backfillThreadWorker) Work(ctx context.Context, job *river.Job[backgrou
 
 	addThreadMessageParams := make([]schema.AddThreadMessageParams, len(messages))
 	for i, message := range messages {
+		reactions := make(map[string]int)
+		for _, reaction := range message.Reactions {
+			reactions[reaction.Name] = reaction.Count
+		}
+
 		addThreadMessageParams[i] = schema.AddThreadMessageParams{
 			ChannelID: job.Args.ChannelID,
 			ParentTs:  job.Args.SlackTS,
@@ -47,6 +52,7 @@ func (w *backfillThreadWorker) Work(ctx context.Context, job *river.Job[backgrou
 					SubType:     message.SubType,
 					BotUsername: message.Username,
 				},
+				Reactions: reactions,
 			},
 		}
 	}

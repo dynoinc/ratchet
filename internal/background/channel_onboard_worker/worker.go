@@ -53,6 +53,11 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 	addMessageParams := make([]schema.AddMessageParams, len(messages))
 	var backfillThreadInsertParams []river.InsertManyParams
 	for i, message := range messages {
+		reactions := make(map[string]int)
+		for _, reaction := range message.Reactions {
+			reactions[reaction.Name] = reaction.Count
+		}
+
 		addMessageParams[i] = schema.AddMessageParams{
 			ChannelID: job.Args.ChannelID,
 			Ts:        message.Timestamp,
@@ -64,6 +69,7 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 					BotID:       message.BotID,
 					BotUsername: message.Username,
 				},
+				Reactions: reactions,
 			},
 		}
 

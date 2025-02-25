@@ -153,7 +153,16 @@ func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	return schema.New(h.db).GetAllMessages(r.Context(), channel.ID)
+	n := cmp.Or(r.URL.Query().Get("n"), "1000")
+	nInt, err := strconv.Atoi(n)
+	if err != nil {
+		return nil, fmt.Errorf("invalid n: %w", err)
+	}
+
+	return schema.New(h.db).GetAllMessages(r.Context(), schema.GetAllMessagesParams{
+		ChannelID: channel.ID,
+		N:         int32(nInt),
+	})
 }
 
 func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
