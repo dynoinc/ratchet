@@ -11,6 +11,7 @@ import (
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules/report"
+	"github.com/dynoinc/ratchet/internal/modules/usage"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
@@ -20,14 +21,16 @@ type cmd int
 
 const (
 	cmdNone cmd = iota
-	cmdPostReport
+	cmdPostWeeklyReport
+	cmdPostUsageReport
 	cmdLeaveChannel
 )
 
 var (
 	cmds = map[string]cmd{
-		"post weekly report to slack channel": cmdPostReport,
-		"leave channel":                       cmdLeaveChannel,
+		"generate weekly incident report for this channel": cmdPostWeeklyReport,
+		"show ratchet bot usage statistics":                cmdPostUsageReport,
+		"leave channel":                                    cmdLeaveChannel,
 	}
 )
 
@@ -156,8 +159,10 @@ func (c *commands) Handle(ctx context.Context, channelID string, slackTS string,
 	slog.Debug("best match", "text", text, "bestMatch", bestMatch, "score", score)
 
 	switch bestMatch {
-	case cmdPostReport:
+	case cmdPostWeeklyReport:
 		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
+	case cmdPostUsageReport:
+		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdLeaveChannel:
 		return c.slackIntegration.LeaveChannel(ctx, channelID)
 	}

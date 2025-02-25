@@ -33,6 +33,7 @@ AI bot to help reduce operational toil
     │  ● recent_activity    │   │  ● channel_onboard │
     │  ● report             │   │  ● modules         │
     │  ● runbook            │   └────────────────────┘
+    │  ● usage              │
     └───────────────────────┘
 ```
 
@@ -48,6 +49,7 @@ and computes embeddings for Slack messages. After that, a set of modules are ran
 | recent_activity                                               | When an alert is triggered, the bot posts a message with the recent activity relevant to the alert. |
 | report                                                        | Provides a weekly report for a channel with suggestions of what to improve to reduce future support toil. |
 | [channel_monitor](internal/modules/channel_monitor/README.md) | When a message is posted to a channel, the bot will run a prompt on the message and call an external tool to determine the appropriate action to take. |
+| usage                                                         | Provides a usage report for the bot with statistics of thumbs up/down reactions. |
 
 ## Built with
 

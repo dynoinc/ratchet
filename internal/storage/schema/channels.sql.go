@@ -74,6 +74,36 @@ func (q *Queries) GetChannelByName(ctx context.Context, name string) (ChannelsV2
 	return i, err
 }
 
+const getChannels = `-- name: GetChannels :many
+SELECT
+    id,
+    attrs
+FROM
+    channels_v2
+WHERE
+    id = ANY($1::text[])
+`
+
+func (q *Queries) GetChannels(ctx context.Context, ids []string) ([]ChannelsV2, error) {
+	rows, err := q.db.Query(ctx, getChannels, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChannelsV2
+	for rows.Next() {
+		var i ChannelsV2
+		if err := rows.Scan(&i.ID, &i.Attrs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateChannelAttrs = `-- name: UpdateChannelAttrs :exec
 UPDATE
     channels_v2

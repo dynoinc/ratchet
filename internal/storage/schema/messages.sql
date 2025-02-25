@@ -10,6 +10,29 @@ INSERT INTO
 VALUES
     (@channel_id, @parent_ts :: text, @ts, @attrs) ON CONFLICT (channel_id, ts) DO NOTHING;
 
+-- name: UpdateReaction :exec
+WITH reaction_count AS (
+  SELECT COALESCE((attrs->'reactions'->>(@reaction::text))::int, 0) + @count::int AS new_count
+  FROM messages_v3 
+  WHERE channel_id = @channel_id AND ts = @ts
+)
+UPDATE messages_v3 m
+SET attrs = jsonb_set(
+  COALESCE(m.attrs, '{}'::jsonb),
+  '{reactions}'::text[],
+  CASE
+    WHEN (SELECT new_count FROM reaction_count) <= 0 THEN
+      COALESCE(m.attrs->'reactions', '{}'::jsonb) - @reaction::text
+    ELSE
+      jsonb_set(
+        COALESCE(m.attrs->'reactions', '{}'::jsonb),
+        array[@reaction::text],
+        to_jsonb((SELECT new_count FROM reaction_count))
+      )
+  END
+)
+WHERE m.channel_id = @channel_id AND m.ts = @ts;
+
 -- name: UpdateMessageAttrs :exec
 UPDATE
     messages_v3
@@ -40,7 +63,10 @@ SELECT
 FROM
     messages_v3
 WHERE
-    channel_id = @channel_id AND parent_ts IS NULL;
+    channel_id = @channel_id AND parent_ts IS NULL
+ORDER BY
+    (ts::float) DESC
+LIMIT @n;
 
 -- name: GetMessagesWithinTS :many
 SELECT
@@ -51,8 +77,19 @@ FROM
     messages_v3
 WHERE
     channel_id = @channel_id
-    AND ts BETWEEN @start_ts
+    AND ts::float BETWEEN @start_ts
     AND @end_ts;
+
+-- name: GetMessagesByUser :many
+SELECT
+    channel_id,
+    ts,
+    attrs
+FROM 
+    messages_v3
+WHERE
+    ts::float BETWEEN @start_ts AND @end_ts
+    AND attrs -> 'message' ->> 'user' = @user_id :: text;
 
 -- name: GetServices :many
 SELECT

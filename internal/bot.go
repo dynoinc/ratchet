@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -184,12 +185,30 @@ func (b *Bot) NotifyMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 	return tx.Commit(ctx)
 }
 
+func (b *Bot) updateReaction(ctx context.Context, item slackevents.Item, reaction string, count int) error {
+	slog.DebugContext(ctx, "updating reaction", "item", item, "reaction", reaction, "count", count)
+	if item.Type != "message" {
+		return nil
+	}
+
+	if err := schema.New(b.DB).UpdateReaction(ctx, schema.UpdateReactionParams{
+		ChannelID: item.Channel,
+		Ts:        item.Timestamp,
+		Reaction:  reaction,
+		Count:     int32(count),
+	}); err != nil {
+		return fmt.Errorf("updating reaction: %w", err)
+	}
+
+	return nil
+}
+
 func (b *Bot) NotifyReactionRemoved(ctx context.Context, ev *slackevents.ReactionRemovedEvent) error {
-	panic("unimplemented")
+	return b.updateReaction(ctx, ev.Item, ev.Reaction, -1)
 }
 
 func (b *Bot) NotifyReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {
-	panic("unimplemented")
+	return b.updateReaction(ctx, ev.Item, ev.Reaction, 1)
 }
 
 func (b *Bot) GetMessage(

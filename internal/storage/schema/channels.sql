@@ -31,3 +31,12 @@ FROM
     channels_v2
 WHERE
     attrs ->> 'name' = @name :: text;
+
+-- name: GetChannels :many
+SELECT
+    id,
+    attrs
+FROM
+    channels_v2
+WHERE
+    id = ANY(@ids::text[]);
