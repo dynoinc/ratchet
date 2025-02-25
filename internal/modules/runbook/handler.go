@@ -6,13 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/slack-go/slack"
+
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
-	"github.com/slack-go/slack"
 )
 
 type Handler struct {
@@ -128,7 +129,7 @@ func Format(
 		)
 
 		for _, update := range updates {
-			messageLink := fmt.Sprintf("• https://slack.com/archives/%s/%s",
+			messageLink := fmt.Sprintf("• https://slack.com/archives/%s/p%s",
 				update.ChannelID, strings.Replace(update.Ts, ".", "", 1))
 
 			blocks = append(blocks, slack.NewSectionBlock(

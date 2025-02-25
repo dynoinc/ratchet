@@ -166,7 +166,7 @@ func (b *Bot) NotifyMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 				ChannelID: ev.Channel,
 				ParentTs:  ev.ThreadTimeStamp,
 				Ts:        ev.TimeStamp,
-				Attrs: dto.ThreadMessageAttrs{
+				Attrs: dto.MessageAttrs{
 					Message: dto.SlackMessage{
 						SubType:     ev.SubType,
 						Text:        ev.Text,
