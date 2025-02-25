@@ -8,6 +8,8 @@ jobs:
     uses: ./.github/workflows/build.yml
     permissions:
       security-events: write
+      contents: read
+      packages: read
 
   bump_version:
     runs-on: ubuntu-latest
