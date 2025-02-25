@@ -154,7 +154,7 @@ func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
 	}
 
 	n := cmp.Or(r.URL.Query().Get("n"), "1000")
-	nInt, err := strconv.Atoi(n)
+	nInt, err := strconv.ParseInt(n, 10, 32)
 	if err != nil {
 		return nil, fmt.Errorf("invalid n: %w", err)
 	}
