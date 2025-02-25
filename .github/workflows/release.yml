@@ -6,6 +6,8 @@ on:
 jobs:
   build:
     uses: ./.github/workflows/build.yml
+    permissions:
+      security-events: write
 
   bump_version:
     runs-on: ubuntu-latest
