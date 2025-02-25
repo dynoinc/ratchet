@@ -8,10 +8,13 @@ on:
   workflow_call:
 
 jobs:
-  run:
+  build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout Code
@@ -59,3 +62,49 @@ jobs:
 
       - name: Go Benchmark
         run: go test -v -shuffle=on -run=- -bench=. -benchtime=1x ./...
+
+      - name: Set Up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        run: docker build -t ratchet:latest .
+
+  scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set Up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        run: docker build -t ratchet:latest .
+
+      - name: Scan Docker Image with Trivy
+        id: trivy_scan
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: ratchet:latest
+          format: "sarif"
+          output: trivy-results.sarif
+          exit-code: "1"
+          ignore-unfixed: true
+        continue-on-error: true
+
+      - name: Upload SARIF Report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Fail if vulnerabilities found
+        if: steps.trivy_scan.outcome == 'failure'
+        run: exit 1
