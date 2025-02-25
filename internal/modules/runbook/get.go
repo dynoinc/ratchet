@@ -28,7 +28,12 @@ func Get(
 		return nil, nil
 	}
 
-	runbookMessage, err := llmClient.CreateRunbook(ctx, serviceName, alertName, msgs)
+	texts := make([]string, len(msgs))
+	for i, msg := range msgs {
+		texts[i] = msg.Attrs.Message.Text
+	}
+
+	runbookMessage, err := llmClient.CreateRunbook(ctx, serviceName, alertName, texts)
 	if err != nil {
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}

@@ -1,12 +1,18 @@
 -- name: AddMessage :exec
 INSERT INTO
-    messages_v2 (channel_id, ts, attrs)
+    messages_v3 (channel_id, ts, attrs)
 VALUES
     (@channel_id, @ts, @attrs) ON CONFLICT (channel_id, ts) DO NOTHING;
 
+-- name: AddThreadMessage :exec
+INSERT INTO
+    messages_v3 (channel_id, parent_ts, ts, attrs)
+VALUES
+    (@channel_id, @parent_ts :: text, @ts, @attrs) ON CONFLICT (channel_id, ts) DO NOTHING;
+
 -- name: UpdateMessageAttrs :exec
 UPDATE
-    messages_v2
+    messages_v3
 SET
     attrs = COALESCE(attrs, '{}' :: jsonb) || @attrs,
     embedding = @embedding
@@ -21,7 +27,7 @@ SELECT
     attrs,
     embedding
 FROM
-    messages_v2
+    messages_v3
 WHERE
     channel_id = @channel_id
     AND ts = @ts;
@@ -32,24 +38,9 @@ SELECT
     ts,
     attrs
 FROM
-    messages_v2
+    messages_v3
 WHERE
-    channel_id = @channel_id;
-
--- name: GetAllOpenIncidentMessages :many
-SELECT
-    channel_id,
-    ts,
-    attrs
-FROM
-    messages_v2
-WHERE
-    channel_id = @channel_id
-    AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
-    AND attrs -> 'incident_action' ->> 'service' = @service :: text
-    AND attrs -> 'incident_action' ->> 'alert' = @alert :: text
-ORDER BY
-    CAST(ts AS numeric) ASC;
+    channel_id = @channel_id AND parent_ts IS NULL;
 
 -- name: GetMessagesWithinTS :many
 SELECT
@@ -57,7 +48,7 @@ SELECT
     ts,
     attrs
 FROM
-    messages_v2
+    messages_v3
 WHERE
     channel_id = @channel_id
     AND ts BETWEEN @start_ts
@@ -71,43 +62,76 @@ FROM
         SELECT
             DISTINCT attrs -> 'incident_action' ->> 'service' as service
         FROM
-            messages_v2
+            messages_v3
         WHERE
-            attrs -> 'incident_action' ->> 'service' IS NOT NULL
+            attrs -> 'incident_action' ->> 'service' IS NOT NULL 
+            AND parent_ts IS NULL
     ) s;
 
 -- name: GetAlerts :many
+WITH alert_counts AS (
+    SELECT
+        m.attrs -> 'incident_action' ->> 'service' as service,
+        m.attrs -> 'incident_action' ->> 'alert' as alert,
+        m.attrs -> 'incident_action' ->> 'priority' as priority,
+        COUNT(t.ts) as thread_message_count
+    FROM
+        messages_v3 m
+    LEFT JOIN messages_v3 t ON
+        t.channel_id = m.channel_id AND
+        t.parent_ts = m.ts
+    WHERE
+        (
+            @service :: text = '*'
+            OR m.attrs -> 'incident_action' ->> 'service' = @service :: text
+        )
+        AND m.attrs -> 'incident_action' ->> 'action' = 'open_incident'
+        AND m.parent_ts IS NULL
+    GROUP BY
+        m.attrs -> 'incident_action' ->> 'service',
+        m.attrs -> 'incident_action' ->> 'alert',
+        m.attrs -> 'incident_action' ->> 'priority'
+)
 SELECT
-    service :: text,
-    alert :: text,
-    priority :: text,
-    COUNT(t.ts) as thread_message_count
+    service :: text as service,
+    alert :: text as alert,
+    priority :: text as priority,
+    thread_message_count :: bigint as thread_message_count
+FROM alert_counts;
+
+-- name: GetThreadMessages :many
+SELECT
+    channel_id,
+    parent_ts,
+    ts,
+    attrs
 FROM
-    (
-        SELECT
-            DISTINCT m.channel_id,
-            m.ts,
-            attrs -> 'incident_action' ->> 'service' as service,
-            attrs -> 'incident_action' ->> 'alert' as alert,
-            attrs -> 'incident_action' ->> 'priority' as priority
-        FROM
-            messages_v2 m
-        WHERE
-            (
-                @service :: text = '*'
-                OR attrs -> 'incident_action' ->> 'service' = @service :: text
-            )
-            AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
-    ) subq
-    LEFT JOIN thread_messages_v2 t ON t.channel_id = subq.channel_id AND t.parent_ts = subq.ts
-GROUP BY
-    service,
-    alert,
-    priority;
+    messages_v3
+WHERE
+    channel_id = @channel_id
+    AND parent_ts = @parent_ts :: text;
+
+-- name: GetThreadMessagesByServiceAndAlert :many
+SELECT
+    t.channel_id,
+    t.parent_ts,
+    t.ts,
+    t.attrs
+FROM
+    messages_v3 t
+    JOIN messages_v3 m ON m.channel_id = t.channel_id
+    AND m.ts = t.parent_ts
+WHERE
+    m.attrs -> 'incident_action' ->> 'service' = @service :: text
+    AND m.attrs -> 'incident_action' ->> 'alert' = @alert :: text
+    AND m.parent_ts IS NULL
+    AND t.attrs -> 'message' ->> 'user' != @bot_id :: text;
+
+    
 
 -- name: DeleteOldMessages :exec
 DELETE FROM
-    messages_v2
+    messages_v3
 WHERE
     channel_id = @channel_id
     AND CAST(ts AS numeric) < EXTRACT(
@@ -125,10 +149,10 @@ WITH valid_messages AS (
         embedding,
         CASE 
             WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(text_search, plainto_tsquery('english', @query_text :: text))
+            ELSE ts_rank(tsvec, plainto_tsquery('english', @query_text :: text))
         END as lexical_score
     FROM
-        messages_v2
+        messages_v3
     WHERE
         CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
             epoch
@@ -194,14 +218,14 @@ WITH valid_messages AS (
         embedding,
         CASE 
             WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(text_search, plainto_tsquery('english', @query_text :: text))
+            ELSE ts_rank(tsvec, plainto_tsquery('english', @query_text :: text))
         END as lexical_score,
         -- Include the text and tokens for debugging
         attrs -> 'message' ->> 'text' as message_text,
-        text_search as text_tokens,
+        tsvec as text_tokens,
         plainto_tsquery('english', @query_text :: text) as query_tokens
     FROM
-        messages_v2
+        messages_v3
     WHERE
         CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
             epoch

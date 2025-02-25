@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	llm "github.com/dynoinc/ratchet/internal/llm"
-	schema "github.com/dynoinc/ratchet/internal/storage/schema"
 	jsonschema "github.com/qri-io/jsonschema"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -58,7 +57,7 @@ func (mr *MockClientMockRecorder) Config() *gomock.Call {
 }
 
 // CreateRunbook mocks base method.
-func (m *MockClient) CreateRunbook(ctx context.Context, service, alert string, msgs []schema.ThreadMessagesV2) (*llm.RunbookResponse, error) {
+func (m *MockClient) CreateRunbook(ctx context.Context, service, alert string, msgs []string) (*llm.RunbookResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateRunbook", ctx, service, alert, msgs)
 	ret0, _ := ret[0].(*llm.RunbookResponse)

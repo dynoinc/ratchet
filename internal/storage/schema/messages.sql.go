@@ -15,7 +15,7 @@ import (
 
 const addMessage = `-- name: AddMessage :exec
 INSERT INTO
-    messages_v2 (channel_id, ts, attrs)
+    messages_v3 (channel_id, ts, attrs)
 VALUES
     ($1, $2, $3) ON CONFLICT (channel_id, ts) DO NOTHING
 `
@@ -31,6 +31,30 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 	return err
 }
 
+const addThreadMessage = `-- name: AddThreadMessage :exec
+INSERT INTO
+    messages_v3 (channel_id, parent_ts, ts, attrs)
+VALUES
+    ($1, $2 :: text, $3, $4) ON CONFLICT (channel_id, ts) DO NOTHING
+`
+
+type AddThreadMessageParams struct {
+	ChannelID string
+	ParentTs  string
+	Ts        string
+	Attrs     dto.MessageAttrs
+}
+
+func (q *Queries) AddThreadMessage(ctx context.Context, arg AddThreadMessageParams) error {
+	_, err := q.db.Exec(ctx, addThreadMessage,
+		arg.ChannelID,
+		arg.ParentTs,
+		arg.Ts,
+		arg.Attrs,
+	)
+	return err
+}
+
 const debugGetLatestServiceUpdates = `-- name: DebugGetLatestServiceUpdates :many
 WITH valid_messages AS (
     SELECT
@@ -39,14 +63,14 @@ WITH valid_messages AS (
         embedding,
         CASE 
             WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(text_search, plainto_tsquery('english', $1 :: text))
+            ELSE ts_rank(tsvec, plainto_tsquery('english', $1 :: text))
         END as lexical_score,
         -- Include the text and tokens for debugging
         attrs -> 'message' ->> 'text' as message_text,
-        text_search as text_tokens,
+        tsvec as text_tokens,
         plainto_tsquery('english', $1 :: text) as query_tokens
     FROM
-        messages_v2
+        messages_v3
     WHERE
         CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
             epoch
@@ -170,7 +194,7 @@ func (q *Queries) DebugGetLatestServiceUpdates(ctx context.Context, arg DebugGet
 
 const deleteOldMessages = `-- name: DeleteOldMessages :exec
 DELETE FROM
-    messages_v2
+    messages_v3
 WHERE
     channel_id = $1
     AND CAST(ts AS numeric) < EXTRACT(
@@ -191,33 +215,35 @@ func (q *Queries) DeleteOldMessages(ctx context.Context, arg DeleteOldMessagesPa
 }
 
 const getAlerts = `-- name: GetAlerts :many
+WITH alert_counts AS (
+    SELECT
+        m.attrs -> 'incident_action' ->> 'service' as service,
+        m.attrs -> 'incident_action' ->> 'alert' as alert,
+        m.attrs -> 'incident_action' ->> 'priority' as priority,
+        COUNT(t.ts) as thread_message_count
+    FROM
+        messages_v3 m
+    LEFT JOIN messages_v3 t ON
+        t.channel_id = m.channel_id AND
+        t.parent_ts = m.ts
+    WHERE
+        (
+            $1 :: text = '*'
+            OR m.attrs -> 'incident_action' ->> 'service' = $1 :: text
+        )
+        AND m.attrs -> 'incident_action' ->> 'action' = 'open_incident'
+        AND m.parent_ts IS NULL
+    GROUP BY
+        m.attrs -> 'incident_action' ->> 'service',
+        m.attrs -> 'incident_action' ->> 'alert',
+        m.attrs -> 'incident_action' ->> 'priority'
+)
 SELECT
-    service :: text,
-    alert :: text,
-    priority :: text,
-    COUNT(t.ts) as thread_message_count
-FROM
-    (
-        SELECT
-            DISTINCT m.channel_id,
-            m.ts,
-            attrs -> 'incident_action' ->> 'service' as service,
-            attrs -> 'incident_action' ->> 'alert' as alert,
-            attrs -> 'incident_action' ->> 'priority' as priority
-        FROM
-            messages_v2 m
-        WHERE
-            (
-                $1 :: text = '*'
-                OR attrs -> 'incident_action' ->> 'service' = $1 :: text
-            )
-            AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
-    ) subq
-    LEFT JOIN thread_messages_v2 t ON t.channel_id = subq.channel_id AND t.parent_ts = subq.ts
-GROUP BY
-    service,
-    alert,
-    priority
+    service :: text as service,
+    alert :: text as alert,
+    priority :: text as priority,
+    thread_message_count :: bigint as thread_message_count
+FROM alert_counts
 `
 
 type GetAlertsRow struct {
@@ -258,9 +284,9 @@ SELECT
     ts,
     attrs
 FROM
-    messages_v2
+    messages_v3
 WHERE
-    channel_id = $1
+    channel_id = $1 AND parent_ts IS NULL
 `
 
 type GetAllMessagesRow struct {
@@ -289,54 +315,6 @@ func (q *Queries) GetAllMessages(ctx context.Context, channelID string) ([]GetAl
 	return items, nil
 }
 
-const getAllOpenIncidentMessages = `-- name: GetAllOpenIncidentMessages :many
-SELECT
-    channel_id,
-    ts,
-    attrs
-FROM
-    messages_v2
-WHERE
-    channel_id = $1
-    AND attrs -> 'incident_action' ->> 'action' = 'open_incident'
-    AND attrs -> 'incident_action' ->> 'service' = $2 :: text
-    AND attrs -> 'incident_action' ->> 'alert' = $3 :: text
-ORDER BY
-    CAST(ts AS numeric) ASC
-`
-
-type GetAllOpenIncidentMessagesParams struct {
-	ChannelID string
-	Service   string
-	Alert     string
-}
-
-type GetAllOpenIncidentMessagesRow struct {
-	ChannelID string
-	Ts        string
-	Attrs     dto.MessageAttrs
-}
-
-func (q *Queries) GetAllOpenIncidentMessages(ctx context.Context, arg GetAllOpenIncidentMessagesParams) ([]GetAllOpenIncidentMessagesRow, error) {
-	rows, err := q.db.Query(ctx, getAllOpenIncidentMessages, arg.ChannelID, arg.Service, arg.Alert)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetAllOpenIncidentMessagesRow
-	for rows.Next() {
-		var i GetAllOpenIncidentMessagesRow
-		if err := rows.Scan(&i.ChannelID, &i.Ts, &i.Attrs); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getLatestServiceUpdates = `-- name: GetLatestServiceUpdates :many
 WITH valid_messages AS (
     SELECT
@@ -346,10 +324,10 @@ WITH valid_messages AS (
         embedding,
         CASE 
             WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(text_search, plainto_tsquery('english', $1 :: text))
+            ELSE ts_rank(tsvec, plainto_tsquery('english', $1 :: text))
         END as lexical_score
     FROM
-        messages_v2
+        messages_v3
     WHERE
         CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
             epoch
@@ -463,7 +441,7 @@ SELECT
     attrs,
     embedding
 FROM
-    messages_v2
+    messages_v3
 WHERE
     channel_id = $1
     AND ts = $2
@@ -499,7 +477,7 @@ SELECT
     ts,
     attrs
 FROM
-    messages_v2
+    messages_v3
 WHERE
     channel_id = $1
     AND ts BETWEEN $2
@@ -546,9 +524,10 @@ FROM
         SELECT
             DISTINCT attrs -> 'incident_action' ->> 'service' as service
         FROM
-            messages_v2
+            messages_v3
         WHERE
-            attrs -> 'incident_action' ->> 'service' IS NOT NULL
+            attrs -> 'incident_action' ->> 'service' IS NOT NULL 
+            AND parent_ts IS NULL
     ) s
 `
 
@@ -572,9 +551,114 @@ func (q *Queries) GetServices(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const getThreadMessages = `-- name: GetThreadMessages :many
+SELECT
+    channel_id,
+    parent_ts,
+    ts,
+    attrs
+FROM
+    messages_v3
+WHERE
+    channel_id = $1
+    AND parent_ts = $2 :: text
+`
+
+type GetThreadMessagesParams struct {
+	ChannelID string
+	ParentTs  string
+}
+
+type GetThreadMessagesRow struct {
+	ChannelID string
+	ParentTs  *string
+	Ts        string
+	Attrs     dto.MessageAttrs
+}
+
+func (q *Queries) GetThreadMessages(ctx context.Context, arg GetThreadMessagesParams) ([]GetThreadMessagesRow, error) {
+	rows, err := q.db.Query(ctx, getThreadMessages, arg.ChannelID, arg.ParentTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetThreadMessagesRow
+	for rows.Next() {
+		var i GetThreadMessagesRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.ParentTs,
+			&i.Ts,
+			&i.Attrs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getThreadMessagesByServiceAndAlert = `-- name: GetThreadMessagesByServiceAndAlert :many
+SELECT
+    t.channel_id,
+    t.parent_ts,
+    t.ts,
+    t.attrs
+FROM
+    messages_v3 t
+    JOIN messages_v3 m ON m.channel_id = t.channel_id
+    AND m.ts = t.parent_ts
+WHERE
+    m.attrs -> 'incident_action' ->> 'service' = $1 :: text
+    AND m.attrs -> 'incident_action' ->> 'alert' = $2 :: text
+    AND m.parent_ts IS NULL
+    AND t.attrs -> 'message' ->> 'user' != $3 :: text
+`
+
+type GetThreadMessagesByServiceAndAlertParams struct {
+	Service string
+	Alert   string
+	BotID   string
+}
+
+type GetThreadMessagesByServiceAndAlertRow struct {
+	ChannelID string
+	ParentTs  *string
+	Ts        string
+	Attrs     dto.MessageAttrs
+}
+
+func (q *Queries) GetThreadMessagesByServiceAndAlert(ctx context.Context, arg GetThreadMessagesByServiceAndAlertParams) ([]GetThreadMessagesByServiceAndAlertRow, error) {
+	rows, err := q.db.Query(ctx, getThreadMessagesByServiceAndAlert, arg.Service, arg.Alert, arg.BotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetThreadMessagesByServiceAndAlertRow
+	for rows.Next() {
+		var i GetThreadMessagesByServiceAndAlertRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.ParentTs,
+			&i.Ts,
+			&i.Attrs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateMessageAttrs = `-- name: UpdateMessageAttrs :exec
 UPDATE
-    messages_v2
+    messages_v3
 SET
     attrs = COALESCE(attrs, '{}' :: jsonb) || $1,
     embedding = $2

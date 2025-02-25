@@ -39,7 +39,7 @@ func (w *backfillThreadWorker) Work(ctx context.Context, job *river.Job[backgrou
 			ChannelID: job.Args.ChannelID,
 			ParentTs:  job.Args.SlackTS,
 			Ts:        message.Timestamp,
-			Attrs: dto.ThreadMessageAttrs{
+			Attrs: dto.MessageAttrs{
 				Message: dto.SlackMessage{
 					Text:        message.Text,
 					User:        message.User,

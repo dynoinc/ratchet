@@ -10,16 +10,11 @@ sql:
         sql_package: "pgx/v5"
         emit_pointers_for_null_types: true
         overrides:
-          - column: messages_v2.attrs
+          - column: messages_v3.attrs
             go_type:
               import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
               package: "dto"
               type: "MessageAttrs"
-          - column: thread_messages_v2.attrs
-            go_type:
-              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
-              package: "dto"
-              type: "ThreadMessageAttrs"
           - column: channels_v2.attrs
             go_type:
               import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"

@@ -15,8 +15,6 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/qri-io/jsonschema"
-
-	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
 type Config struct {
@@ -38,7 +36,7 @@ func DefaultConfig() Config {
 type Client interface {
 	Config() Config
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
-	CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (*RunbookResponse, error)
+	CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
 }
@@ -162,7 +160,7 @@ type RunbookResponse struct {
 	SearchQuery          string   `json:"search_query"`
 }
 
-func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []schema.ThreadMessagesV2) (*RunbookResponse, error) {
+func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error) {
 	if c == nil {
 		return nil, nil
 	}
@@ -244,7 +242,7 @@ Example 4:
 
 	content := fmt.Sprintf("Service: %s\nAlert: %s\nMessages:\n", service, alert)
 	for _, msg := range msgs {
-		content += fmt.Sprintf("%s\n", msg.Attrs.Message.Text)
+		content += msg + "\n"
 	}
 
 	params := openai.ChatCompletionNewParams{
