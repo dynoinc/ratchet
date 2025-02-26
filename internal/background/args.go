@@ -36,3 +36,11 @@ type ModulesWorkerArgs struct {
 func (m ModulesWorkerArgs) Kind() string {
 	return "modules"
 }
+
+type LLMUsageCleanupWorkerArgs struct {
+	RetentionDays int `json:"retention_days"`
+}
+
+func (l LLMUsageCleanupWorkerArgs) Kind() string {
+	return "llm_usage_cleanup"
+}

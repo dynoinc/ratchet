@@ -16,6 +16,7 @@ import (
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olekukonko/tablewriter"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -417,74 +418,74 @@ func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("invalid offset: %w", err)
 	}
 
-	// Query the database
-	query := `
-	SELECT 
-		id, 
-		created_at, 
-		model, 
-		operation_type, 
-		prompt_text, 
-		completion_text, 
-		prompt_tokens, 
-		completion_tokens, 
-		total_tokens,
-		latency_ms, 
-		status, 
-		error_message,
-		metadata
-	FROM llm_usage_v1
-	WHERE created_at BETWEEN $1 AND $2
-	ORDER BY created_at DESC
-	LIMIT $3 OFFSET $4`
+	// Convert to pgtype.Timestamptz
+	startTz := pgtype.Timestamptz{Time: startTime, Valid: true}
+	endTz := pgtype.Timestamptz{Time: endTime, Valid: true}
 
-	rows, err := h.db.Query(r.Context(), query, startTime, endTime, limit, offset)
+	// Query the database using the generated sqlc function
+	llmUsages, err := schema.New(h.db).GetLLMUsageByTimeRange(r.Context(), schema.GetLLMUsageByTimeRangeParams{
+		StartTime:     startTz,
+		EndTime:       endTz,
+		ResultsLimit:  int32(limit),
+		ResultsOffset: int32(offset),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("querying llm usage: %w", err)
 	}
-	defer rows.Close()
 
+	// Create a response with appropriate JSON field names
 	type LLMUsageRecord struct {
-		ID              string          `json:"id"`
-		CreatedAt       time.Time       `json:"created_at"`
-		Model           string          `json:"model"`
-		OperationType   string          `json:"operation_type"`
-		PromptText      string          `json:"prompt_text"`
-		CompletionText  string          `json:"completion_text,omitempty"`
-		PromptTokens    int             `json:"prompt_tokens,omitempty"`
-		CompletionTokens int            `json:"completion_tokens,omitempty"`
-		TotalTokens     int             `json:"total_tokens,omitempty"`
-		LatencyMs       int             `json:"latency_ms,omitempty"`
-		Status          string          `json:"status"`
-		ErrorMessage    string          `json:"error_message,omitempty"`
-		Metadata        json.RawMessage `json:"metadata,omitempty"`
+		ID               string          `json:"id"`
+		CreatedAt        time.Time       `json:"created_at"`
+		Model            string          `json:"model"`
+		OperationType    string          `json:"operation_type"`
+		PromptText       string          `json:"prompt_text"`
+		CompletionText   *string         `json:"completion_text,omitempty"`
+		PromptTokens     *int32          `json:"prompt_tokens,omitempty"`
+		CompletionTokens *int32          `json:"completion_tokens,omitempty"`
+		TotalTokens      *int32          `json:"total_tokens,omitempty"`
+		LatencyMs        *int32          `json:"latency_ms,omitempty"`
+		Status           string          `json:"status"`
+		ErrorMessage     *string         `json:"error_message,omitempty"`
+		Metadata         json.RawMessage `json:"metadata,omitempty"`
 	}
 
 	var results []LLMUsageRecord
-	for rows.Next() {
-		var record LLMUsageRecord
-		if err := rows.Scan(
-			&record.ID,
-			&record.CreatedAt,
-			&record.Model,
-			&record.OperationType,
-			&record.PromptText,
-			&record.CompletionText,
-			&record.PromptTokens,
-			&record.CompletionTokens,
-			&record.TotalTokens,
-			&record.LatencyMs,
-			&record.Status,
-			&record.ErrorMessage,
-			&record.Metadata,
-		); err != nil {
-			return nil, fmt.Errorf("scanning llm usage: %w", err)
+	for _, usage := range llmUsages {
+		// Convert to UUID string
+		idStr := ""
+		if usage.ID.Valid {
+			idStr = usage.ID.Bytes.String()
+		}
+
+		// Convert to standard time.Time
+		createdAt := time.Now()
+		if usage.CreatedAt.Valid {
+			createdAt = usage.CreatedAt.Time
+		}
+
+		// Convert metadata JSON
+		var metadata json.RawMessage
+		if len(usage.Metadata) > 0 {
+			metadata = usage.Metadata
+		}
+
+		record := LLMUsageRecord{
+			ID:               idStr,
+			CreatedAt:        createdAt,
+			Model:            usage.Model,
+			OperationType:    usage.OperationType,
+			PromptText:       usage.PromptText,
+			CompletionText:   usage.CompletionText,
+			PromptTokens:     usage.PromptTokens,
+			CompletionTokens: usage.CompletionTokens,
+			TotalTokens:      usage.TotalTokens,
+			LatencyMs:        usage.LatencyMs,
+			Status:           usage.Status,
+			ErrorMessage:     usage.ErrorMessage,
+			Metadata:         metadata,
 		}
 		results = append(results, record)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating llm usage rows: %w", err)
 	}
 
 	return results, nil
@@ -519,20 +520,22 @@ func (h *httpHandlers) getLLMUsageStats(r *http.Request) (any, error) {
 		endTime = parsedEndTime
 	}
 
-	// Query the database
-	query := `
-	SELECT 
-		COUNT(*) as total_requests,
-		SUM(prompt_tokens) as total_prompt_tokens,
-		SUM(completion_tokens) as total_completion_tokens,
-		SUM(total_tokens) as total_tokens,
-		AVG(latency_ms) as avg_latency_ms,
-		COUNT(CASE WHEN status = 'error' THEN 1 END) as error_count
-	FROM llm_usage_v1
-	WHERE created_at BETWEEN $1 AND $2
-	AND ($3 = '' OR model = $3)
-	AND ($4 = '' OR operation_type = $4)`
+	// Convert to pgtype.Timestamptz
+	startTz := pgtype.Timestamptz{Time: startTime, Valid: true}
+	endTz := pgtype.Timestamptz{Time: endTime, Valid: true}
 
+	// Query the database using the generated sqlc function
+	stats, err := schema.New(h.db).GetLLMUsageStats(r.Context(), schema.GetLLMUsageStatsParams{
+		StartTime:     startTz,
+		EndTime:       endTz,
+		Model:         model,
+		OperationType: operationType,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("querying llm usage stats: %w", err)
+	}
+
+	// Map to a response structure
 	type LLMUsageStats struct {
 		TotalRequests       int64   `json:"total_requests"`
 		TotalPromptTokens   int64   `json:"total_prompt_tokens"`
@@ -542,20 +545,14 @@ func (h *httpHandlers) getLLMUsageStats(r *http.Request) (any, error) {
 		ErrorCount          int64   `json:"error_count"`
 	}
 
-	var stats LLMUsageStats
-	err := h.db.QueryRow(r.Context(), query, startTime, endTime, model, operationType).Scan(
-		&stats.TotalRequests,
-		&stats.TotalPromptTokens,
-		&stats.TotalCompletionTokens,
-		&stats.TotalTokens,
-		&stats.AvgLatencyMs,
-		&stats.ErrorCount,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("querying llm usage stats: %w", err)
-	}
-
-	return stats, nil
+	return LLMUsageStats{
+		TotalRequests:       stats.TotalRequests,
+		TotalPromptTokens:   stats.TotalPromptTokens,
+		TotalCompletionTokens: stats.TotalCompletionTokens,
+		TotalTokens:         stats.TotalTokens,
+		AvgLatencyMs:        stats.AvgLatencyMs,
+		ErrorCount:          stats.ErrorCount,
+	}, nil
 }
 
 func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {

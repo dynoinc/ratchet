@@ -5,17 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // LLMUsageService provides methods for storing and retrieving LLM usage data
 type LLMUsageService struct {
-	db *pgxpool.Pool
+	db    *pgxpool.Pool
+	query *schema.Queries
 }
 
 // NewLLMUsageService creates a new LLMUsageService
 func NewLLMUsageService(db *pgxpool.Pool) *LLMUsageService {
-	return &LLMUsageService{db: db}
+	return &LLMUsageService{
+		db:    db,
+		query: schema.New(db),
+	}
 }
 
 // RecordLLMUsageParams contains parameters for recording LLM usage
@@ -41,37 +46,46 @@ func (s *LLMUsageService) RecordLLMUsage(ctx context.Context, params RecordLLMUs
 		metadata = []byte("{}")
 	}
 
-	query := `
-	INSERT INTO llm_usage_v1 (
-		model,
-		operation_type,
-		prompt_text,
-		completion_text,
-		prompt_tokens,
-		completion_tokens,
-		total_tokens,
-		latency_ms,
-		status,
-		error_message,
-		metadata
-	) VALUES (
-		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-	) RETURNING id`
+	// Map our parameters to the sqlc-generated struct
+	var completionText *string
+	if params.CompletionText != "" {
+		completionText = &params.CompletionText
+	}
 
-	var id string
-	err := s.db.QueryRow(ctx, query,
-		params.Model,
-		params.OperationType,
-		params.PromptText,
-		params.CompletionText,
-		params.PromptTokens,
-		params.CompletionTokens,
-		params.TotalTokens,
-		params.LatencyMs,
-		params.Status,
-		params.ErrorMessage,
-		metadata,
-	).Scan(&id)
+	var errorMessage *string
+	if params.ErrorMessage != "" {
+		errorMessage = &params.ErrorMessage
+	}
+
+	// Create optional values
+	var promptTokens, completionTokens, totalTokens, latencyMs *int32
+	if params.PromptTokens > 0 {
+		promptTokens = &params.PromptTokens
+	}
+	if params.CompletionTokens > 0 {
+		completionTokens = &params.CompletionTokens
+	}
+	if params.TotalTokens > 0 {
+		totalTokens = &params.TotalTokens
+	}
+	if params.LatencyMs > 0 {
+		latencyMs = &params.LatencyMs
+	}
+
+	// Use the sqlc-generated function
+	_, err := s.query.RecordLLMUsage(ctx, schema.RecordLLMUsageParams{
+		Model:            params.Model,
+		OperationType:    params.OperationType,
+		PromptText:       params.PromptText,
+		CompletionText:   completionText,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      totalTokens,
+		LatencyMs:        latencyMs,
+		Status:           params.Status,
+		ErrorMessage:     errorMessage,
+		Metadata:         metadata,
+	})
 
 	if err != nil {
 		return fmt.Errorf("recording LLM usage: %w", err)

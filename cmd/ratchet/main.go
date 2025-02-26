@@ -30,6 +30,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
+	"github.com/dynoinc/ratchet/internal/background/llm_usage_cleanup_worker"
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
@@ -64,6 +65,9 @@ type config struct {
 
 	// Channel Monitor Configuration
 	ChannelMonitor channel_monitor.Config `split_words:"true"`
+	
+	// LLM Usage Cleanup Configuration
+	LLMUsageCleanup llm_usage_cleanup_worker.Config `split_words:"true"`
 }
 
 func main() {
@@ -197,12 +201,16 @@ func main() {
 		channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient),
 	})
 
+	// LLM usage cleanup worker setup
+	llmUsageCleanupWorker := llm_usage_cleanup_worker.New(c.LLMUsageCleanup, db)
+
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
 	river.AddWorker(workers, channelOnboardWorker)
 	river.AddWorker(workers, backfillThreadWorker)
 	river.AddWorker(workers, modulesWorker)
+	river.AddWorker(workers, llmUsageCleanupWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up background worker", "error", err)
@@ -235,6 +243,12 @@ func main() {
 	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
 		slog.InfoContext(ctx, "Starting river client")
+		
+		// Schedule periodic LLM usage cleanup
+		if err := llmUsageCleanupWorker.Schedule(ctx, riverClient); err != nil {
+			slog.ErrorContext(ctx, "scheduling LLM usage cleanup", "error", err)
+		}
+		
 		return riverClient.Start(ctx)
 	})
 	wg.Go(func() error {
