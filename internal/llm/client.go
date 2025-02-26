@@ -39,6 +39,7 @@ type Client interface {
 	CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
+	ClassifyCommand(ctx context.Context, text string) (string, error)
 }
 
 type client struct {
@@ -338,4 +339,69 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 		}
 	}
 	return respMsg, nil
+}
+
+func (c *client) ClassifyCommand(ctx context.Context, text string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	prompt := `You are a command classifier that identifies the most appropriate command from user input. 
+Given a message, respond with exactly one of these commands:
+- weekly_report
+- usage_report
+- leave_channel
+- none
+
+Examples:
+User: "generate weekly incident report for this channel"
+Response: weekly_report
+
+User: "post report"
+Response: weekly_report
+
+User: "what's the status report"
+Response: weekly_report
+
+User: "show ratchet bot usage statistics"
+Response: usage_report
+
+User: "post usage report"
+Response: usage_report
+
+User: "leave channel"
+Response: leave_channel
+
+User: "get out of this channel"
+Response: leave_channel
+
+User: "how are you doing?"
+Response: none
+
+User: "what's the weather like?"
+Response: none
+
+Classify the following message:`
+
+	params := openai.ChatCompletionNewParams{
+		Model: openai.F(openai.ChatModel(c.cfg.Model)),
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
+				Content: openai.F(any(prompt)),
+			},
+			openai.ChatCompletionMessageParam{
+				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
+				Content: openai.F(any(text)),
+			},
+		}),
+		Temperature: openai.F(0.0), // Use 0 temperature for more consistent results
+	}
+
+	resp, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return "", fmt.Errorf("classifying command: %w", err)
+	}
+
+	return resp.Choices[0].Message.Content, nil
 }

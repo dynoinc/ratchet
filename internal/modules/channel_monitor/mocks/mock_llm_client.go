@@ -42,6 +42,21 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
+// ClassifyCommand mocks base method.
+func (m *MockClient) ClassifyCommand(ctx context.Context, text string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClassifyCommand", ctx, text)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClassifyCommand indicates an expected call of ClassifyCommand.
+func (mr *MockClientMockRecorder) ClassifyCommand(ctx, text any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyCommand", reflect.TypeOf((*MockClient)(nil).ClassifyCommand), ctx, text)
+}
+
 // Config mocks base method.
 func (m *MockClient) Config() llm.Config {
 	m.ctrl.T.Helper()

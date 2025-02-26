@@ -3,10 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"math"
 	"strings"
-	"sync"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
@@ -26,21 +23,10 @@ const (
 	cmdLeaveChannel
 )
 
-var (
-	cmds = map[string]cmd{
-		"generate weekly incident report for this channel": cmdPostWeeklyReport,
-		"show ratchet bot usage statistics":                cmdPostUsageReport,
-		"leave channel":                                    cmdLeaveChannel,
-	}
-)
-
 type commands struct {
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
-
-	mu         sync.Mutex
-	embeddings map[cmd][]float64
 }
 
 func New(
@@ -59,104 +45,41 @@ func (c *commands) Name() string {
 	return "commands"
 }
 
-func (c *commands) commandEmbeddings(ctx context.Context) (map[cmd][]float64, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.embeddings != nil {
-		return c.embeddings, nil
-	}
-
-	m := make(map[cmd][]float64)
-	for msg, cmd := range cmds {
-		embedding, err := c.llmClient.GenerateEmbedding(ctx, "classification", msg)
-		if err != nil {
-			return nil, err
-		}
-
-		f64s := make([]float64, len(embedding))
-		for i, v := range embedding {
-			f64s[i] = float64(v)
-		}
-
-		m[cmd] = f64s
-	}
-
-	c.embeddings = m
-	return m, nil
-}
-
-func (c *commands) findCommand(ctx context.Context, text string) (cmd, float64, error) {
+func (c *commands) findCommand(ctx context.Context, text string) (cmd, error) {
 	text = strings.ToLower(strings.TrimSpace(text))
 	if text == "" {
-		return cmdNone, 0, nil
+		return cmdNone, nil
 	}
 
-	embedding, err := c.llmClient.GenerateEmbedding(ctx, "classification", text)
+	result, err := c.llmClient.ClassifyCommand(ctx, text)
 	if err != nil {
-		return cmdNone, 0, err
+		return cmdNone, err
 	}
 
-	cmdEmbeddings, err := c.commandEmbeddings(ctx)
-	if err != nil {
-		return cmdNone, 0, err
+	result = strings.TrimSpace(strings.ToLower(result))
+	switch result {
+	case "weekly_report":
+		return cmdPostWeeklyReport, nil
+	case "usage_report":
+		return cmdPostUsageReport, nil
+	case "leave_channel":
+		return cmdLeaveChannel, nil
+	default:
+		return cmdNone, nil
 	}
-
-	// Convert embedding to float64 slice
-	f64s := make([]float64, len(embedding))
-	for i, v := range embedding {
-		f64s[i] = float64(v)
-	}
-
-	bestScore := 0.0
-	bestMatch := cmdNone
-	for cmd, embedding := range cmdEmbeddings {
-		// Calculate dot product
-		var dotProduct float64
-		for i := 0; i < len(f64s); i++ {
-			dotProduct += f64s[i] * embedding[i]
-		}
-
-		// Calculate magnitudes
-		var mag1, mag2 float64
-		for i := 0; i < len(f64s); i++ {
-			mag1 += f64s[i] * f64s[i]
-			mag2 += embedding[i] * embedding[i]
-		}
-
-		cosineSimilarity := dotProduct / (math.Sqrt(mag1) * math.Sqrt(mag2))
-		cosineDistance := 1 - cosineSimilarity
-		if bestMatch == cmdNone || cosineDistance < bestScore {
-			bestScore = cosineDistance
-			bestMatch = cmd
-		}
-	}
-
-	scoreCutoff := 0.5
-	if c.llmClient.Config().EmbeddingModel == "nomic-embed-text" {
-		scoreCutoff = 0.3
-	}
-
-	if bestScore > scoreCutoff {
-		return cmdNone, bestScore, nil
-	}
-
-	return bestMatch, bestScore, nil
 }
 
 func (c *commands) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	botID := c.slackIntegration.BotUserID()
-	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) {
+	text, found := strings.CutPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
+	if !found {
 		return nil
 	}
 
-	text := strings.TrimPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
-	bestMatch, score, err := c.findCommand(ctx, text)
+	bestMatch, err := c.findCommand(ctx, text)
 	if err != nil {
 		return err
 	}
-
-	slog.Debug("best match", "text", text, "bestMatch", bestMatch, "score", score)
 
 	switch bestMatch {
 	case cmdPostWeeklyReport:
