@@ -153,8 +153,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// LLM setup
-	llmClient, err := llm.New(ctx, c.OpenAI)
+	// LLM usage service setup
+	llmUsageService := storage.NewLLMUsageService(db)
+
+	// LLM setup - passing the llmUsageService to track LLM usage
+	llmClient, err := llm.New(ctx, c.OpenAI, llmUsageService)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up LLM client", "error", err)
 		os.Exit(1)

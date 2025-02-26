@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/kelseyhightower/envconfig"
 	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
@@ -40,14 +42,69 @@ type Client interface {
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
 	ClassifyCommand(ctx context.Context, text string) (string, error)
+	// RecordUsage records the LLM usage data for the given operation
+	RecordUsage(ctx context.Context, usage *UsageRecord) error
 }
+
+// UsageRecord represents a record of LLM usage
+type UsageRecord struct {
+	ID              uuid.UUID       `json:"id,omitempty"`
+	CreatedAt       time.Time       `json:"created_at,omitempty"`
+	Model           string          `json:"model"`
+	OperationType   string          `json:"operation_type"`
+	PromptText      string          `json:"prompt_text"`
+	CompletionText  string          `json:"completion_text,omitempty"`
+	PromptTokens    int             `json:"prompt_tokens,omitempty"`
+	CompletionTokens int            `json:"completion_tokens,omitempty"`
+	TotalTokens     int             `json:"total_tokens,omitempty"`
+	LatencyMs       int             `json:"latency_ms,omitempty"`
+	Status          string          `json:"status"`
+	ErrorMessage    string          `json:"error_message,omitempty"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
+}
+
+// Operation types for the UsageRecord.OperationType field
+const (
+	OpTypeCompletion     = "completion"
+	OpTypeEmbedding      = "embedding"
+	OpTypeClassification = "classification"
+	OpTypeRunbook        = "runbook"
+	OpTypeJSONPrompt     = "json_prompt"
+)
+
+// Status types for the UsageRecord.Status field
+const (
+	StatusSuccess = "success"
+	StatusError   = "error"
+)
 
 type client struct {
 	client *openai.Client
 	cfg    Config
+	db     DB
 }
 
-func New(ctx context.Context, cfg Config) (Client, error) {
+// DB interface for database operations
+type DB interface {
+	RecordLLMUsage(ctx context.Context, params RecordLLMUsageParams) error
+}
+
+// RecordLLMUsageParams contains the parameters for recording LLM usage
+type RecordLLMUsageParams struct {
+	Model            string          `json:"model"`
+	OperationType    string          `json:"operation_type"`
+	PromptText       string          `json:"prompt_text"`
+	CompletionText   string          `json:"completion_text,omitempty"`
+	PromptTokens     int32           `json:"prompt_tokens,omitempty"`
+	CompletionTokens int32           `json:"completion_tokens,omitempty"`
+	TotalTokens      int32           `json:"total_tokens,omitempty"`
+	LatencyMs        int32           `json:"latency_ms,omitempty"`
+	Status           string          `json:"status"`
+	ErrorMessage     string          `json:"error_message,omitempty"`
+	Metadata         json.RawMessage `json:"metadata,omitempty"`
+}
+
+func New(ctx context.Context, cfg Config, db DB) (Client, error) {
 	if cfg.URL != "http://localhost:11434/v1/" && cfg.APIKey == "" {
 		return nil, nil
 	}
@@ -78,6 +135,7 @@ func New(ctx context.Context, cfg Config) (Client, error) {
 	return &client{
 		client: openaiClient,
 		cfg:    cfg,
+		db:     db,
 	}, nil
 }
 
@@ -129,6 +187,8 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	• Specific improvement details
 	`
 
+	userContent := fmt.Sprintf("Messages:\n%s", messages)
+
 	params := openai.ChatCompletionNewParams{
 		Model: openai.F(openai.ChatModel(c.cfg.Model)),
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
@@ -138,20 +198,52 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 			},
 			openai.ChatCompletionMessageParam{
 				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
-				Content: openai.F(any(fmt.Sprintf("Messages:\n%s", messages))),
+				Content: openai.F(any(userContent)),
 			},
 		}),
 		Temperature: openai.F(0.7),
 	}
 
+	startTime := time.Now()
 	resp, err := c.client.Chat.Completions.New(ctx, params)
+	latencyMs := int(time.Since(startTime).Milliseconds())
+
+	// Record usage data
+	usage := &UsageRecord{
+		Model:         string(c.cfg.Model),
+		OperationType: OpTypeCompletion,
+		PromptText:    fmt.Sprintf("%s\n%s", prompt, userContent),
+		LatencyMs:     latencyMs,
+	}
+
 	if err != nil {
+		usage.Status = StatusError
+		usage.ErrorMessage = err.Error()
+		if c.db != nil {
+			_ = c.RecordUsage(ctx, usage)
+		}
 		return "", fmt.Errorf("generating suggestions: %w", err)
 	}
 
-	slog.DebugContext(ctx, "generated suggestions", "request", params, "response", resp.Choices[0].Message.Content)
+	content := resp.Choices[0].Message.Content
+	usage.Status = StatusSuccess
+	usage.CompletionText = content
 
-	return resp.Choices[0].Message.Content, nil
+	// Add token usage if available
+	if resp.Usage != nil {
+		usage.PromptTokens = int(resp.Usage.PromptTokens)
+		usage.CompletionTokens = int(resp.Usage.CompletionTokens)
+		usage.TotalTokens = int(resp.Usage.TotalTokens)
+	}
+
+	// Try to record the usage
+	if c.db != nil {
+		_ = c.RecordUsage(ctx, usage)
+	}
+
+	slog.DebugContext(ctx, "generated suggestions", "request", params, "response", content)
+
+	return content, nil
 }
 
 type RunbookResponse struct {
@@ -266,15 +358,55 @@ Example 4:
 		),
 	}
 
+	startTime := time.Now()
 	resp, err := c.client.Chat.Completions.New(ctx, params)
+	latencyMs := int(time.Since(startTime).Milliseconds())
+
+	// Prepare metadata with additional info about the runbook request
+	metadataObj := map[string]interface{}{
+		"service": service,
+		"alert":   alert,
+	}
+	metadataJSON, _ := json.Marshal(metadataObj)
+
+	// Record usage data
+	usage := &UsageRecord{
+		Model:         string(c.cfg.Model),
+		OperationType: OpTypeRunbook,
+		PromptText:    fmt.Sprintf("%s\n%s", prompt, content),
+		LatencyMs:     latencyMs,
+		Metadata:      metadataJSON,
+	}
+
 	if err != nil {
+		usage.Status = StatusError
+		usage.ErrorMessage = err.Error()
+		if c.db != nil {
+			_ = c.RecordUsage(ctx, usage)
+		}
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
 
-	slog.DebugContext(ctx, "created runbook", "request", params, "response", resp.Choices[0].Message.Content)
+	jsonContent := resp.Choices[0].Message.Content
+	usage.Status = StatusSuccess
+	usage.CompletionText = jsonContent
+
+	// Add token usage if available
+	if resp.Usage != nil {
+		usage.PromptTokens = int(resp.Usage.PromptTokens)
+		usage.CompletionTokens = int(resp.Usage.CompletionTokens)
+		usage.TotalTokens = int(resp.Usage.TotalTokens)
+	}
+
+	// Try to record the usage
+	if c.db != nil {
+		_ = c.RecordUsage(ctx, usage)
+	}
+
+	slog.DebugContext(ctx, "created runbook", "request", params, "response", jsonContent)
 
 	var runbook RunbookResponse
-	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &runbook); err != nil {
+	if err := json.Unmarshal([]byte(jsonContent), &runbook); err != nil {
 		return nil, fmt.Errorf("unmarshaling runbook response: %w", err)
 	}
 
@@ -286,18 +418,47 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 		return nil, nil
 	}
 
+	inputText := fmt.Sprintf("%s: %s", task, text)
 	params := openai.EmbeddingNewParams{
 		Model: openai.F(openai.EmbeddingModel(c.cfg.EmbeddingModel)),
 		Input: openai.F(openai.EmbeddingNewParamsInputUnion(
-			openai.EmbeddingNewParamsInputArrayOfStrings([]string{fmt.Sprintf("%s: %s", task, text)}),
+			openai.EmbeddingNewParamsInputArrayOfStrings([]string{inputText}),
 		)),
 		EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
 		Dimensions:     openai.F(int64(768)),
 	}
 
+	startTime := time.Now()
 	resp, err := c.client.Embeddings.New(ctx, params)
+	latencyMs := int(time.Since(startTime).Milliseconds())
+
+	// Record usage data
+	usage := &UsageRecord{
+		Model:         string(c.cfg.EmbeddingModel),
+		OperationType: OpTypeEmbedding,
+		PromptText:    inputText,
+		LatencyMs:     latencyMs,
+	}
+
 	if err != nil {
+		usage.Status = StatusError
+		usage.ErrorMessage = err.Error()
+		if c.db != nil {
+			_ = c.RecordUsage(ctx, usage)
+		}
 		return nil, fmt.Errorf("generating embedding: %w", err)
+	}
+
+	usage.Status = StatusSuccess
+	// Embedding models typically only report prompt tokens, not completion tokens
+	if resp.Usage != nil {
+		usage.PromptTokens = int(resp.Usage.PromptTokens)
+		usage.TotalTokens = int(resp.Usage.TotalTokens)
+	}
+
+	// Try to record the usage
+	if c.db != nil {
+		_ = c.RecordUsage(ctx, usage)
 	}
 
 	r := make([]float32, len(resp.Data[0].Embedding))
@@ -327,12 +488,56 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 			},
 		)}
 
+	startTime := time.Now()
 	resp, err := c.client.Chat.Completions.New(ctx, params)
+	latencyMs := int(time.Since(startTime).Milliseconds())
+
+	// Record usage data
+	var schemaStr string
+	if jsonSchema != nil {
+		schemaBytes, _ := json.Marshal(jsonSchema)
+		schemaStr = string(schemaBytes)
+	}
+	metadataObj := map[string]interface{}{
+		"schema_provided": jsonSchema != nil,
+	}
+	metadataJSON, _ := json.Marshal(metadataObj)
+
+	usage := &UsageRecord{
+		Model:         string(c.cfg.Model),
+		OperationType: OpTypeJSONPrompt,
+		PromptText:    fmt.Sprintf("%s\nSchema: %s", prompt, schemaStr),
+		LatencyMs:     latencyMs,
+		Metadata:      metadataJSON,
+	}
+
 	if err != nil {
+		usage.Status = StatusError
+		usage.ErrorMessage = err.Error()
+		if c.db != nil {
+			_ = c.RecordUsage(ctx, usage)
+		}
 		return "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
+
 	respMsg := resp.Choices[0].Message.Content
+	usage.Status = StatusSuccess
+	usage.CompletionText = respMsg
+
+	// Add token usage if available
+	if resp.Usage != nil {
+		usage.PromptTokens = int(resp.Usage.PromptTokens)
+		usage.CompletionTokens = int(resp.Usage.CompletionTokens)
+		usage.TotalTokens = int(resp.Usage.TotalTokens)
+	}
+
+	// Try to record the usage
+	if c.db != nil {
+		_ = c.RecordUsage(ctx, usage)
+	}
+
 	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
+	
 	if jsonSchema != nil {
 		if keyErr, err := jsonSchema.ValidateBytes(ctx, []byte(respMsg)); err != nil || len(keyErr) > 0 {
 			return "", fmt.Errorf("validating response: %v %w", keyErr, err)
@@ -398,10 +603,74 @@ Classify the following message:`
 		Temperature: openai.F(0.0), // Use 0 temperature for more consistent results
 	}
 
+	startTime := time.Now()
 	resp, err := c.client.Chat.Completions.New(ctx, params)
+	latencyMs := int(time.Since(startTime).Milliseconds())
+
+	// Record the usage data
+	usage := &UsageRecord{
+		Model:         string(c.cfg.Model),
+		OperationType: OpTypeClassification,
+		PromptText:    fmt.Sprintf("%s\n%s", prompt, text),
+		LatencyMs:     latencyMs,
+	}
+
 	if err != nil {
+		usage.Status = StatusError
+		usage.ErrorMessage = err.Error()
+		// Try to record the error, but don't return an error from this function
+		if c.db != nil {
+			_ = c.RecordUsage(ctx, usage)
+		}
 		return "", fmt.Errorf("classifying command: %w", err)
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	content := resp.Choices[0].Message.Content
+	usage.Status = StatusSuccess
+	usage.CompletionText = content
+
+	// Add token usage if available
+	if resp.Usage != nil {
+		usage.PromptTokens = int(resp.Usage.PromptTokens)
+		usage.CompletionTokens = int(resp.Usage.CompletionTokens)
+		usage.TotalTokens = int(resp.Usage.TotalTokens)
+	}
+
+	// Try to record the usage, but don't return an error from this function
+	if c.db != nil {
+		_ = c.RecordUsage(ctx, usage)
+	}
+
+	return content, nil
+}
+
+func (c *client) RecordUsage(ctx context.Context, usage *UsageRecord) error {
+	if c == nil || c.db == nil {
+		return nil
+	}
+
+	// Convert to the DB parameters
+	params := RecordLLMUsageParams{
+		Model:            usage.Model,
+		OperationType:    usage.OperationType,
+		PromptText:       usage.PromptText,
+		CompletionText:   usage.CompletionText,
+		PromptTokens:     int32(usage.PromptTokens),
+		CompletionTokens: int32(usage.CompletionTokens),
+		TotalTokens:      int32(usage.TotalTokens),
+		LatencyMs:        int32(usage.LatencyMs),
+		Status:           usage.Status,
+		ErrorMessage:     usage.ErrorMessage,
+	}
+
+	if usage.Metadata != nil {
+		params.Metadata = usage.Metadata
+	}
+
+	if err := c.db.RecordLLMUsage(ctx, params); err != nil {
+		slog.ErrorContext(ctx, "failed to record LLM usage", "error", err)
+		return err
+	}
+
+	return nil
 }

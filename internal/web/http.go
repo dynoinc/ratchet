@@ -28,6 +28,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
+	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
@@ -62,6 +63,7 @@ type httpHandlers struct {
 	riverClient      *river.Client[pgx.Tx]
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
+	llmUsageService  *storage.LLMUsageService
 }
 
 func New(
@@ -71,11 +73,14 @@ func New(
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
 ) (http.Handler, error) {
+	llmUsageService := storage.NewLLMUsageService(db)
+	
 	handlers := &httpHandlers{
 		db:               db,
 		riverClient:      riverClient,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
+		llmUsageService:  llmUsageService,
 	}
 
 	// River UI
@@ -120,6 +125,10 @@ func New(
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
+
+	// LLM Usage endpoints
+	apiMux.HandleFunc("GET /llm/usage", handleJSON(handlers.getLLMUsage))
+	apiMux.HandleFunc("GET /llm/usage/stats", handleJSON(handlers.getLLMUsageStats))
 
 	apiMux.HandleFunc("GET /search", handlers.search)
 
@@ -366,6 +375,187 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 	}
 
 	return nil, nil
+}
+
+func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
+	// Parse query parameters
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	limitStr := cmp.Or(r.URL.Query().Get("limit"), "100")
+	offsetStr := cmp.Or(r.URL.Query().Get("offset"), "0")
+
+	// Default values if not provided
+	startTime := time.Now().Add(-24 * time.Hour)
+	endTime := time.Now()
+	
+	// Parse start time if provided
+	if startStr != "" {
+		parsedStartTime, err := time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start time format: %w", err)
+		}
+		startTime = parsedStartTime
+	}
+
+	// Parse end time if provided
+	if endStr != "" {
+		parsedEndTime, err := time.Parse(time.RFC3339, endStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end time format: %w", err)
+		}
+		endTime = parsedEndTime
+	}
+
+	// Parse limit and offset
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid limit: %w", err)
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid offset: %w", err)
+	}
+
+	// Query the database
+	query := `
+	SELECT 
+		id, 
+		created_at, 
+		model, 
+		operation_type, 
+		prompt_text, 
+		completion_text, 
+		prompt_tokens, 
+		completion_tokens, 
+		total_tokens,
+		latency_ms, 
+		status, 
+		error_message,
+		metadata
+	FROM llm_usage_v1
+	WHERE created_at BETWEEN $1 AND $2
+	ORDER BY created_at DESC
+	LIMIT $3 OFFSET $4`
+
+	rows, err := h.db.Query(r.Context(), query, startTime, endTime, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("querying llm usage: %w", err)
+	}
+	defer rows.Close()
+
+	type LLMUsageRecord struct {
+		ID              string          `json:"id"`
+		CreatedAt       time.Time       `json:"created_at"`
+		Model           string          `json:"model"`
+		OperationType   string          `json:"operation_type"`
+		PromptText      string          `json:"prompt_text"`
+		CompletionText  string          `json:"completion_text,omitempty"`
+		PromptTokens    int             `json:"prompt_tokens,omitempty"`
+		CompletionTokens int            `json:"completion_tokens,omitempty"`
+		TotalTokens     int             `json:"total_tokens,omitempty"`
+		LatencyMs       int             `json:"latency_ms,omitempty"`
+		Status          string          `json:"status"`
+		ErrorMessage    string          `json:"error_message,omitempty"`
+		Metadata        json.RawMessage `json:"metadata,omitempty"`
+	}
+
+	var results []LLMUsageRecord
+	for rows.Next() {
+		var record LLMUsageRecord
+		if err := rows.Scan(
+			&record.ID,
+			&record.CreatedAt,
+			&record.Model,
+			&record.OperationType,
+			&record.PromptText,
+			&record.CompletionText,
+			&record.PromptTokens,
+			&record.CompletionTokens,
+			&record.TotalTokens,
+			&record.LatencyMs,
+			&record.Status,
+			&record.ErrorMessage,
+			&record.Metadata,
+		); err != nil {
+			return nil, fmt.Errorf("scanning llm usage: %w", err)
+		}
+		results = append(results, record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating llm usage rows: %w", err)
+	}
+
+	return results, nil
+}
+
+func (h *httpHandlers) getLLMUsageStats(r *http.Request) (any, error) {
+	// Parse query parameters
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	model := r.URL.Query().Get("model")
+	operationType := r.URL.Query().Get("operation_type")
+
+	// Default values if not provided
+	startTime := time.Now().Add(-24 * time.Hour)
+	endTime := time.Now()
+	
+	// Parse start time if provided
+	if startStr != "" {
+		parsedStartTime, err := time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start time format: %w", err)
+		}
+		startTime = parsedStartTime
+	}
+
+	// Parse end time if provided
+	if endStr != "" {
+		parsedEndTime, err := time.Parse(time.RFC3339, endStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end time format: %w", err)
+		}
+		endTime = parsedEndTime
+	}
+
+	// Query the database
+	query := `
+	SELECT 
+		COUNT(*) as total_requests,
+		SUM(prompt_tokens) as total_prompt_tokens,
+		SUM(completion_tokens) as total_completion_tokens,
+		SUM(total_tokens) as total_tokens,
+		AVG(latency_ms) as avg_latency_ms,
+		COUNT(CASE WHEN status = 'error' THEN 1 END) as error_count
+	FROM llm_usage_v1
+	WHERE created_at BETWEEN $1 AND $2
+	AND ($3 = '' OR model = $3)
+	AND ($4 = '' OR operation_type = $4)`
+
+	type LLMUsageStats struct {
+		TotalRequests       int64   `json:"total_requests"`
+		TotalPromptTokens   int64   `json:"total_prompt_tokens"`
+		TotalCompletionTokens int64 `json:"total_completion_tokens"`
+		TotalTokens         int64   `json:"total_tokens"`
+		AvgLatencyMs        float64 `json:"avg_latency_ms"`
+		ErrorCount          int64   `json:"error_count"`
+	}
+
+	var stats LLMUsageStats
+	err := h.db.QueryRow(r.Context(), query, startTime, endTime, model, operationType).Scan(
+		&stats.TotalRequests,
+		&stats.TotalPromptTokens,
+		&stats.TotalCompletionTokens,
+		&stats.TotalTokens,
+		&stats.AvgLatencyMs,
+		&stats.ErrorCount,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying llm usage stats: %w", err)
+	}
+
+	return stats, nil
 }
 
 func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
