@@ -31,6 +31,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/llm_usage_cleanup_worker"
+	"github.com/dynoinc/ratchet/internal/background/llm_usage_record_worker"
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
@@ -198,6 +199,9 @@ func main() {
 		channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient),
 	})
 
+	// LLM Record Usage worker setup
+	llmRecordUsageWorker := llm_usage_record_worker.New(bot)
+
 	// LLM usage cleanup worker setup
 	llmUsageCleanupWorker := llm_usage_cleanup_worker.New(c.LLMUsageCleanup, bot)
 
@@ -208,6 +212,7 @@ func main() {
 	river.AddWorker(workers, backfillThreadWorker)
 	river.AddWorker(workers, modulesWorker)
 	river.AddWorker(workers, llmUsageCleanupWorker)
+	river.AddWorker(workers, llmRecordUsageWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up background worker", "error", err)
