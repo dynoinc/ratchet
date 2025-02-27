@@ -362,15 +362,59 @@ Example 4:
 		),
 	}
 
+	startTime := time.Now()
 	resp, err := c.client.Chat.Completions.New(ctx, params)
+	latencyMs := int(time.Since(startTime).Milliseconds())
+
+	// Prepare metadata with additional info about the runbook request
+	metadataObj := map[string]interface{}{
+		"service": service,
+		"alert":   alert,
+	}
+	metadataJSON, _ := json.Marshal(metadataObj)
+
+	// Record usage data
+	usage := &UsageRecord{
+		Model:         string(c.cfg.Model),
+		OperationType: OpTypeRunbook,
+		PromptText:    fmt.Sprintf("%s\n%s", prompt, content),
+		LatencyMs:     latencyMs,
+		Metadata:      metadataJSON,
+	}
+
 	if err != nil {
+		usage.Status = StatusError
+		usage.ErrorMessage = err.Error()
+		if c.db != nil {
+			_ = c.RecordUsage(ctx, usage)
+		}
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
 
-	slog.DebugContext(ctx, "created runbook", "request", params, "response", resp.Choices[0].Message.Content)
+	jsonContent := resp.Choices[0].Message.Content
+	usage.Status = StatusSuccess
+	usage.CompletionText = jsonContent
+
+	// Add token usage if available
+	promptTokens := int(resp.Usage.PromptTokens)
+	completionTokens := int(resp.Usage.CompletionTokens)
+	totalTokens := int(resp.Usage.TotalTokens)
+	
+	if promptTokens > 0 || completionTokens > 0 || totalTokens > 0 {
+		usage.PromptTokens = promptTokens
+		usage.CompletionTokens = completionTokens
+		usage.TotalTokens = totalTokens
+	}
+
+	// Try to record the usage
+	if c.db != nil {
+		_ = c.RecordUsage(ctx, usage)
+	}
+
+	slog.DebugContext(ctx, "created runbook", "request", params, "response", jsonContent)
 
 	var runbook RunbookResponse
-	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &runbook); err != nil {
+	if err := json.Unmarshal([]byte(jsonContent), &runbook); err != nil {
 		return nil, fmt.Errorf("unmarshaling runbook response: %w", err)
 	}
 
@@ -456,12 +500,60 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 			},
 		)}
 
+	startTime := time.Now()
 	resp, err := c.client.Chat.Completions.New(ctx, params)
+	latencyMs := int(time.Since(startTime).Milliseconds())
+
+	// Record usage data
+	var schemaStr string
+	if jsonSchema != nil {
+		schemaBytes, _ := json.Marshal(jsonSchema)
+		schemaStr = string(schemaBytes)
+	}
+	metadataObj := map[string]interface{}{
+		"schema_provided": jsonSchema != nil,
+	}
+	metadataJSON, _ := json.Marshal(metadataObj)
+
+	usage := &UsageRecord{
+		Model:         string(c.cfg.Model),
+		OperationType: OpTypeJSONPrompt,
+		PromptText:    fmt.Sprintf("%s\nSchema: %s", prompt, schemaStr),
+		LatencyMs:     latencyMs,
+		Metadata:      metadataJSON,
+	}
+
 	if err != nil {
+		usage.Status = StatusError
+		usage.ErrorMessage = err.Error()
+		if c.db != nil {
+			_ = c.RecordUsage(ctx, usage)
+		}
 		return "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
+
 	respMsg := resp.Choices[0].Message.Content
+	usage.Status = StatusSuccess
+	usage.CompletionText = respMsg
+
+	// Add token usage if available
+	promptTokens := int(resp.Usage.PromptTokens)
+	completionTokens := int(resp.Usage.CompletionTokens)
+	totalTokens := int(resp.Usage.TotalTokens)
+	
+	if promptTokens > 0 || completionTokens > 0 || totalTokens > 0 {
+		usage.PromptTokens = promptTokens
+		usage.CompletionTokens = completionTokens
+		usage.TotalTokens = totalTokens
+	}
+
+	// Try to record the usage
+	if c.db != nil {
+		_ = c.RecordUsage(ctx, usage)
+	}
+
 	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
+	
 	if jsonSchema != nil {
 		if keyErr, err := jsonSchema.ValidateBytes(ctx, []byte(respMsg)); err != nil || len(keyErr) > 0 {
 			return "", fmt.Errorf("validating response: %v %w", keyErr, err)

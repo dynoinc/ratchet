@@ -1,16 +1,5 @@
 package background
 
-import "github.com/riverqueue/river/rivertype"
-
-func init() {
-	// Register job types with River
-	rivertype.RegisterJob[ClassifierWorkerArgs]("classifier")
-	rivertype.RegisterJob[BackfillThreadWorkerArgs]("backfill_thread")
-	rivertype.RegisterJob[ChannelOnboardWorkerArgs]("channel_onboard")
-	rivertype.RegisterJob[ModulesWorkerArgs]("modules")
-	rivertype.RegisterJob[LLMUsageCleanupWorkerArgs]("llm_usage_cleanup")
-}
-
 type ClassifierArgs struct {
 	ChannelID  string `json:"channel_id"`
 	SlackTS    string `json:"slack_ts"`
