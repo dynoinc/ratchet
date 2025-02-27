@@ -20,7 +20,6 @@ const (
 	cmdNone cmd = iota
 	cmdPostWeeklyReport
 	cmdPostUsageReport
-	cmdLeaveChannel
 )
 
 type commands struct {
@@ -62,8 +61,6 @@ func (c *commands) findCommand(ctx context.Context, text string) (cmd, error) {
 		return cmdPostWeeklyReport, nil
 	case "usage_report":
 		return cmdPostUsageReport, nil
-	case "leave_channel":
-		return cmdLeaveChannel, nil
 	default:
 		return cmdNone, nil
 	}
@@ -86,8 +83,6 @@ func (c *commands) Handle(ctx context.Context, channelID string, slackTS string,
 		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdPostUsageReport:
 		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
-	case cmdLeaveChannel:
-		return c.slackIntegration.LeaveChannel(ctx, channelID)
 	}
 
 	return nil

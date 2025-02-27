@@ -41,12 +41,6 @@ func TestFindCommand(t *testing.T) {
 		{"what are the usage numbers", cmdPostUsageReport},
 		{"display bot usage data", cmdPostUsageReport},
 
-		// Leave channel requests
-		{"leave the channel", cmdLeaveChannel},
-		{"please leave this channel", cmdLeaveChannel},
-		{"exit channel", cmdLeaveChannel},
-		{"get out of this channel", cmdLeaveChannel},
-
 		// Invalid/unrelated requests
 		{"how are you?", cmdNone},
 		{"what's the weather like?", cmdNone},
