@@ -17,7 +17,7 @@ func TestFindCommand(t *testing.T) {
 	})))
 
 	cfg := llm.DefaultConfig()
-	llmClient, err := llm.New(context.Background(), cfg, nil)
+	llmClient, err := llm.New(context.Background(), cfg)
 	if err != nil {
 		t.Skip("LLM client not available")
 	}

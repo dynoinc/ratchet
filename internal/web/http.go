@@ -29,7 +29,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
-	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
@@ -64,7 +63,6 @@ type httpHandlers struct {
 	riverClient      *river.Client[pgx.Tx]
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
-	llmUsageService  *storage.LLMUsageService
 }
 
 func New(
@@ -74,14 +72,11 @@ func New(
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
 ) (http.Handler, error) {
-	llmUsageService := storage.NewLLMUsageService(db)
-
 	handlers := &httpHandlers{
 		db:               db,
 		riverClient:      riverClient,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
-		llmUsageService:  llmUsageService,
 	}
 
 	// River UI

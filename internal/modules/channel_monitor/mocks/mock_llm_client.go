@@ -14,7 +14,9 @@ import (
 	reflect "reflect"
 
 	llm "github.com/dynoinc/ratchet/internal/llm"
+	pgx "github.com/jackc/pgx/v5"
 	jsonschema "github.com/qri-io/jsonschema"
+	river "github.com/riverqueue/river"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -116,20 +118,6 @@ func (mr *MockClientMockRecorder) GenerateEmbedding(ctx, task, text any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateEmbedding", reflect.TypeOf((*MockClient)(nil).GenerateEmbedding), ctx, task, text)
 }
 
-// RecordUsage mocks base method.
-func (m *MockClient) RecordUsage(ctx context.Context, usage *llm.UsageRecord) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RecordUsage", ctx, usage)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RecordUsage indicates an expected call of RecordUsage.
-func (mr *MockClientMockRecorder) RecordUsage(ctx, usage any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordUsage", reflect.TypeOf((*MockClient)(nil).RecordUsage), ctx, usage)
-}
-
 // RunJSONModePrompt mocks base method.
 func (m *MockClient) RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error) {
 	m.ctrl.T.Helper()
@@ -145,40 +133,14 @@ func (mr *MockClientMockRecorder) RunJSONModePrompt(ctx, prompt, schema any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunJSONModePrompt", reflect.TypeOf((*MockClient)(nil).RunJSONModePrompt), ctx, prompt, schema)
 }
 
-// MockDB is a mock of DB interface.
-type MockDB struct {
-	ctrl     *gomock.Controller
-	recorder *MockDBMockRecorder
-	isgomock struct{}
-}
-
-// MockDBMockRecorder is the mock recorder for MockDB.
-type MockDBMockRecorder struct {
-	mock *MockDB
-}
-
-// NewMockDB creates a new mock instance.
-func NewMockDB(ctrl *gomock.Controller) *MockDB {
-	mock := &MockDB{ctrl: ctrl}
-	mock.recorder = &MockDBMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockDB) EXPECT() *MockDBMockRecorder {
-	return m.recorder
-}
-
-// RecordLLMUsage mocks base method.
-func (m *MockDB) RecordLLMUsage(ctx context.Context, params any) error {
+// SetRiverClient mocks base method.
+func (m *MockClient) SetRiverClient(riverClient *river.Client[pgx.Tx]) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RecordLLMUsage", ctx, params)
-	ret0, _ := ret[0].(error)
-	return ret0
+	m.ctrl.Call(m, "SetRiverClient", riverClient)
 }
 
-// RecordLLMUsage indicates an expected call of RecordLLMUsage.
-func (mr *MockDBMockRecorder) RecordLLMUsage(ctx, params any) *gomock.Call {
+// SetRiverClient indicates an expected call of SetRiverClient.
+func (mr *MockClientMockRecorder) SetRiverClient(riverClient any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordLLMUsage", reflect.TypeOf((*MockDB)(nil).RecordLLMUsage), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRiverClient", reflect.TypeOf((*MockClient)(nil).SetRiverClient), riverClient)
 }

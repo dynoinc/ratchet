@@ -261,3 +261,58 @@ func TimeToTs(t time.Time) string {
 	// Convert Unix seconds and nanoseconds to a Slack timestamp
 	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
 }
+
+// RecordLLMUsage records LLM usage data in the database
+func (b *Bot) RecordLLMUsage(ctx context.Context, params background.LLMUsageRecordWorkerArgs) error {
+	// If metadata is nil, use an empty JSON object
+	metadata := params.Metadata
+	if metadata == nil {
+		metadata = []byte("{}")
+	}
+
+	// Convert worker args to schema params
+	recordParams := schema.RecordLLMUsageParams{
+		Model:         params.Model,
+		OperationType: params.OperationType,
+		PromptText:    params.PromptText,
+		Status:        params.Status,
+		Metadata:      metadata,
+	}
+
+	// Handle optional fields
+	if params.CompletionText != "" {
+		recordParams.CompletionText = &params.CompletionText
+	}
+
+	if params.ErrorMessage != "" {
+		recordParams.ErrorMessage = &params.ErrorMessage
+	}
+
+	if params.PromptTokens > 0 {
+		pt := int32(params.PromptTokens)
+		recordParams.PromptTokens = &pt
+	}
+
+	if params.CompletionTokens > 0 {
+		ct := int32(params.CompletionTokens)
+		recordParams.CompletionTokens = &ct
+	}
+
+	if params.TotalTokens > 0 {
+		tt := int32(params.TotalTokens)
+		recordParams.TotalTokens = &tt
+	}
+
+	if params.LatencyMs > 0 {
+		lm := int32(params.LatencyMs)
+		recordParams.LatencyMs = &lm
+	}
+
+	// Use the sqlc-generated function
+	_, err := schema.New(b.DB).RecordLLMUsage(ctx, recordParams)
+	if err != nil {
+		return fmt.Errorf("recording LLM usage: %w", err)
+	}
+
+	return nil
+}

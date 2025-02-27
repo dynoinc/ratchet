@@ -11,12 +11,15 @@ import (
 	"os"
 	"time"
 
+	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/kelseyhightower/envconfig"
 	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/qri-io/jsonschema"
+	"github.com/riverqueue/river"
 )
 
 type Config struct {
@@ -42,8 +45,7 @@ type Client interface {
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
 	ClassifyCommand(ctx context.Context, text string) (string, error)
-	// RecordUsage records the LLM usage data for the given operation
-	RecordUsage(ctx context.Context, usage *UsageRecord) error
+	SetRiverClient(riverClient *river.Client[pgx.Tx])
 }
 
 // UsageRecord represents a record of LLM usage
@@ -79,14 +81,9 @@ const (
 )
 
 type client struct {
-	client *openai.Client
-	cfg    Config
-	db     DB
-}
-
-// DB interface for database operations
-type DB interface {
-	RecordLLMUsage(ctx context.Context, params interface{}) error
+	client      *openai.Client
+	cfg         Config
+	riverClient *river.Client[pgx.Tx]
 }
 
 // RecordLLMUsageParams contains the parameters for recording LLM usage
@@ -104,7 +101,7 @@ type RecordLLMUsageParams struct {
 	Metadata         json.RawMessage `json:"metadata,omitempty"`
 }
 
-func New(ctx context.Context, cfg Config, db DB) (Client, error) {
+func New(ctx context.Context, cfg Config) (Client, error) {
 	if cfg.URL != "http://localhost:11434/v1/" && cfg.APIKey == "" {
 		return nil, nil
 	}
@@ -135,7 +132,6 @@ func New(ctx context.Context, cfg Config, db DB) (Client, error) {
 	return &client{
 		client: openaiClient,
 		cfg:    cfg,
-		db:     db,
 	}, nil
 }
 
@@ -219,8 +215,8 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	if err != nil {
 		usage.Status = StatusError
 		usage.ErrorMessage = err.Error()
-		if c.db != nil {
-			_ = c.RecordUsage(ctx, usage)
+		if c.riverClient != nil {
+			c.recordUsage(ctx, usage)
 		}
 		return "", fmt.Errorf("generating suggestions: %w", err)
 	}
@@ -241,8 +237,8 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	}
 
 	// Try to record the usage
-	if c.db != nil {
-		_ = c.RecordUsage(ctx, usage)
+	if c.riverClient != nil {
+		c.recordUsage(ctx, usage)
 	}
 
 	slog.DebugContext(ctx, "generated suggestions", "request", params, "response", content)
@@ -385,8 +381,8 @@ Example 4:
 	if err != nil {
 		usage.Status = StatusError
 		usage.ErrorMessage = err.Error()
-		if c.db != nil {
-			_ = c.RecordUsage(ctx, usage)
+		if c.riverClient != nil {
+			c.recordUsage(ctx, usage)
 		}
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
@@ -407,8 +403,8 @@ Example 4:
 	}
 
 	// Try to record the usage
-	if c.db != nil {
-		_ = c.RecordUsage(ctx, usage)
+	if c.riverClient != nil {
+		c.recordUsage(ctx, usage)
 	}
 
 	slog.DebugContext(ctx, "created runbook", "request", params, "response", jsonContent)
@@ -451,8 +447,8 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	if err != nil {
 		usage.Status = StatusError
 		usage.ErrorMessage = err.Error()
-		if c.db != nil {
-			_ = c.RecordUsage(ctx, usage)
+		if c.riverClient != nil {
+			c.recordUsage(ctx, usage)
 		}
 		return nil, fmt.Errorf("generating embedding: %w", err)
 	}
@@ -469,8 +465,8 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	}
 
 	// Try to record the usage
-	if c.db != nil {
-		_ = c.RecordUsage(ctx, usage)
+	if c.riverClient != nil {
+		c.recordUsage(ctx, usage)
 	}
 
 	r := make([]float32, len(resp.Data[0].Embedding))
@@ -526,8 +522,8 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	if err != nil {
 		usage.Status = StatusError
 		usage.ErrorMessage = err.Error()
-		if c.db != nil {
-			_ = c.RecordUsage(ctx, usage)
+		if c.riverClient != nil {
+			c.recordUsage(ctx, usage)
 		}
 		return "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
@@ -548,8 +544,8 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	}
 
 	// Try to record the usage
-	if c.db != nil {
-		_ = c.RecordUsage(ctx, usage)
+	if c.riverClient != nil {
+		c.recordUsage(ctx, usage)
 	}
 
 	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
@@ -635,8 +631,8 @@ Classify the following message:`
 		usage.Status = StatusError
 		usage.ErrorMessage = err.Error()
 		// Try to record the error, but don't return an error from this function
-		if c.db != nil {
-			_ = c.RecordUsage(ctx, usage)
+		if c.riverClient != nil {
+			c.recordUsage(ctx, usage)
 		}
 		return "", fmt.Errorf("classifying command: %w", err)
 	}
@@ -657,40 +653,44 @@ Classify the following message:`
 	}
 
 	// Try to record the usage, but don't return an error from this function
-	if c.db != nil {
-		_ = c.RecordUsage(ctx, usage)
+	if c.riverClient != nil {
+		c.recordUsage(ctx, usage)
 	}
 
 	return content, nil
 }
 
-func (c *client) RecordUsage(ctx context.Context, usage *UsageRecord) error {
-	if c == nil || c.db == nil {
-		return nil
+// SetRiverClient sets the River client for queueing usage records
+func (c *client) SetRiverClient(riverClient *river.Client[pgx.Tx]) {
+	c.riverClient = riverClient
+}
+
+// recordUsage is a helper method to queue usage records to River
+func (c *client) recordUsage(ctx context.Context, usage *UsageRecord) {
+	if c == nil || c.riverClient == nil {
+		return
 	}
 
-	// Convert to the DB parameters
-	params := RecordLLMUsageParams{
+	// Convert to worker args
+	args := background.LLMUsageRecordWorkerArgs{
+		ID:               usage.ID,
+		CreatedAt:        usage.CreatedAt,
 		Model:            usage.Model,
 		OperationType:    usage.OperationType,
 		PromptText:       usage.PromptText,
 		CompletionText:   usage.CompletionText,
-		PromptTokens:     int32(usage.PromptTokens),
-		CompletionTokens: int32(usage.CompletionTokens),
-		TotalTokens:      int32(usage.TotalTokens),
-		LatencyMs:        int32(usage.LatencyMs),
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		TotalTokens:      usage.TotalTokens,
+		LatencyMs:        usage.LatencyMs,
 		Status:           usage.Status,
 		ErrorMessage:     usage.ErrorMessage,
+		Metadata:         usage.Metadata,
 	}
 
-	if usage.Metadata != nil {
-		params.Metadata = usage.Metadata
+	// Insert job into River queue
+	_, err := c.riverClient.Insert(ctx, args, nil)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to queue LLM usage record", "error", err)
 	}
-
-	if err := c.db.RecordLLMUsage(ctx, params); err != nil {
-		slog.ErrorContext(ctx, "failed to record LLM usage", "error", err)
-		return err
-	}
-
-	return nil
 }

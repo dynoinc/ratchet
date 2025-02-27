@@ -16,6 +16,7 @@ import (
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/getsentry/sentry-go"
+	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lmittmann/tint"
@@ -157,11 +158,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// LLM usage service setup
-	llmUsageService := storage.NewLLMUsageService(db)
-
-	// LLM setup - passing the llmUsageService to track LLM usage
-	llmClient, err := llm.New(ctx, c.OpenAI, llmUsageService)
+	// LLM setup
+	llmClient, err := llm.New(ctx, c.OpenAI)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up LLM client", "error", err)
 		os.Exit(1)
@@ -220,6 +218,11 @@ func main() {
 	if err := bot.Init(riverClient); err != nil {
 		slog.ErrorContext(ctx, "initializing bot", "error", err)
 		os.Exit(1)
+	}
+
+	// After creating the LLM client and River client
+	if llmClient, ok := llmClient.(interface{ SetRiverClient(*river.Client[pgx.Tx]) }); ok {
+		llmClient.SetRiverClient(riverClient)
 	}
 
 	// HTTP server setup
