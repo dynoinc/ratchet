@@ -13,13 +13,13 @@ import (
 
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/kelseyhightower/envconfig"
 	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/qri-io/jsonschema"
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 )
 
 type Config struct {
@@ -38,6 +38,11 @@ func DefaultConfig() Config {
 	return c
 }
 
+// RiverClientInterface is an interface alias to help with mocking
+type RiverClientInterface interface {
+	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
+
 type Client interface {
 	Config() Config
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
@@ -45,7 +50,7 @@ type Client interface {
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
 	ClassifyCommand(ctx context.Context, text string) (string, error)
-	SetRiverClient(riverClient *river.Client[pgx.Tx])
+	SetRiverClient(ctx context.Context, riverClient RiverClientInterface)
 }
 
 // UsageRecord represents a record of LLM usage
@@ -83,7 +88,7 @@ const (
 type client struct {
 	client      *openai.Client
 	cfg         Config
-	riverClient *river.Client[pgx.Tx]
+	riverClient RiverClientInterface
 }
 
 // RecordLLMUsageParams contains the parameters for recording LLM usage
@@ -661,7 +666,7 @@ Classify the following message:`
 }
 
 // SetRiverClient sets the River client for queueing usage records
-func (c *client) SetRiverClient(riverClient *river.Client[pgx.Tx]) {
+func (c *client) SetRiverClient(ctx context.Context, riverClient RiverClientInterface) {
 	c.riverClient = riverClient
 }
 

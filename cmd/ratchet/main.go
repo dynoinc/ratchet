@@ -16,7 +16,6 @@ import (
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/getsentry/sentry-go"
-	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lmittmann/tint"
@@ -221,8 +220,10 @@ func main() {
 	}
 
 	// After creating the LLM client and River client
-	if llmClient, ok := llmClient.(interface{ SetRiverClient(*river.Client[pgx.Tx]) }); ok {
-		llmClient.SetRiverClient(riverClient)
+	if llmClient, ok := llmClient.(interface {
+		SetRiverClient(context.Context, llm.RiverClientInterface)
+	}); ok {
+		llmClient.SetRiverClient(ctx, riverClient)
 	}
 
 	// HTTP server setup
