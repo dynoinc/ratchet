@@ -138,6 +138,7 @@ func (mr *MockIntegrationMockRecorder) GetUserIDByEmail(ctx, email interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserIDByEmail", reflect.TypeOf((*MockIntegration)(nil).GetUserIDByEmail), ctx, email)
 }
 
+
 // LeaveChannel mocks base method.
 func (m *MockIntegration) LeaveChannel(ctx context.Context, channelID string) error {
 	m.ctrl.T.Helper()
