@@ -20,12 +20,12 @@ func isDockerAvailable() bool {
 	if err != nil {
 		return false
 	}
-	
+
 	cmd := exec.Command("docker", "info")
 	if err := cmd.Run(); err != nil {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -33,7 +33,7 @@ func TestDBSetup(t *testing.T) {
 	if !isDockerAvailable() {
 		t.Skip("Docker is not available, skipping test")
 	}
-	
+
 	ctx := context.Background()
 	postgresContainer, err := postgres.Run(ctx, testPostgresImage, postgres.BasicWaitStrategies())
 	require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestUpdateReaction(t *testing.T) {
 	if !isDockerAvailable() {
 		t.Skip("Docker is not available, skipping test")
 	}
-	
+
 	ctx := context.Background()
 	postgresContainer, err := postgres.Run(ctx, testPostgresImage, postgres.BasicWaitStrategies())
 	require.NoError(t, err)

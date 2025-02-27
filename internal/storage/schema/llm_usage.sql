@@ -57,3 +57,7 @@ FROM llm_usage_v1
 WHERE created_at BETWEEN @start_time AND @end_time
 AND (@model = '' OR model = @model)
 AND (@operation_type = '' OR operation_type = @operation_type);
+
+-- name: DeleteOldLLMUsage :exec
+DELETE FROM llm_usage_v1
+WHERE created_at < @cutoff_date;

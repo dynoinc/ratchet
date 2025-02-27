@@ -65,7 +65,7 @@ type config struct {
 
 	// Channel Monitor Configuration
 	ChannelMonitor channel_monitor.Config `split_words:"true"`
-	
+
 	// LLM Usage Cleanup Configuration
 	LLMUsageCleanup llm_usage_cleanup_worker.Config `split_words:"true"`
 }
@@ -202,7 +202,7 @@ func main() {
 	})
 
 	// LLM usage cleanup worker setup
-	llmUsageCleanupWorker := llm_usage_cleanup_worker.New(c.LLMUsageCleanup, db)
+	llmUsageCleanupWorker := llm_usage_cleanup_worker.New(c.LLMUsageCleanup, bot)
 
 	// Background job setup
 	workers := river.NewWorkers()
@@ -210,11 +210,7 @@ func main() {
 	river.AddWorker(workers, channelOnboardWorker)
 	river.AddWorker(workers, backfillThreadWorker)
 	river.AddWorker(workers, modulesWorker)
-	
-	// Explicit type needed to solve type inference issues
-	river.AddWorker(workers, river.WorkFunc(func(ctx context.Context, job *river.Job[background.LLMUsageCleanupWorkerArgs]) error {
-		return llmUsageCleanupWorker.Work(ctx, job)
-	}))
+	river.AddWorker(workers, llmUsageCleanupWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up background worker", "error", err)
@@ -247,12 +243,12 @@ func main() {
 	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
 		slog.InfoContext(ctx, "Starting river client")
-		
+
 		// Schedule periodic LLM usage cleanup
 		if err := llmUsageCleanupWorker.Schedule(ctx, riverClient); err != nil {
 			slog.ErrorContext(ctx, "scheduling LLM usage cleanup", "error", err)
 		}
-		
+
 		return riverClient.Start(ctx)
 	})
 	wg.Go(func() error {

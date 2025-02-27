@@ -48,19 +48,19 @@ type Client interface {
 
 // UsageRecord represents a record of LLM usage
 type UsageRecord struct {
-	ID              uuid.UUID       `json:"id,omitempty"`
-	CreatedAt       time.Time       `json:"created_at,omitempty"`
-	Model           string          `json:"model"`
-	OperationType   string          `json:"operation_type"`
-	PromptText      string          `json:"prompt_text"`
-	CompletionText  string          `json:"completion_text,omitempty"`
-	PromptTokens    int             `json:"prompt_tokens,omitempty"`
-	CompletionTokens int            `json:"completion_tokens,omitempty"`
-	TotalTokens     int             `json:"total_tokens,omitempty"`
-	LatencyMs       int             `json:"latency_ms,omitempty"`
-	Status          string          `json:"status"`
-	ErrorMessage    string          `json:"error_message,omitempty"`
-	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	ID               uuid.UUID       `json:"id,omitempty"`
+	CreatedAt        time.Time       `json:"created_at,omitempty"`
+	Model            string          `json:"model"`
+	OperationType    string          `json:"operation_type"`
+	PromptText       string          `json:"prompt_text"`
+	CompletionText   string          `json:"completion_text,omitempty"`
+	PromptTokens     int             `json:"prompt_tokens,omitempty"`
+	CompletionTokens int             `json:"completion_tokens,omitempty"`
+	TotalTokens      int             `json:"total_tokens,omitempty"`
+	LatencyMs        int             `json:"latency_ms,omitempty"`
+	Status           string          `json:"status"`
+	ErrorMessage     string          `json:"error_message,omitempty"`
+	Metadata         json.RawMessage `json:"metadata,omitempty"`
 }
 
 // Operation types for the UsageRecord.OperationType field
@@ -233,7 +233,7 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	promptTokens := int(resp.Usage.PromptTokens)
 	completionTokens := int(resp.Usage.CompletionTokens)
 	totalTokens := int(resp.Usage.TotalTokens)
-	
+
 	if promptTokens > 0 || completionTokens > 0 || totalTokens > 0 {
 		usage.PromptTokens = promptTokens
 		usage.CompletionTokens = completionTokens
@@ -399,7 +399,7 @@ Example 4:
 	promptTokens := int(resp.Usage.PromptTokens)
 	completionTokens := int(resp.Usage.CompletionTokens)
 	totalTokens := int(resp.Usage.TotalTokens)
-	
+
 	if promptTokens > 0 || completionTokens > 0 || totalTokens > 0 {
 		usage.PromptTokens = promptTokens
 		usage.CompletionTokens = completionTokens
@@ -458,11 +458,11 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	}
 
 	usage.Status = StatusSuccess
-	
+
 	// Embedding models report tokens differently - there's only prompt tokens
 	promptTokens := int(resp.Usage.PromptTokens)
 	totalTokens := int(resp.Usage.TotalTokens)
-	
+
 	if promptTokens > 0 || totalTokens > 0 {
 		usage.PromptTokens = promptTokens
 		usage.TotalTokens = totalTokens
@@ -540,7 +540,7 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	promptTokens := int(resp.Usage.PromptTokens)
 	completionTokens := int(resp.Usage.CompletionTokens)
 	totalTokens := int(resp.Usage.TotalTokens)
-	
+
 	if promptTokens > 0 || completionTokens > 0 || totalTokens > 0 {
 		usage.PromptTokens = promptTokens
 		usage.CompletionTokens = completionTokens
@@ -553,7 +553,7 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	}
 
 	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
-	
+
 	if jsonSchema != nil {
 		if keyErr, err := jsonSchema.ValidateBytes(ctx, []byte(respMsg)); err != nil || len(keyErr) > 0 {
 			return "", fmt.Errorf("validating response: %v %w", keyErr, err)
@@ -649,7 +649,7 @@ Classify the following message:`
 	promptTokens := int(resp.Usage.PromptTokens)
 	completionTokens := int(resp.Usage.CompletionTokens)
 	totalTokens := int(resp.Usage.TotalTokens)
-	
+
 	if promptTokens > 0 || completionTokens > 0 || totalTokens > 0 {
 		usage.PromptTokens = promptTokens
 		usage.CompletionTokens = completionTokens

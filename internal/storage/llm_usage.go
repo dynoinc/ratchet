@@ -42,7 +42,7 @@ type RecordLLMUsageParams struct {
 // RecordLLMUsage records LLM usage data in the database
 func (s *LLMUsageService) RecordLLMUsage(ctx context.Context, params interface{}) error {
 	var llmParams RecordLLMUsageParams
-	
+
 	// Check if the params are from the LLM package or our own
 	switch p := params.(type) {
 	case RecordLLMUsageParams:
@@ -65,7 +65,7 @@ func (s *LLMUsageService) RecordLLMUsage(ctx context.Context, params interface{}
 	default:
 		return fmt.Errorf("unsupported params type: %T", params)
 	}
-	
+
 	// If metadata is nil, use an empty JSON object
 	metadata := llmParams.Metadata
 	if metadata == nil {

@@ -11,6 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteOldLLMUsage = `-- name: DeleteOldLLMUsage :exec
+DELETE FROM llm_usage_v1
+WHERE created_at < $1
+`
+
+func (q *Queries) DeleteOldLLMUsage(ctx context.Context, cutoffDate pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteOldLLMUsage, cutoffDate)
+	return err
+}
+
 const getLLMUsageByTimeRange = `-- name: GetLLMUsageByTimeRange :many
 SELECT 
     id,

@@ -75,7 +75,7 @@ func New(
 	llmClient llm.Client,
 ) (http.Handler, error) {
 	llmUsageService := storage.NewLLMUsageService(db)
-	
+
 	handlers := &httpHandlers{
 		db:               db,
 		riverClient:      riverClient,
@@ -388,7 +388,7 @@ func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
 	// Default values if not provided
 	startTime := time.Now().Add(-24 * time.Hour)
 	endTime := time.Now()
-	
+
 	// Parse start time if provided
 	if startStr != "" {
 		parsedStartTime, err := time.Parse(time.RFC3339, startStr)
@@ -501,7 +501,7 @@ func (h *httpHandlers) getLLMUsageStats(r *http.Request) (any, error) {
 	// Default values if not provided
 	startTime := time.Now().Add(-24 * time.Hour)
 	endTime := time.Now()
-	
+
 	// Parse start time if provided
 	if startStr != "" {
 		parsedStartTime, err := time.Parse(time.RFC3339, startStr)
@@ -537,21 +537,21 @@ func (h *httpHandlers) getLLMUsageStats(r *http.Request) (any, error) {
 
 	// Map to a response structure
 	type LLMUsageStats struct {
-		TotalRequests       int64   `json:"total_requests"`
-		TotalPromptTokens   int64   `json:"total_prompt_tokens"`
-		TotalCompletionTokens int64 `json:"total_completion_tokens"`
-		TotalTokens         int64   `json:"total_tokens"`
-		AvgLatencyMs        float64 `json:"avg_latency_ms"`
-		ErrorCount          int64   `json:"error_count"`
+		TotalRequests         int64   `json:"total_requests"`
+		TotalPromptTokens     int64   `json:"total_prompt_tokens"`
+		TotalCompletionTokens int64   `json:"total_completion_tokens"`
+		TotalTokens           int64   `json:"total_tokens"`
+		AvgLatencyMs          float64 `json:"avg_latency_ms"`
+		ErrorCount            int64   `json:"error_count"`
 	}
 
 	return LLMUsageStats{
-		TotalRequests:       stats.TotalRequests,
-		TotalPromptTokens:   stats.TotalPromptTokens,
+		TotalRequests:         stats.TotalRequests,
+		TotalPromptTokens:     stats.TotalPromptTokens,
 		TotalCompletionTokens: stats.TotalCompletionTokens,
-		TotalTokens:         stats.TotalTokens,
-		AvgLatencyMs:        stats.AvgLatencyMs,
-		ErrorCount:          stats.ErrorCount,
+		TotalTokens:           stats.TotalTokens,
+		AvgLatencyMs:          stats.AvgLatencyMs,
+		ErrorCount:            stats.ErrorCount,
 	}, nil
 }
 

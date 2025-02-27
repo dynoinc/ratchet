@@ -34,32 +34,32 @@ func TestGenerateEmbedding(t *testing.T) {
 
 func TestRecordUsage(t *testing.T) {
 	mockDB := new(MockDB)
-	
+
 	// Setup expectation
 	mockDB.On("RecordLLMUsage", mock.Anything, mock.MatchedBy(func(params RecordLLMUsageParams) bool {
-		return params.Model == "test-model" && 
-			   params.OperationType == "test-operation" && 
-			   params.Status == StatusSuccess
+		return params.Model == "test-model" &&
+			params.OperationType == "test-operation" &&
+			params.Status == StatusSuccess
 	})).Return(nil)
 
 	client := &client{
 		cfg: Config{Model: "test-model"},
 		db:  mockDB,
 	}
-	
+
 	// Test the RecordUsage method
 	err := client.RecordUsage(context.Background(), &UsageRecord{
-		Model:         "test-model",
-		OperationType: "test-operation",
-		PromptText:    "test prompt",
-		CompletionText: "test completion",
-		PromptTokens:   100,
+		Model:            "test-model",
+		OperationType:    "test-operation",
+		PromptText:       "test prompt",
+		CompletionText:   "test completion",
+		PromptTokens:     100,
 		CompletionTokens: 50,
-		TotalTokens:    150,
-		LatencyMs:      200,
-		Status:         StatusSuccess,
+		TotalTokens:      150,
+		LatencyMs:        200,
+		Status:           StatusSuccess,
 	})
-	
+
 	require.NoError(t, err)
 	mockDB.AssertExpectations(t)
 }
