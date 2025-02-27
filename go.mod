@@ -7,6 +7,7 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/getsentry/sentry-go v0.31.1
 	github.com/golang-migrate/migrate/v4 v4.18.2
+	github.com/golang/mock v1.6.0
 	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/joho/godotenv v1.5.1
@@ -26,7 +27,6 @@ require (
 	go.opentelemetry.io/otel v1.34.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.56.0
 	go.opentelemetry.io/otel/sdk/metric v1.34.0
-	go.uber.org/mock v0.5.0
 	golang.org/x/sync v0.11.0
 	riverqueue.com/riverui v0.8.0
 )
@@ -62,6 +62,7 @@ require (
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/wasilibs/go-pgquery v0.0.0-20250219053243-148840c597e6 // indirect
 	github.com/wasilibs/wazero-helpers v0.0.0-20250123031827-cd30c44769bb // indirect
+	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect

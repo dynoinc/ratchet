@@ -7,9 +7,9 @@ import (
 	"testing"
 	"text/template"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor/mocks"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
