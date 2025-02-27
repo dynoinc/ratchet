@@ -12,7 +12,7 @@ import (
 )
 
 // Define the postgres image to use for testing
-const testPostgresImage = "postgres:16.2-alpine"
+const testPostgresImage = "pgvector/pgvector:pg12"
 
 // Check if Docker is available
 func isDockerAvailable() bool {
