@@ -408,15 +408,17 @@ func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
 	}
 
 	// Parse limit and offset
-	limit, err := strconv.Atoi(limitStr)
+	limit64, err := strconv.ParseInt(limitStr, 10, 32)
 	if err != nil {
 		return nil, fmt.Errorf("invalid limit: %w", err)
 	}
+	limit := int32(limit64)
 
-	offset, err := strconv.Atoi(offsetStr)
+	offset64, err := strconv.ParseInt(offsetStr, 10, 32)
 	if err != nil {
 		return nil, fmt.Errorf("invalid offset: %w", err)
 	}
+	offset := int32(offset64)
 
 	// Convert to pgtype.Timestamptz
 	startTz := pgtype.Timestamptz{Time: startTime, Valid: true}
