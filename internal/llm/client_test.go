@@ -16,7 +16,7 @@ type MockDB struct {
 	mock.Mock
 }
 
-func (m *MockDB) RecordLLMUsage(ctx context.Context, params RecordLLMUsageParams) error {
+func (m *MockDB) RecordLLMUsage(ctx context.Context, params interface{}) error {
 	args := m.Called(ctx, params)
 	return args.Error(0)
 }

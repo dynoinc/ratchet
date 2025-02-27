@@ -1,5 +1,5 @@
-//go:generate go tool mockgen -destination=mocks/mock_llm_client.go -package=mocks -source=../../llm/client.go Client
-//go:generate go tool mockgen -destination=mocks/mock_slack_integration.go -package=mocks -source=../../slack_integration/slack.go Integration
+//go:generate mockgen -destination=mocks/mock_llm_client.go -package=mocks -source=../../llm/client.go Client
+//go:generate mockgen -destination=mocks/mock_slack_integration.go -package=mocks -source=../../slack_integration/slack.go Integration
 package channel_monitor
 
 import (

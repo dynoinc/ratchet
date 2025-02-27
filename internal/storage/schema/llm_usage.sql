@@ -43,7 +43,7 @@ SELECT
 FROM llm_usage_v1
 WHERE created_at BETWEEN @start_time AND @end_time
 ORDER BY created_at DESC
-LIMIT @limit OFFSET @offset;
+LIMIT @results_limit OFFSET @results_offset;
 
 -- name: GetLLMUsageStats :one
 SELECT 
