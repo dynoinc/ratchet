@@ -455,7 +455,7 @@ func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
 		// Convert to UUID string
 		idStr := ""
 		if usage.ID.Valid {
-			idStr = usage.ID.Bytes.String()
+			idStr = fmt.Sprintf("%x-%x-%x-%x-%x", usage.ID.Bytes[0:4], usage.ID.Bytes[4:6], usage.ID.Bytes[6:8], usage.ID.Bytes[8:10], usage.ID.Bytes[10:16])
 		}
 
 		// Convert to standard time.Time

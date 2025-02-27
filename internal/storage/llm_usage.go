@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,50 +40,75 @@ type RecordLLMUsageParams struct {
 }
 
 // RecordLLMUsage records LLM usage data in the database
-func (s *LLMUsageService) RecordLLMUsage(ctx context.Context, params RecordLLMUsageParams) error {
+func (s *LLMUsageService) RecordLLMUsage(ctx context.Context, params interface{}) error {
+	var llmParams RecordLLMUsageParams
+	
+	// Check if the params are from the LLM package or our own
+	switch p := params.(type) {
+	case RecordLLMUsageParams:
+		llmParams = p
+	case llm.RecordLLMUsageParams:
+		// Convert from LLM package params to our params
+		llmParams = RecordLLMUsageParams{
+			Model:            p.Model,
+			OperationType:    p.OperationType,
+			PromptText:       p.PromptText,
+			CompletionText:   p.CompletionText,
+			PromptTokens:     p.PromptTokens,
+			CompletionTokens: p.CompletionTokens,
+			TotalTokens:      p.TotalTokens,
+			LatencyMs:        p.LatencyMs,
+			Status:           p.Status,
+			ErrorMessage:     p.ErrorMessage,
+			Metadata:         p.Metadata,
+		}
+	default:
+		return fmt.Errorf("unsupported params type: %T", params)
+	}
+	
 	// If metadata is nil, use an empty JSON object
-	metadata := params.Metadata
+	metadata := llmParams.Metadata
 	if metadata == nil {
 		metadata = []byte("{}")
 	}
 
 	// Map our parameters to the sqlc-generated struct
 	var completionText *string
-	if params.CompletionText != "" {
-		completionText = &params.CompletionText
+	if llmParams.CompletionText != "" {
+		completionText = &llmParams.CompletionText
 	}
 
 	var errorMessage *string
-	if params.ErrorMessage != "" {
-		errorMessage = &params.ErrorMessage
+	if llmParams.ErrorMessage != "" {
+		errorMessage = &llmParams.ErrorMessage
 	}
 
 	// Create optional values
 	var promptTokens, completionTokens, totalTokens, latencyMs *int32
-	if params.PromptTokens > 0 {
-		promptTokens = &params.PromptTokens
+	if llmParams.PromptTokens > 0 {
+		promptTokens = &llmParams.PromptTokens
 	}
-	if params.CompletionTokens > 0 {
-		completionTokens = &params.CompletionTokens
+	if llmParams.CompletionTokens > 0 {
+		completionTokens = &llmParams.CompletionTokens
 	}
-	if params.TotalTokens > 0 {
-		totalTokens = &params.TotalTokens
+	if llmParams.TotalTokens > 0 {
+		totalTokens = &llmParams.TotalTokens
 	}
-	if params.LatencyMs > 0 {
-		latencyMs = &params.LatencyMs
+	if llmParams.LatencyMs > 0 {
+		latencyMs = &llmParams.LatencyMs
 	}
 
 	// Use the sqlc-generated function
 	_, err := s.query.RecordLLMUsage(ctx, schema.RecordLLMUsageParams{
-		Model:            params.Model,
-		OperationType:    params.OperationType,
-		PromptText:       params.PromptText,
+		Model:            llmParams.Model,
+		OperationType:    llmParams.OperationType,
+		PromptText:       llmParams.PromptText,
 		CompletionText:   completionText,
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		TotalTokens:      totalTokens,
 		LatencyMs:        latencyMs,
-		Status:           params.Status,
+		Status:           llmParams.Status,
 		ErrorMessage:     errorMessage,
 		Metadata:         metadata,
 	})

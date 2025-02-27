@@ -210,7 +210,11 @@ func main() {
 	river.AddWorker(workers, channelOnboardWorker)
 	river.AddWorker(workers, backfillThreadWorker)
 	river.AddWorker(workers, modulesWorker)
-	river.AddWorker(workers, llmUsageCleanupWorker)
+	
+	// Explicit type needed to solve type inference issues
+	river.AddWorker(workers, river.WorkFunc(func(ctx context.Context, job *river.Job[background.LLMUsageCleanupWorkerArgs]) error {
+		return llmUsageCleanupWorker.Work(ctx, job)
+	}))
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up background worker", "error", err)

@@ -25,6 +25,11 @@ type Worker struct {
 	cfg   Config
 }
 
+// Kind returns the kind of river job this worker handles
+func (w *Worker) Kind() string {
+	return "llm_usage_cleanup"
+}
+
 // New creates a new LLM usage cleanup worker
 func New(cfg Config, db schema.DBTX) *Worker {
 	return &Worker{
@@ -33,7 +38,7 @@ func New(cfg Config, db schema.DBTX) *Worker {
 	}
 }
 
-// Work implements river.Worker
+// Work implements river.Worker for background.LLMUsageCleanupWorkerArgs
 func (w *Worker) Work(ctx context.Context, job *river.Job[background.LLMUsageCleanupWorkerArgs]) error {
 	slog.InfoContext(ctx, "Cleaning up old LLM usage data")
 
@@ -62,11 +67,14 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.LLMUsageCle
 
 // Schedule periodically cleans up old LLM usage data
 func (w *Worker) Schedule(ctx context.Context, client *river.Client[pgx.Tx]) error {
-	// Schedule a job to run daily at midnight
+	// Schedule a job to run daily at midnight tomorrow
+	scheduledTime := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour)
+	
+	// Insert with scheduled time
 	if _, err := client.Insert(ctx, background.LLMUsageCleanupWorkerArgs{
 		RetentionDays: w.cfg.DefaultRetentionDays,
 	}, &river.InsertOpts{
-		ScheduledAt: river.ScheduleDaily(0, 0), // Run at midnight
+		ScheduledAt: scheduledTime,
 	}); err != nil {
 		return fmt.Errorf("scheduling LLM usage cleanup job: %w", err)
 	}
