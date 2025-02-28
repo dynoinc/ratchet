@@ -6,12 +6,29 @@ package schema
 
 import (
 	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
 )
 
 type ChannelsV2 struct {
 	ID    string
 	Attrs dto.ChannelAttrs
+}
+
+type LlmUsageV1 struct {
+	ID               pgtype.UUID
+	CreatedAt        pgtype.Timestamptz
+	Model            string
+	OperationType    string
+	PromptText       string
+	CompletionText   *string
+	PromptTokens     *int32
+	CompletionTokens *int32
+	TotalTokens      *int32
+	LatencyMs        *int32
+	Status           string
+	ErrorMessage     *string
+	Metadata         []byte
 }
 
 type MessagesV3 struct {

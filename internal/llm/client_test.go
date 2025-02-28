@@ -2,9 +2,10 @@ package llm
 
 import (
 	"encoding/json"
-	"github.com/qri-io/jsonschema"
 	"regexp"
 	"testing"
+
+	"github.com/qri-io/jsonschema"
 
 	"github.com/stretchr/testify/require"
 )

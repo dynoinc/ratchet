@@ -20,6 +20,10 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
+//go:generate go install github.com/golang/mock/mockgen@v1.6.0
+//go:generate mockgen -source=../../llm/client.go -destination=mocks/mock_llm_client.go -package=mocks
+//go:generate mockgen -source=../../slack_integration/slack.go -destination=mocks/mock_slack_integration.go -package=mocks
+
 type Config struct {
 	ConfigFile string `split_words:"true"`
 }
