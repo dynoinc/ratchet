@@ -28,12 +28,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Install mockgen
-        run: go install github.com/golang/mock/mockgen@latest
-
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-
       - name: Go Mod
         run: go mod download
 

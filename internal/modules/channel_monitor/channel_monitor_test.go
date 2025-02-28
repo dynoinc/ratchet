@@ -1,5 +1,5 @@
-//go:generate mockgen -source=../../llm/client.go -destination=mocks/mock_llm_client.go -package=mocks
-//go:generate mockgen -source=../../slack_integration/slack.go -destination=mocks/mock_slack_integration.go -package=mocks
+//go:generate go tool mockgen -destination=mocks/mock_llm_client.go -package=mocks -source=../../llm/client.go Client
+//go:generate go tool mockgen -destination=mocks/mock_slack_integration.go -package=mocks -source=../../slack_integration/slack.go Integration
 package channel_monitor
 
 import (
@@ -7,9 +7,9 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor/mocks"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"

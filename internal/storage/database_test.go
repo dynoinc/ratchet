@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"os/exec"
 	"testing"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -11,31 +10,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-// Define the postgres image to use for testing
-const testPostgresImage = "pgvector/pgvector:pg12"
-
-// Check if Docker is available
-func isDockerAvailable() bool {
-	_, err := exec.LookPath("docker")
-	if err != nil {
-		return false
-	}
-
-	cmd := exec.Command("docker", "info")
-	if err := cmd.Run(); err != nil {
-		return false
-	}
-
-	return true
-}
-
 func TestDBSetup(t *testing.T) {
-	if !isDockerAvailable() {
-		t.Skip("Docker is not available, skipping test")
-	}
-
 	ctx := context.Background()
-	postgresContainer, err := postgres.Run(ctx, testPostgresImage, postgres.BasicWaitStrategies())
+	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
 
@@ -44,12 +21,8 @@ func TestDBSetup(t *testing.T) {
 }
 
 func TestUpdateReaction(t *testing.T) {
-	if !isDockerAvailable() {
-		t.Skip("Docker is not available, skipping test")
-	}
-
 	ctx := context.Background()
-	postgresContainer, err := postgres.Run(ctx, testPostgresImage, postgres.BasicWaitStrategies())
+	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
 
