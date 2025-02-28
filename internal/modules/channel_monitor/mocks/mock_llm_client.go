@@ -117,12 +117,13 @@ func (mr *MockClientMockRecorder) GenerateEmbedding(ctx, task, text any) *gomock
 }
 
 // RunJSONModePrompt mocks base method.
-func (m *MockClient) RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error) {
+func (m *MockClient) RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunJSONModePrompt", ctx, prompt, schema)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // RunJSONModePrompt indicates an expected call of RunJSONModePrompt.

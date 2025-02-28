@@ -2,9 +2,10 @@ package llm
 
 import (
 	"encoding/json"
-	"github.com/qri-io/jsonschema"
 	"regexp"
 	"testing"
+
+	"github.com/qri-io/jsonschema"
 
 	"github.com/stretchr/testify/require"
 )
@@ -37,12 +38,14 @@ func TestJSONSchemaValidator(t *testing.T) {
 	err = json.Unmarshal([]byte(schemaJSON), schema)
 	require.NoError(t, err)
 
-	resp, err := llmClient.RunJSONModePrompt(t.Context(), `Return the json message {"hello": "world"}`, schema)
+	resp, respMsg, err := llmClient.RunJSONModePrompt(t.Context(), `Return the json message {"hello": "world"}`, schema)
 	require.NoError(t, err)
+	require.Empty(t, respMsg)
 	space := regexp.MustCompile(`\s+`)
 	require.Equal(t, `{"hello":"world"}`, space.ReplaceAllString(resp, ""))
 
-	resp, err = llmClient.RunJSONModePrompt(t.Context(), `Return the json message {"hello": 1}`, schema)
+	resp, respMsg, err = llmClient.RunJSONModePrompt(t.Context(), `Return the json message {"hello": 1}`, schema)
 	require.Error(t, err)
 	require.Empty(t, resp)
+	require.Equal(t, `{"hello":1}`, space.ReplaceAllString(respMsg, ""))
 }

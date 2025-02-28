@@ -38,7 +38,7 @@ type Client interface {
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
 	CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
-	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, error)
+	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
 	ClassifyCommand(ctx context.Context, text string) (string, error)
 }
 
@@ -308,9 +308,11 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	return r, nil
 }
 
-func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchema *jsonschema.Schema) (string, error) {
+// RunJSONModePrompt runs a JSON mode prompt and validates the response against the provided JSON schema.
+// It returns the response and the raw response message (returned if the response is not valid).
+func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchema *jsonschema.Schema) (string, string, error) {
 	if c == nil {
-		return "", nil
+		return "", "", nil
 	}
 	params := openai.ChatCompletionNewParams{
 		Model: openai.F(openai.ChatModel(c.cfg.Model)),
@@ -329,16 +331,16 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 
 	resp, err := c.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return "", fmt.Errorf("running JSON mode prompt: %w", err)
+		return "", "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
 	respMsg := resp.Choices[0].Message.Content
 	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
 	if jsonSchema != nil {
 		if keyErr, err := jsonSchema.ValidateBytes(ctx, []byte(respMsg)); err != nil || len(keyErr) > 0 {
-			return "", fmt.Errorf("validating response: %v %w", keyErr, err)
+			return "", respMsg, fmt.Errorf("validating response: %v %w", keyErr, err)
 		}
 	}
-	return respMsg, nil
+	return respMsg, "", nil
 }
 
 func (c *client) ClassifyCommand(ctx context.Context, text string) (string, error) {
@@ -351,6 +353,7 @@ Given a message, respond with exactly one of these commands:
 - weekly_report
 - usage_report
 - leave_channel
+- test_channel_monitor_prompt
 - none
 
 Examples:
@@ -374,6 +377,15 @@ Response: leave_channel
 
 User: "get out of this channel"
 Response: leave_channel
+
+User: "test this channel monitor prompt"
+Response: test_channel_monitor_prompt
+
+User: "test the attached monitor prompt"
+Response: test_channel_monitor_prompt
+
+User: "test the channel prompt"
+Response: test_channel_monitor_prompt
 
 User: "how are you doing?"
 Response: none

@@ -69,6 +69,21 @@ func (mr *MockIntegrationMockRecorder) Client() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Client", reflect.TypeOf((*MockIntegration)(nil).Client))
 }
 
+// FetchFile mocks base method.
+func (m *MockIntegration) FetchFile(ctx context.Context, file slack.File) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchFile", ctx, file)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchFile indicates an expected call of FetchFile.
+func (mr *MockIntegrationMockRecorder) FetchFile(ctx, file any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchFile", reflect.TypeOf((*MockIntegration)(nil).FetchFile), ctx, file)
+}
+
 // GetBotChannels mocks base method.
 func (m *MockIntegration) GetBotChannels() ([]slack.Channel, error) {
 	m.ctrl.T.Helper()
@@ -127,6 +142,21 @@ func (m *MockIntegration) GetConversationReplies(ctx context.Context, channelID,
 func (mr *MockIntegrationMockRecorder) GetConversationReplies(ctx, channelID, ts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConversationReplies", reflect.TypeOf((*MockIntegration)(nil).GetConversationReplies), ctx, channelID, ts)
+}
+
+// GetFiles mocks base method.
+func (m *MockIntegration) GetFiles(ctx context.Context, channelID, ts string) ([]slack.File, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetFiles", ctx, channelID, ts)
+	ret0, _ := ret[0].([]slack.File)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetFiles indicates an expected call of GetFiles.
+func (mr *MockIntegrationMockRecorder) GetFiles(ctx, channelID, ts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFiles", reflect.TypeOf((*MockIntegration)(nil).GetFiles), ctx, channelID, ts)
 }
 
 // GetUserIDByEmail mocks base method.

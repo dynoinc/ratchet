@@ -17,6 +17,7 @@ import (
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
+	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
@@ -158,7 +159,7 @@ func (c *channelMonitor) handleMessage(ctx context.Context, slug string, entry *
 	if err != nil {
 		return fmt.Errorf("executing prompt template: %w", err)
 	}
-	lmmOutput, err := c.llmClient.RunJSONModePrompt(ctx, prompt.String(), entry.ResultSchema)
+	lmmOutput, _, err := c.llmClient.RunJSONModePrompt(ctx, prompt.String(), entry.ResultSchema)
 	if err != nil {
 		return fmt.Errorf("running prompt: %w", err)
 	}
@@ -223,4 +224,113 @@ func (c *channelMonitor) doOutputActions(ctx context.Context, outputData Executa
 		}
 	}
 	return nil
+}
+
+type TestChannelMonitorReportData struct {
+	Message         dto.SlackMessage
+	Prompt          string
+	ValidatedOutput string
+	Error           string
+	InvalidOutput   string
+}
+
+func TestChannelMonitorPrompt(ctx context.Context,
+	db *schema.Queries,
+	llmClient llm.Client,
+	slackIntegration slack_integration.Integration,
+	msg dto.MessageAttrs,
+	channelID string,
+	slackTS string,
+) error {
+	entry, history, err := getEntryAndHistoryForTest(ctx, slackIntegration, channelID, slackTS)
+	if err != nil {
+		slackIntegration.PostThreadReply(ctx, channelID, slackTS, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("Error getting entry and history for test: %s", err), false, false), nil, nil))
+		return fmt.Errorf("getting entry and history for test: %w", err)
+	}
+	reportData := []*TestChannelMonitorReportData{}
+	for _, msg := range history {
+		dtoMessage := dto.SlackMessage{
+			SubType:     msg.SubType,
+			Text:        msg.Text,
+			User:        msg.User,
+			BotID:       msg.BotID,
+			BotUsername: msg.Username,
+		}
+		data := PromptData{Message: dtoMessage}
+		var prompt bytes.Buffer
+		err := entry.PromptTemplate.Execute(&prompt, data)
+		if err != nil {
+			slackIntegration.PostThreadReply(ctx, channelID, slackTS, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("Error executing prompt template: %s", err), false, false), nil, nil))
+			return fmt.Errorf("executing prompt template: %w", err)
+		}
+		validOutput, invalidOutput, err := llmClient.RunJSONModePrompt(ctx, prompt.String(), entry.ResultSchema)
+		reportData = append(reportData, &TestChannelMonitorReportData{
+			Message:         dtoMessage,
+			Prompt:          prompt.String(),
+			ValidatedOutput: validOutput,
+			InvalidOutput:   invalidOutput,
+			Error:           err.Error(),
+		})
+	}
+	reportMarkdown := "# Test Channel Monitor Report\n\n"
+	for _, data := range reportData {
+		// Show the message
+		reportMarkdown += fmt.Sprintf("### Message\n\n%s\n", data.Message.Text)
+		// Always show the prompt, but behind a collapsible block
+		reportMarkdown += fmt.Sprintf("\n<details><summary>Prompt</summary>\n%s</details>\n\n", data.Prompt)
+		// If there is validated output, show it as json code block
+		if data.ValidatedOutput != "" {
+			reportMarkdown += fmt.Sprintf("### Output\n\n```json\n%s\n```\n", data.ValidatedOutput)
+		}
+		// If there is invalid output, show it as json code block
+		if data.InvalidOutput != "" {
+			reportMarkdown += fmt.Sprintf("### Invalid Output\n\n<details><summary>Invalid Output</summary>\n```json\n%s\n```\n</details>\n\n", data.InvalidOutput)
+		}
+		// If there is an error, show it as a code block
+		if data.Error != "" {
+			reportMarkdown += fmt.Sprintf("### Error\n\n```\n%s\n```\n", data.Error)
+		}
+		reportMarkdown += "\n----\n"
+	}
+	slackIntegration.PostThreadReply(ctx, channelID, slackTS, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, reportMarkdown, false, false), nil, nil))
+	return nil
+}
+
+func getEntryAndHistoryForTest(ctx context.Context, slackIntegration slack_integration.Integration, channelID string, slackTS string) (*Entry, []slack.Message, error) {
+	files, err := slackIntegration.GetFiles(ctx, channelID, slackTS)
+	// TODO: Reply to the thread with the error
+	if err != nil {
+		slog.Error("getting files", "error", err)
+		return nil, nil, fmt.Errorf("getting files: %w", err)
+	}
+	if len(files) != 1 {
+		slog.Error("no files found")
+		return nil, nil, fmt.Errorf("no files found")
+	}
+	file := files[0]
+	if file.Filetype != "yaml" && file.Filetype != "yml" {
+		slog.Error("file is not a yaml file", "filename", file.Name, "mimetype", file.Mimetype)
+		return nil, nil, fmt.Errorf("file %s is not a yaml file", file.Name)
+	}
+	fileBytes, err := slackIntegration.FetchFile(ctx, file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching file: %w", err)
+	}
+	parsedYaml := &map[string]interface{}{}
+	if err := yaml.Unmarshal(fileBytes, parsedYaml); err != nil {
+		return nil, nil, fmt.Errorf("unmarshalling yaml: %w", err)
+	}
+	marshaled, err := json.Marshal(parsedYaml)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshalling json: %w", err)
+	}
+	entry := &Entry{}
+	if err := json.Unmarshal(marshaled, entry); err != nil {
+		return nil, nil, fmt.Errorf("unmarshalling json: %w", err)
+	}
+	history, err := slackIntegration.GetConversationHistory(ctx, channelID, 10)
+	if err != nil {
+		return nil, nil, fmt.Errorf("getting conversation history: %w", err)
+	}
+	return entry, history, nil
 }
