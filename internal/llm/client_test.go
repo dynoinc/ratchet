@@ -10,7 +10,7 @@ import (
 )
 
 func TestGenerateEmbedding(t *testing.T) {
-	llmClient, err := New(t.Context(), DefaultConfig())
+	llmClient, err := New(t.Context(), DefaultConfig(), nil)
 	if err != nil {
 		t.Skip("Skipping test. Ollama not found")
 	}
@@ -21,7 +21,7 @@ func TestGenerateEmbedding(t *testing.T) {
 }
 
 func TestJSONSchemaValidator(t *testing.T) {
-	llmClient, err := New(t.Context(), DefaultConfig())
+	llmClient, err := New(t.Context(), DefaultConfig(), nil)
 	if err != nil {
 		t.Skip("Skipping test. Ollama not found")
 	}

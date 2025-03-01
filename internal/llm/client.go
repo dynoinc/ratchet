@@ -10,37 +10,16 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kelseyhightower/envconfig"
 	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/qri-io/jsonschema"
-	"github.com/riverqueue/river"
 
-	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
-
-// RiverClient is an interface for the River client
-type RiverClient interface {
-	Insert(ctx context.Context, args background.PersistLLMUsageWorkerArgs, opts *river.InsertOpts) (any, error)
-}
-
-// RiverClientAdapter adapts the river.Client to our RiverClient interface
-type RiverClientAdapter struct {
-	client *river.Client[pgx.Tx]
-}
-
-// NewRiverClientAdapter creates a new RiverClientAdapter
-func NewRiverClientAdapter(client *river.Client[pgx.Tx]) *RiverClientAdapter {
-	return &RiverClientAdapter{client: client}
-}
-
-// Insert implements the RiverClient interface
-func (a *RiverClientAdapter) Insert(ctx context.Context, args background.PersistLLMUsageWorkerArgs, opts *river.InsertOpts) (any, error) {
-	return a.client.Insert(ctx, args, opts)
-}
 
 type Config struct {
 	APIKey         string `envconfig:"API_KEY"`
@@ -60,7 +39,6 @@ func DefaultConfig() Config {
 
 type Client interface {
 	Config() Config
-	SetRiverClient(riverClient RiverClient)
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
 	CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
@@ -69,12 +47,12 @@ type Client interface {
 }
 
 type client struct {
-	client      *openai.Client
-	cfg         Config
-	riverClient RiverClient
+	client *openai.Client
+	cfg    Config
+	db     *pgxpool.Pool
 }
 
-func New(ctx context.Context, cfg Config) (Client, error) {
+func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 	if cfg.URL != "http://localhost:11434/v1/" && cfg.APIKey == "" {
 		return nil, nil
 	}
@@ -105,6 +83,7 @@ func New(ctx context.Context, cfg Config) (Client, error) {
 	return &client{
 		client: openaiClient,
 		cfg:    cfg,
+		db:     db,
 	}, nil
 }
 
@@ -126,26 +105,22 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 	return nil
 }
 
-func (c *client) SetRiverClient(riverClient RiverClient) {
-	c.riverClient = riverClient
-}
-
-// persistLLMUsage schedules a background job to persist LLM usage
+// persistLLMUsage directly writes LLM usage data to the database
 // This is a best-effort operation and failures are logged but don't affect the main flow
 func (c *client) persistLLMUsage(ctx context.Context, input dto.LLMInput, output dto.LLMOutput, model string) {
-	if c.riverClient == nil {
-		slog.DebugContext(ctx, "river client not initialized, skipping LLM usage persistence")
+	if c.db == nil {
+		slog.DebugContext(ctx, "database connection not initialized, skipping LLM usage persistence")
 		return
 	}
 
-	_, err := c.riverClient.Insert(ctx, background.PersistLLMUsageWorkerArgs{
+	params := schema.AddLLMUsageParams{
 		Input:  input,
 		Output: output,
 		Model:  model,
-	}, nil)
+	}
 
-	if err != nil {
-		slog.WarnContext(ctx, "failed to schedule LLM usage persistence", "error", err)
+	if _, err := schema.New(c.db).AddLLMUsage(ctx, params); err != nil {
+		slog.WarnContext(ctx, "failed to persist LLM usage", "error", err)
 	}
 }
 
