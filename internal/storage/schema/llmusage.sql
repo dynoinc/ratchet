@@ -6,24 +6,6 @@ VALUES
 RETURNING
     id, input, output, model, timestamp;
 
--- name: GetLLMUsageByID :one
-SELECT
-    id, input, output, model, timestamp
-FROM
-    llmusageV1
-WHERE
-    id = @id;
-
--- name: ListLLMUsage :many
-SELECT
-    id, input, output, model, timestamp
-FROM
-    llmusageV1
-ORDER BY
-    timestamp DESC
-LIMIT @limit_val
-OFFSET @offset_val;
-
 -- name: GetLLMUsageByTimeRange :many
 SELECT
     id, input, output, model, timestamp

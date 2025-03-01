@@ -40,28 +40,6 @@ func (q *Queries) AddLLMUsage(ctx context.Context, arg AddLLMUsageParams) (Llmus
 	return i, err
 }
 
-const getLLMUsageByID = `-- name: GetLLMUsageByID :one
-SELECT
-    id, input, output, model, timestamp
-FROM
-    llmusageV1
-WHERE
-    id = $1
-`
-
-func (q *Queries) GetLLMUsageByID(ctx context.Context, id int32) (Llmusagev1, error) {
-	row := q.db.QueryRow(ctx, getLLMUsageByID, id)
-	var i Llmusagev1
-	err := row.Scan(
-		&i.ID,
-		&i.Input,
-		&i.Output,
-		&i.Model,
-		&i.Timestamp,
-	)
-	return i, err
-}
-
 const getLLMUsageByModel = `-- name: GetLLMUsageByModel :many
 SELECT
     id, input, output, model, timestamp
@@ -125,48 +103,6 @@ type GetLLMUsageByTimeRangeParams struct {
 
 func (q *Queries) GetLLMUsageByTimeRange(ctx context.Context, arg GetLLMUsageByTimeRangeParams) ([]Llmusagev1, error) {
 	rows, err := q.db.Query(ctx, getLLMUsageByTimeRange, arg.StartTime, arg.EndTime)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Llmusagev1
-	for rows.Next() {
-		var i Llmusagev1
-		if err := rows.Scan(
-			&i.ID,
-			&i.Input,
-			&i.Output,
-			&i.Model,
-			&i.Timestamp,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLLMUsage = `-- name: ListLLMUsage :many
-SELECT
-    id, input, output, model, timestamp
-FROM
-    llmusageV1
-ORDER BY
-    timestamp DESC
-LIMIT $2
-OFFSET $1
-`
-
-type ListLLMUsageParams struct {
-	OffsetVal int32
-	LimitVal  int32
-}
-
-func (q *Queries) ListLLMUsage(ctx context.Context, arg ListLLMUsageParams) ([]Llmusagev1, error) {
-	rows, err := q.db.Query(ctx, listLLMUsage, arg.OffsetVal, arg.LimitVal)
 	if err != nil {
 		return nil, err
 	}
