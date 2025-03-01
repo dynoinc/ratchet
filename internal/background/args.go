@@ -48,3 +48,11 @@ type PersistLLMUsageWorkerArgs struct {
 func (p PersistLLMUsageWorkerArgs) Kind() string {
 	return "persist_llm_usage"
 }
+
+type LLMUsagePurgeWorkerArgs struct {
+	RetentionDays int `json:"retention_days"`
+}
+
+func (p LLMUsagePurgeWorkerArgs) Kind() string {
+	return "llm_usage_purge"
+}

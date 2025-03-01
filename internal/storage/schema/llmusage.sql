@@ -44,4 +44,10 @@ WHERE
 ORDER BY
     timestamp DESC
 LIMIT @limit_val
-OFFSET @offset_val; 
+OFFSET @offset_val;
+
+-- name: PurgeLLMUsageOlderThan :execrows
+DELETE FROM
+    llmusageV1
+WHERE
+    timestamp < @older_than; 

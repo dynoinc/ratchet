@@ -190,3 +190,18 @@ func (q *Queries) ListLLMUsage(ctx context.Context, arg ListLLMUsageParams) ([]L
 	}
 	return items, nil
 }
+
+const purgeLLMUsageOlderThan = `-- name: PurgeLLMUsageOlderThan :execrows
+DELETE FROM
+    llmusageV1
+WHERE
+    timestamp < $1
+`
+
+func (q *Queries) PurgeLLMUsageOlderThan(ctx context.Context, olderThan pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeLLMUsageOlderThan, olderThan)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
