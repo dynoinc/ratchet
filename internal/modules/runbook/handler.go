@@ -119,7 +119,7 @@ func Format(service, alert string, runbook *llm.RunbookResponse, updates []recen
 	if len(updates) > 0 {
 		blocks = append(blocks,
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "*Recent Activity:*", false, false),
+				slack.NewTextBlockObject(slack.MarkdownType, "*Recent Slack Activity Relevant To Alert:*", false, false),
 				nil, nil,
 			),
 		)
