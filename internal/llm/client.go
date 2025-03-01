@@ -474,7 +474,6 @@ func (c *client) ClassifyCommand(ctx context.Context, text string) (string, erro
 Given a message, respond with exactly one of these commands:
 - weekly_report
 - usage_report
-- leave_channel
 - none
 
 Examples:
@@ -492,12 +491,6 @@ Response: usage_report
 
 User: "post usage report"
 Response: usage_report
-
-User: "leave channel"
-Response: leave_channel
-
-User: "get out of this channel"
-Response: leave_channel
 
 User: "how are you doing?"
 Response: none
