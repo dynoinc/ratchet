@@ -10,12 +10,37 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/kelseyhightower/envconfig"
 	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/qri-io/jsonschema"
+	"github.com/riverqueue/river"
+
+	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
+
+// RiverClient is an interface for the River client
+type RiverClient interface {
+	Insert(ctx context.Context, args background.PersistLLMUsageWorkerArgs, opts *river.InsertOpts) (any, error)
+}
+
+// RiverClientAdapter adapts the river.Client to our RiverClient interface
+type RiverClientAdapter struct {
+	client *river.Client[pgx.Tx]
+}
+
+// NewRiverClientAdapter creates a new RiverClientAdapter
+func NewRiverClientAdapter(client *river.Client[pgx.Tx]) *RiverClientAdapter {
+	return &RiverClientAdapter{client: client}
+}
+
+// Insert implements the RiverClient interface
+func (a *RiverClientAdapter) Insert(ctx context.Context, args background.PersistLLMUsageWorkerArgs, opts *river.InsertOpts) (any, error) {
+	return a.client.Insert(ctx, args, opts)
+}
 
 type Config struct {
 	APIKey         string `envconfig:"API_KEY"`
@@ -35,6 +60,7 @@ func DefaultConfig() Config {
 
 type Client interface {
 	Config() Config
+	SetRiverClient(riverClient RiverClient)
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
 	CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
@@ -43,8 +69,9 @@ type Client interface {
 }
 
 type client struct {
-	client *openai.Client
-	cfg    Config
+	client      *openai.Client
+	cfg         Config
+	riverClient RiverClient
 }
 
 func New(ctx context.Context, cfg Config) (Client, error) {
@@ -99,6 +126,29 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 	return nil
 }
 
+func (c *client) SetRiverClient(riverClient RiverClient) {
+	c.riverClient = riverClient
+}
+
+// persistLLMUsage schedules a background job to persist LLM usage
+// This is a best-effort operation and failures are logged but don't affect the main flow
+func (c *client) persistLLMUsage(ctx context.Context, input dto.LLMInput, output dto.LLMOutput, model string) {
+	if c.riverClient == nil {
+		slog.DebugContext(ctx, "river client not initialized, skipping LLM usage persistence")
+		return
+	}
+
+	_, err := c.riverClient.Insert(ctx, background.PersistLLMUsageWorkerArgs{
+		Input:  input,
+		Output: output,
+		Model:  model,
+	}, nil)
+
+	if err != nil {
+		slog.WarnContext(ctx, "failed to schedule LLM usage persistence", "error", err)
+	}
+}
+
 func (c *client) Config() Config {
 	return c.cfg
 }
@@ -150,6 +200,25 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	}
 
 	slog.DebugContext(ctx, "generated suggestions", "request", params, "response", resp.Choices[0].Message.Content)
+
+	// Persist LLM usage (best effort)
+	c.persistLLMUsage(ctx,
+		dto.LLMInput{
+			Messages: []dto.LLMMessage{
+				{Role: "system", Content: prompt},
+				{Role: "user", Content: fmt.Sprintf("Messages:\n%s", messages)},
+			},
+		},
+		dto.LLMOutput{
+			Content: resp.Choices[0].Message.Content,
+			Usage: &dto.LLMUsageStats{
+				PromptTokens:     int(resp.Usage.PromptTokens),
+				CompletionTokens: int(resp.Usage.CompletionTokens),
+				TotalTokens:      int(resp.Usage.TotalTokens),
+			},
+		},
+		string(c.cfg.Model),
+	)
 
 	return resp.Choices[0].Message.Content, nil
 }
@@ -273,6 +342,25 @@ Example 4:
 
 	slog.DebugContext(ctx, "created runbook", "request", params, "response", resp.Choices[0].Message.Content)
 
+	// Persist LLM usage (best effort)
+	c.persistLLMUsage(ctx,
+		dto.LLMInput{
+			Messages: []dto.LLMMessage{
+				{Role: "system", Content: prompt},
+				{Role: "user", Content: content},
+			},
+		},
+		dto.LLMOutput{
+			Content: resp.Choices[0].Message.Content,
+			Usage: &dto.LLMUsageStats{
+				PromptTokens:     int(resp.Usage.PromptTokens),
+				CompletionTokens: int(resp.Usage.CompletionTokens),
+				TotalTokens:      int(resp.Usage.TotalTokens),
+			},
+		},
+		string(c.cfg.Model),
+	)
+
 	var runbook RunbookResponse
 	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &runbook); err != nil {
 		return nil, fmt.Errorf("unmarshaling runbook response: %w", err)
@@ -299,6 +387,21 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	if err != nil {
 		return nil, fmt.Errorf("generating embedding: %w", err)
 	}
+
+	// Persist LLM usage (best effort)
+	c.persistLLMUsage(ctx,
+		dto.LLMInput{
+			Text: fmt.Sprintf("%s: %s", task, text),
+		},
+		dto.LLMOutput{
+			Embedding: make([]float32, len(resp.Data[0].Embedding)),
+			Usage: &dto.LLMUsageStats{
+				PromptTokens: int(resp.Usage.PromptTokens),
+				TotalTokens:  int(resp.Usage.TotalTokens),
+			},
+		},
+		string(c.cfg.EmbeddingModel),
+	)
 
 	r := make([]float32, len(resp.Data[0].Embedding))
 	for i, v := range resp.Data[0].Embedding {
@@ -335,6 +438,25 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	}
 	respMsg := resp.Choices[0].Message.Content
 	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
+
+	// Persist LLM usage (best effort)
+	c.persistLLMUsage(ctx,
+		dto.LLMInput{
+			Messages: []dto.LLMMessage{
+				{Role: "system", Content: prompt},
+			},
+		},
+		dto.LLMOutput{
+			Content: respMsg,
+			Usage: &dto.LLMUsageStats{
+				PromptTokens:     int(resp.Usage.PromptTokens),
+				CompletionTokens: int(resp.Usage.CompletionTokens),
+				TotalTokens:      int(resp.Usage.TotalTokens),
+			},
+		},
+		string(c.cfg.Model),
+	)
+
 	if jsonSchema != nil {
 		if keyErr, err := jsonSchema.ValidateBytes(ctx, []byte(respMsg)); err != nil || len(keyErr) > 0 {
 			return "", respMsg, fmt.Errorf("validating response: %v %w", keyErr, err)
@@ -404,6 +526,25 @@ Classify the following message:`
 	if err != nil {
 		return "", fmt.Errorf("classifying command: %w", err)
 	}
+
+	// Persist LLM usage (best effort)
+	c.persistLLMUsage(ctx,
+		dto.LLMInput{
+			Messages: []dto.LLMMessage{
+				{Role: "system", Content: prompt},
+				{Role: "user", Content: text},
+			},
+		},
+		dto.LLMOutput{
+			Content: resp.Choices[0].Message.Content,
+			Usage: &dto.LLMUsageStats{
+				PromptTokens:     int(resp.Usage.PromptTokens),
+				CompletionTokens: int(resp.Usage.CompletionTokens),
+				TotalTokens:      int(resp.Usage.TotalTokens),
+			},
+		},
+		string(c.cfg.Model),
+	)
 
 	return resp.Choices[0].Message.Content, nil
 }

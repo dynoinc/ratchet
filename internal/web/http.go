@@ -16,6 +16,7 @@ import (
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olekukonko/tablewriter"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -126,6 +127,8 @@ func New(
 	// Bot
 	apiMux.HandleFunc("GET /bot/search", handlers.search)
 	apiMux.HandleFunc("POST /bot/usage", handleJSON(handlers.postUsage))
+	apiMux.HandleFunc("GET /bot/llm-usage", handleJSON(handlers.getLLMUsage))
+	apiMux.HandleFunc("GET /bot/llm-usage/by-model", handleJSON(handlers.getLLMUsageByModel))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -494,4 +497,77 @@ func (h *httpHandlers) postUsage(r *http.Request) (any, error) {
 	}
 
 	return nil, nil
+}
+
+func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
+	// Parse time range parameters
+	startTimeStr := r.URL.Query().Get("start_time")
+	endTimeStr := r.URL.Query().Get("end_time")
+
+	var startTime, endTime time.Time
+	var err error
+
+	if startTimeStr != "" {
+		startTime, err = time.Parse(time.RFC3339, startTimeStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start_time format: %w", err)
+		}
+	} else {
+		// Default to 7 days ago if not specified
+		startTime = time.Now().AddDate(0, 0, -7)
+	}
+
+	if endTimeStr != "" {
+		endTime, err = time.Parse(time.RFC3339, endTimeStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end_time format: %w", err)
+		}
+	} else {
+		// Default to now if not specified
+		endTime = time.Now()
+	}
+
+	// Get LLM usage data
+	usageData, err := schema.New(h.db).GetLLMUsageByTimeRange(r.Context(), schema.GetLLMUsageByTimeRangeParams{
+		StartTime: pgtype.Timestamptz{Time: startTime, Valid: true},
+		EndTime:   pgtype.Timestamptz{Time: endTime, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return usageData, nil
+}
+
+func (h *httpHandlers) getLLMUsageByModel(r *http.Request) (any, error) {
+	// Get model parameter
+	model := r.URL.Query().Get("model")
+	if model == "" {
+		return nil, fmt.Errorf("model parameter is required")
+	}
+
+	// Parse pagination parameters
+	limit := cmp.Or(r.URL.Query().Get("limit"), "100")
+	limitInt, err := strconv.ParseInt(limit, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid limit: %w", err)
+	}
+
+	offset := cmp.Or(r.URL.Query().Get("offset"), "0")
+	offsetInt, err := strconv.ParseInt(offset, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid offset: %w", err)
+	}
+
+	// Get LLM usage data by model
+	usageData, err := schema.New(h.db).GetLLMUsageByModel(r.Context(), schema.GetLLMUsageByModelParams{
+		Model:     model,
+		LimitVal:  int32(limitInt),
+		OffsetVal: int32(offsetInt),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return usageData, nil
 }

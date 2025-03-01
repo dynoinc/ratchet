@@ -13,10 +13,51 @@ import (
 	context "context"
 	reflect "reflect"
 
+	background "github.com/dynoinc/ratchet/internal/background"
 	llm "github.com/dynoinc/ratchet/internal/llm"
 	jsonschema "github.com/qri-io/jsonschema"
+	river "github.com/riverqueue/river"
 	gomock "go.uber.org/mock/gomock"
 )
+
+// MockRiverClient is a mock of RiverClient interface.
+type MockRiverClient struct {
+	ctrl     *gomock.Controller
+	recorder *MockRiverClientMockRecorder
+	isgomock struct{}
+}
+
+// MockRiverClientMockRecorder is the mock recorder for MockRiverClient.
+type MockRiverClientMockRecorder struct {
+	mock *MockRiverClient
+}
+
+// NewMockRiverClient creates a new mock instance.
+func NewMockRiverClient(ctrl *gomock.Controller) *MockRiverClient {
+	mock := &MockRiverClient{ctrl: ctrl}
+	mock.recorder = &MockRiverClientMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockRiverClient) EXPECT() *MockRiverClientMockRecorder {
+	return m.recorder
+}
+
+// Insert mocks base method.
+func (m *MockRiverClient) Insert(ctx context.Context, args background.PersistLLMUsageWorkerArgs, opts *river.InsertOpts) (any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Insert", ctx, args, opts)
+	ret0, _ := ret[0].(any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Insert indicates an expected call of Insert.
+func (mr *MockRiverClientMockRecorder) Insert(ctx, args, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Insert", reflect.TypeOf((*MockRiverClient)(nil).Insert), ctx, args, opts)
+}
 
 // MockClient is a mock of Client interface.
 type MockClient struct {
@@ -130,4 +171,16 @@ func (m *MockClient) RunJSONModePrompt(ctx context.Context, prompt string, schem
 func (mr *MockClientMockRecorder) RunJSONModePrompt(ctx, prompt, schema any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunJSONModePrompt", reflect.TypeOf((*MockClient)(nil).RunJSONModePrompt), ctx, prompt, schema)
+}
+
+// SetRiverClient mocks base method.
+func (m *MockClient) SetRiverClient(riverClient llm.RiverClient) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetRiverClient", riverClient)
+}
+
+// SetRiverClient indicates an expected call of SetRiverClient.
+func (mr *MockClientMockRecorder) SetRiverClient(riverClient any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRiverClient", reflect.TypeOf((*MockClient)(nil).SetRiverClient), riverClient)
 }

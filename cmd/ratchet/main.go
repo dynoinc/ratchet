@@ -20,6 +20,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lmittmann/tint"
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -30,7 +31,9 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
+	"github.com/dynoinc/ratchet/internal/background/llm_usage_purge_worker"
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
+	"github.com/dynoinc/ratchet/internal/background/persist_llm_usage_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
@@ -64,6 +67,9 @@ type config struct {
 
 	// Channel Monitor Configuration
 	ChannelMonitor channel_monitor.Config `split_words:"true"`
+
+	// LLM Usage Retention Configuration
+	LLMRetentionDays int `split_words:"true" default:"90"`
 }
 
 func main() {
@@ -194,15 +200,43 @@ func main() {
 		channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient),
 	})
 
+	// LLM usage persistence worker setup
+	llmUsagePersistenceWorker := persist_llm_usage_worker.New(bot)
+
+	// LLM usage purge worker setup
+	llmUsagePurgeWorker := llm_usage_purge_worker.New(bot)
+
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
 	river.AddWorker(workers, channelOnboardWorker)
 	river.AddWorker(workers, backfillThreadWorker)
 	river.AddWorker(workers, modulesWorker)
-	riverClient, err := background.New(db, workers)
+	river.AddWorker(workers, llmUsagePersistenceWorker)
+	river.AddWorker(workers, llmUsagePurgeWorker)
+
+	// Add periodic job configuration for LLM usage purge
+	periodicJobs := []*river.PeriodicJob{
+		river.NewPeriodicJob(
+			river.PeriodicInterval(24*time.Hour),
+			func() (river.JobArgs, *river.InsertOpts) {
+				return background.LLMUsagePurgeWorkerArgs{
+					RetentionDays: c.LLMRetentionDays,
+				}, nil
+			},
+			&river.PeriodicJobOpts{RunOnStart: true},
+		),
+	}
+
+	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: 100},
+		},
+		Workers:      workers,
+		PeriodicJobs: periodicJobs,
+	})
 	if err != nil {
-		slog.ErrorContext(ctx, "setting up background worker", "error", err)
+		slog.ErrorContext(ctx, "failed to create river client", "error", err)
 		os.Exit(1)
 	}
 
@@ -210,6 +244,9 @@ func main() {
 		slog.ErrorContext(ctx, "initializing bot", "error", err)
 		os.Exit(1)
 	}
+
+	// Set the river client on the LLM client for usage tracking
+	llmClient.SetRiverClient(llm.NewRiverClientAdapter(riverClient))
 
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient, slackIntegration, llmClient)

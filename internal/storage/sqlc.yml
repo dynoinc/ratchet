@@ -20,3 +20,13 @@ sql:
               import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
               package: "dto"
               type: "ChannelAttrs"
+          - column: llmusagev1.input
+            go_type:
+              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+              package: "dto"
+              type: "LLMInput"
+          - column: llmusagev1.output
+            go_type:
+              import: "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+              package: "dto"
+              type: "LLMOutput"
