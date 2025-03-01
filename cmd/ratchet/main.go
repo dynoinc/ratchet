@@ -20,13 +20,13 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lmittmann/tint"
 	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
@@ -202,12 +202,7 @@ func main() {
 	river.AddWorker(workers, modulesWorker)
 
 	// Start River client
-	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{
-		Queues: map[string]river.QueueConfig{
-			river.QueueDefault: {MaxWorkers: 100},
-		},
-		Workers: workers,
-	})
+	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to create river client", "error", err)
 		os.Exit(1)
