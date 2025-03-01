@@ -14,34 +14,27 @@ import (
 
 const addLLMUsage = `-- name: AddLLMUsage :one
 INSERT INTO
-    llmusage (input, output, model, prompt)
+    llmusageV1 (input, output, model)
 VALUES
-    ($1, $2, $3, $4)
+    ($1, $2, $3)
 RETURNING
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 `
 
 type AddLLMUsageParams struct {
 	Input  dto.LLMInput
 	Output dto.LLMOutput
 	Model  string
-	Prompt string
 }
 
-func (q *Queries) AddLLMUsage(ctx context.Context, arg AddLLMUsageParams) (Llmusage, error) {
-	row := q.db.QueryRow(ctx, addLLMUsage,
-		arg.Input,
-		arg.Output,
-		arg.Model,
-		arg.Prompt,
-	)
-	var i Llmusage
+func (q *Queries) AddLLMUsage(ctx context.Context, arg AddLLMUsageParams) (Llmusagev1, error) {
+	row := q.db.QueryRow(ctx, addLLMUsage, arg.Input, arg.Output, arg.Model)
+	var i Llmusagev1
 	err := row.Scan(
 		&i.ID,
 		&i.Input,
 		&i.Output,
 		&i.Model,
-		&i.Prompt,
 		&i.Timestamp,
 	)
 	return i, err
@@ -49,22 +42,21 @@ func (q *Queries) AddLLMUsage(ctx context.Context, arg AddLLMUsageParams) (Llmus
 
 const getLLMUsageByID = `-- name: GetLLMUsageByID :one
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 WHERE
     id = $1
 `
 
-func (q *Queries) GetLLMUsageByID(ctx context.Context, id int32) (Llmusage, error) {
+func (q *Queries) GetLLMUsageByID(ctx context.Context, id int32) (Llmusagev1, error) {
 	row := q.db.QueryRow(ctx, getLLMUsageByID, id)
-	var i Llmusage
+	var i Llmusagev1
 	err := row.Scan(
 		&i.ID,
 		&i.Input,
 		&i.Output,
 		&i.Model,
-		&i.Prompt,
 		&i.Timestamp,
 	)
 	return i, err
@@ -72,9 +64,9 @@ func (q *Queries) GetLLMUsageByID(ctx context.Context, id int32) (Llmusage, erro
 
 const getLLMUsageByModel = `-- name: GetLLMUsageByModel :many
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 WHERE
     model = $1
 ORDER BY
@@ -89,21 +81,20 @@ type GetLLMUsageByModelParams struct {
 	LimitVal  int32
 }
 
-func (q *Queries) GetLLMUsageByModel(ctx context.Context, arg GetLLMUsageByModelParams) ([]Llmusage, error) {
+func (q *Queries) GetLLMUsageByModel(ctx context.Context, arg GetLLMUsageByModelParams) ([]Llmusagev1, error) {
 	rows, err := q.db.Query(ctx, getLLMUsageByModel, arg.Model, arg.OffsetVal, arg.LimitVal)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Llmusage
+	var items []Llmusagev1
 	for rows.Next() {
-		var i Llmusage
+		var i Llmusagev1
 		if err := rows.Scan(
 			&i.ID,
 			&i.Input,
 			&i.Output,
 			&i.Model,
-			&i.Prompt,
 			&i.Timestamp,
 		); err != nil {
 			return nil, err
@@ -118,9 +109,9 @@ func (q *Queries) GetLLMUsageByModel(ctx context.Context, arg GetLLMUsageByModel
 
 const getLLMUsageByTimeRange = `-- name: GetLLMUsageByTimeRange :many
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 WHERE
     timestamp BETWEEN $1 AND $2
 ORDER BY
@@ -132,21 +123,20 @@ type GetLLMUsageByTimeRangeParams struct {
 	EndTime   pgtype.Timestamptz
 }
 
-func (q *Queries) GetLLMUsageByTimeRange(ctx context.Context, arg GetLLMUsageByTimeRangeParams) ([]Llmusage, error) {
+func (q *Queries) GetLLMUsageByTimeRange(ctx context.Context, arg GetLLMUsageByTimeRangeParams) ([]Llmusagev1, error) {
 	rows, err := q.db.Query(ctx, getLLMUsageByTimeRange, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Llmusage
+	var items []Llmusagev1
 	for rows.Next() {
-		var i Llmusage
+		var i Llmusagev1
 		if err := rows.Scan(
 			&i.ID,
 			&i.Input,
 			&i.Output,
 			&i.Model,
-			&i.Prompt,
 			&i.Timestamp,
 		); err != nil {
 			return nil, err
@@ -161,9 +151,9 @@ func (q *Queries) GetLLMUsageByTimeRange(ctx context.Context, arg GetLLMUsageByT
 
 const listLLMUsage = `-- name: ListLLMUsage :many
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 ORDER BY
     timestamp DESC
 LIMIT $2
@@ -175,21 +165,20 @@ type ListLLMUsageParams struct {
 	LimitVal  int32
 }
 
-func (q *Queries) ListLLMUsage(ctx context.Context, arg ListLLMUsageParams) ([]Llmusage, error) {
+func (q *Queries) ListLLMUsage(ctx context.Context, arg ListLLMUsageParams) ([]Llmusagev1, error) {
 	rows, err := q.db.Query(ctx, listLLMUsage, arg.OffsetVal, arg.LimitVal)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Llmusage
+	var items []Llmusagev1
 	for rows.Next() {
-		var i Llmusage
+		var i Llmusagev1
 		if err := rows.Scan(
 			&i.ID,
 			&i.Input,
 			&i.Output,
 			&i.Model,
-			&i.Prompt,
 			&i.Timestamp,
 		); err != nil {
 			return nil, err

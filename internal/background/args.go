@@ -43,7 +43,6 @@ type PersistLLMUsageWorkerArgs struct {
 	Input  dto.LLMInput  `json:"input"`
 	Output dto.LLMOutput `json:"output"`
 	Model  string        `json:"model"`
-	Prompt string        `json:"prompt"`
 }
 
 func (p PersistLLMUsageWorkerArgs) Kind() string {

@@ -1,24 +1,24 @@
 -- name: AddLLMUsage :one
 INSERT INTO
-    llmusage (input, output, model, prompt)
+    llmusageV1 (input, output, model)
 VALUES
-    (@input, @output, @model, @prompt)
+    (@input, @output, @model)
 RETURNING
-    id, input, output, model, prompt, timestamp;
+    id, input, output, model, timestamp;
 
 -- name: GetLLMUsageByID :one
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 WHERE
     id = @id;
 
 -- name: ListLLMUsage :many
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 ORDER BY
     timestamp DESC
 LIMIT @limit_val
@@ -26,9 +26,9 @@ OFFSET @offset_val;
 
 -- name: GetLLMUsageByTimeRange :many
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 WHERE
     timestamp BETWEEN @start_time AND @end_time
 ORDER BY
@@ -36,9 +36,9 @@ ORDER BY
 
 -- name: GetLLMUsageByModel :many
 SELECT
-    id, input, output, model, prompt, timestamp
+    id, input, output, model, timestamp
 FROM
-    llmusage
+    llmusageV1
 WHERE
     model = @model
 ORDER BY

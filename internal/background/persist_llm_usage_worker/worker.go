@@ -26,14 +26,12 @@ func New(bot *internal.Bot) *Worker {
 
 func (w *Worker) Work(ctx context.Context, job *river.Job[background.PersistLLMUsageWorkerArgs]) error {
 	slog.InfoContext(ctx, "persisting LLM usage",
-		"model", job.Args.Model,
-		"prompt_length", len(job.Args.Prompt))
+		"model", job.Args.Model)
 
 	params := schema.AddLLMUsageParams{
 		Input:  job.Args.Input,
 		Output: job.Args.Output,
 		Model:  job.Args.Model,
-		Prompt: job.Args.Prompt,
 	}
 
 	tx, err := w.bot.DB.Begin(ctx)

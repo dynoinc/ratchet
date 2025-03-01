@@ -15,12 +15,11 @@ type ChannelsV2 struct {
 	Attrs dto.ChannelAttrs
 }
 
-type Llmusage struct {
+type Llmusagev1 struct {
 	ID        int32
 	Input     dto.LLMInput
 	Output    dto.LLMOutput
 	Model     string
-	Prompt    string
 	Timestamp pgtype.Timestamptz
 }
 

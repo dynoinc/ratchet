@@ -132,7 +132,7 @@ func (c *client) SetRiverClient(riverClient RiverClient) {
 
 // persistLLMUsage schedules a background job to persist LLM usage
 // This is a best-effort operation and failures are logged but don't affect the main flow
-func (c *client) persistLLMUsage(ctx context.Context, input dto.LLMInput, output dto.LLMOutput, model string, prompt string) {
+func (c *client) persistLLMUsage(ctx context.Context, input dto.LLMInput, output dto.LLMOutput, model string) {
 	if c.riverClient == nil {
 		slog.DebugContext(ctx, "river client not initialized, skipping LLM usage persistence")
 		return
@@ -142,7 +142,6 @@ func (c *client) persistLLMUsage(ctx context.Context, input dto.LLMInput, output
 		Input:  input,
 		Output: output,
 		Model:  model,
-		Prompt: prompt,
 	}, nil)
 
 	if err != nil {
@@ -219,7 +218,6 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 			},
 		},
 		string(c.cfg.Model),
-		fmt.Sprintf("Messages:\n%s", messages),
 	)
 
 	return resp.Choices[0].Message.Content, nil
@@ -361,7 +359,6 @@ Example 4:
 			},
 		},
 		string(c.cfg.Model),
-		content,
 	)
 
 	var runbook RunbookResponse
@@ -404,7 +401,6 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 			},
 		},
 		string(c.cfg.EmbeddingModel),
-		fmt.Sprintf("%s: %s", task, text),
 	)
 
 	r := make([]float32, len(resp.Data[0].Embedding))
@@ -459,7 +455,6 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 			},
 		},
 		string(c.cfg.Model),
-		prompt,
 	)
 
 	if jsonSchema != nil {
@@ -549,7 +544,6 @@ Classify the following message:`
 			},
 		},
 		string(c.cfg.Model),
-		text,
 	)
 
 	return resp.Choices[0].Message.Content, nil
