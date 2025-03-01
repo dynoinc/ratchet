@@ -7,7 +7,6 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
-	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/usage"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
@@ -21,7 +20,6 @@ const (
 	cmdNone cmd = iota
 	cmdPostWeeklyReport
 	cmdPostUsageReport
-	cmdTestChannelMonitorPrompt
 )
 
 type commands struct {
@@ -63,8 +61,6 @@ func (c *commands) findCommand(ctx context.Context, text string) (cmd, error) {
 		return cmdPostWeeklyReport, nil
 	case "usage_report":
 		return cmdPostUsageReport, nil
-	case "test_channel_monitor_prompt":
-		return cmdTestChannelMonitorPrompt, nil
 	default:
 		return cmdNone, nil
 	}
@@ -87,8 +83,6 @@ func (c *commands) Handle(ctx context.Context, channelID string, slackTS string,
 		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdPostUsageReport:
 		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
-	case cmdTestChannelMonitorPrompt:
-		return channel_monitor.TestChannelMonitorPrompt(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, msg, channelID, slackTS)
 	}
 
 	return nil

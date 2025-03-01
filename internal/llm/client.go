@@ -378,15 +378,6 @@ Response: leave_channel
 User: "get out of this channel"
 Response: leave_channel
 
-User: "test this channel monitor prompt"
-Response: test_channel_monitor_prompt
-
-User: "test the attached monitor prompt"
-Response: test_channel_monitor_prompt
-
-User: "test the channel prompt"
-Response: test_channel_monitor_prompt
-
 User: "how are you doing?"
 Response: none
 

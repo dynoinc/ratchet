@@ -8,10 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"text/template"
-	"time"
 
 	"github.com/qri-io/jsonschema"
 	"github.com/slack-go/slack"
@@ -20,7 +17,6 @@ import (
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
-	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
@@ -227,166 +223,4 @@ func (c *channelMonitor) doOutputActions(ctx context.Context, outputData Executa
 		}
 	}
 	return nil
-}
-
-type TestChannelMonitorReportData struct {
-	Message         dto.SlackMessage
-	Prompt          string
-	ValidatedOutput string
-	Error           string
-	InvalidOutput   string
-}
-
-func TestChannelMonitorPrompt(ctx context.Context,
-	db *schema.Queries,
-	llmClient llm.Client,
-	slackIntegration slack_integration.Integration,
-	msg dto.MessageAttrs,
-	channelID string,
-	slackTS string,
-) error {
-	entry, history, err := getEntryAndHistoryForTest(ctx, slackIntegration, msg, channelID, slackTS)
-	if err != nil {
-		slackIntegration.PostThreadReply(ctx, channelID, slackTS, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("Error getting entry and history for test: %s", err), false, false), nil, nil))
-		return nil
-	}
-	results := []*TestChannelMonitorReportData{}
-	for _, msg := range history {
-		dtoMessage := dto.SlackMessage{
-			SubType:     msg.SubType,
-			Text:        msg.Text,
-			User:        msg.User,
-			BotID:       msg.BotID,
-			BotUsername: msg.Username,
-		}
-		data := PromptData{Message: dtoMessage}
-		var prompt bytes.Buffer
-		err := entry.PromptTemplate.Execute(&prompt, data)
-		if err != nil {
-			slackIntegration.PostThreadReply(ctx, channelID, slackTS, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("Error executing prompt template: %s", err), false, false), nil, nil))
-			return nil
-		}
-		validOutput, invalidOutput, err := llmClient.RunJSONModePrompt(ctx, prompt.String(), entry.ResultSchema)
-		reportData := &TestChannelMonitorReportData{
-			Message:         dtoMessage,
-			Prompt:          prompt.String(),
-			ValidatedOutput: validOutput,
-			InvalidOutput:   invalidOutput,
-		}
-		if err != nil {
-			reportData.Error = err.Error()
-		}
-		results = append(results, reportData)
-	}
-	reportHTML := `<!DOCTYPE html>
-<html>
-<head>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-h3 { color: #34495e; margin-top: 30px; }
-details { background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; }
-summary { cursor: pointer; color: #2980b9; }
-pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; }
-.error { color: #e74c3c; }
-hr { border: none; border-top: 1px solid #eee; margin: 30px 0; }
-</style>
-</head>
-<body>
-<h1>Test Channel Monitor Report</h1>`
-
-	for _, data := range results {
-		reportHTML += fmt.Sprintf(`
-<h3>Message</h3>
-<p>%s</p>
-<details>
-<summary>Prompt</summary>
-<pre>%s</pre>
-</details>`, data.Message.Text, data.Prompt)
-
-		if data.ValidatedOutput != "" {
-			reportHTML += fmt.Sprintf(`
-<h3>Output</h3>
-<pre>%s</pre>`, data.ValidatedOutput)
-		}
-
-		if data.InvalidOutput != "" {
-			reportHTML += fmt.Sprintf(`
-<h3>Invalid Output</h3>
-<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">%s</pre>`, data.InvalidOutput)
-		}
-
-		if data.Error != "" {
-			reportHTML += fmt.Sprintf(`
-<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">Error: %s</pre>`, data.Error)
-		}
-
-		reportHTML += "<hr>"
-	}
-	reportHTML += "</body></html>"
-
-	slackIntegration.UploadFileToThread(ctx, channelID, slackTS, fmt.Sprintf("report-%s.html", time.Now().Format("2006-01-02-15-04-05")), []byte(reportHTML), "Generated Report")
-	return nil
-}
-
-func getEntryAndHistoryForTest(ctx context.Context, slackIntegration slack_integration.Integration, msg dto.MessageAttrs, channelID string, slackTS string) (*Entry, []slack.Message, error) {
-	files, err := slackIntegration.GetFiles(ctx, channelID, slackTS)
-	if err != nil {
-		return nil, nil, fmt.Errorf("getting files: %w", err)
-	}
-	if len(files) != 1 {
-		return nil, nil, fmt.Errorf("expected 1 file to be attached to the message, got %d", len(files))
-	}
-	file := files[0]
-	if file.Filetype != "yaml" && file.Filetype != "yml" {
-		return nil, nil, fmt.Errorf("file %s is not a yaml file", file.Name)
-	}
-	fileBytes, err := slackIntegration.FetchFile(ctx, file)
-	if err != nil {
-		return nil, nil, fmt.Errorf("fetching file: %w", err)
-	}
-	parsedYaml := &map[string]interface{}{}
-	if err := yaml.Unmarshal(fileBytes, parsedYaml); err != nil {
-		return nil, nil, fmt.Errorf("unmarshalling yaml: %w", err)
-	}
-	marshaled, err := json.Marshal(parsedYaml)
-	if err != nil {
-		return nil, nil, fmt.Errorf("marshalling json: %w", err)
-	}
-	entry := &Entry{}
-	if err := json.Unmarshal(marshaled, entry); err != nil {
-		return nil, nil, fmt.Errorf("unmarshalling json: %w", err)
-	}
-	tmpl, err := template.New("test").Parse(entry.Prompt)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parsing prompt template: %w", err)
-	}
-	entry.PromptTemplate = tmpl
-	historyChannelID := channelID
-	// check if the yaml has the channel_id field
-	if entry.ChannelID != "" {
-		historyChannelID = entry.ChannelID
-	}
-	// Check if the message contains a channel ID like "test for <#C08DRE5HMQB|>" and pull out the channel ID, e.g. C08DRE5HMQB otherwise use the channel ID from the paramer
-	re := regexp.MustCompile(`<#([^>|]+)\|([^>]*)>`)
-	matches := re.FindStringSubmatch(msg.Message.Text)
-	if len(matches) == 3 {
-		historyChannelID = matches[1]
-	}
-	// Check if the message contains a number surrounded by whitespace or punctuation, e.g. test the last 40 messages, otherwise use 10
-	// TODO: Use the llm to parse the message and determine the number of messages to test
-	re = regexp.MustCompile(`\s+(\d+)[\s\.]+`)
-	matches = re.FindStringSubmatch(msg.Message.Text)
-	historyCount := 10
-	if len(matches) == 2 {
-		historyCount, err = strconv.Atoi(matches[1])
-		if err != nil {
-			slog.Warn("converting history count to int", "error", err)
-		}
-	}
-	history, err := slackIntegration.GetConversationHistory(ctx, historyChannelID, historyCount)
-	if err != nil {
-		return nil, nil, fmt.Errorf("getting conversation history: %w", err)
-	}
-	return entry, history, nil
 }

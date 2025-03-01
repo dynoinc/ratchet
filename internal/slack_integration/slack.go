@@ -1,12 +1,9 @@
 package slack_integration
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -32,9 +29,6 @@ type Integration interface {
 	GetConversationReplies(ctx context.Context, channelID, ts string) ([]slack.Message, error)
 	BotUserID() string
 	GetUserIDByEmail(ctx context.Context, email string) (string, error)
-	GetFiles(ctx context.Context, channelID, ts string) ([]slack.File, error)
-	FetchFile(ctx context.Context, file slack.File) ([]byte, error)
-	UploadFileToThread(ctx context.Context, channelID, threadTs, filename string, content []byte, title string) error
 }
 
 type integration struct {
@@ -250,56 +244,4 @@ func (b *integration) GetUserIDByEmail(ctx context.Context, email string) (strin
 		return "", fmt.Errorf("getting user by email %s: %w", email, err)
 	}
 	return user.ID, nil
-}
-
-// GetFiles returns the files from the given message in the channel, use until we decide to store the file in the database
-func (b *integration) GetFiles(ctx context.Context, channelID, ts string) ([]slack.File, error) {
-	history, err := b.client.GetConversationHistoryContext(ctx, &slack.GetConversationHistoryParameters{
-		ChannelID: channelID,
-		Latest:    ts,
-		Limit:     1,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("getting files for channel ID %s: %w", channelID, err)
-	}
-	if len(history.Messages) == 0 {
-		return nil, fmt.Errorf("no messages found for channel ID %s: %w", channelID, err)
-	}
-	return history.Messages[0].Files, nil
-}
-
-func (b *integration) FetchFile(ctx context.Context, file slack.File) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, file.URLPrivateDownload, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Add("Authorization", "Bearer "+b.c.BotToken)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("downloading file: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-	return io.ReadAll(resp.Body)
-}
-
-func (b *integration) UploadFileToThread(ctx context.Context, channelID, threadTs, filename string, content []byte, title string) error {
-	if b.c.DevChannel != "" {
-		channelID = b.c.DevChannel
-	}
-	params := slack.UploadFileV2Parameters{
-		Channel:         channelID,
-		ThreadTimestamp: threadTs,
-		Filename:        filename,
-		Title:           title,
-		Reader:          bytes.NewReader(content),
-		FileSize:        int(len(content)),
-	}
-	_, err := b.client.UploadFileV2Context(ctx, params)
-	if err != nil {
-		return fmt.Errorf("uploading file to thread: %w", err)
-	}
-	return nil
 }
