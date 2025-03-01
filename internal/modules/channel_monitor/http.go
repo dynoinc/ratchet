@@ -99,30 +99,44 @@ func HTTPHandler(
 		pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; }
 		.error { color: #e74c3c; }
 		hr { border: none; border-top: 1px solid #eee; margin: 30px 0; }
+		.download-btn { 
+			background: #2980b9; 
+			color: white; 
+			padding: 10px 20px; 
+			border: none; 
+			border-radius: 4px; 
+			cursor: pointer; 
+			margin: 20px 0;
+			text-decoration: none;
+			display: inline-block;
+		}
+		.download-btn:hover { background: #2471a3; }
 	</style>
 </head>
 <body>
-	<h1>Test Channel Monitor</h1>
-	<form hx-post="` + prefix + `/test" hx-target="#result" hx-swap="innerHTML">
-		<div>
-			<label for="config">Config YAML:</label><br>
-			<textarea name="config_yaml" id="config"></textarea>
-		</div>
-		<div>
-			<label for="count">Recent Messages To Fetch From Slack Channel:</label><br>
-			<input type="number" name="message_count" id="count" value="3">
-		</div>
-		<div>
-			<label for="messages">Additional Messages to Test (seperate with --- line):</label><br>
-			<textarea name="test_messages" id="messages"></textarea>
-		</div>
-		<button type="submit" class="submit">Test</button>
-		<span class="spinner">Testing...</span>
-	</form>
+	<div id="report-input">
+		<h1>Test Channel Monitor</h1>
+		<form hx-post="` + prefix + `/test" hx-target="#result" hx-swap="innerHTML">
+			<div>
+				<label for="config">Config YAML:</label><br>
+				<textarea name="config_yaml" id="config"></textarea>
+			</div>
+			<div>
+				<label for="count">Recent Messages To Fetch From Slack Channel:</label><br>
+				<input type="number" name="message_count" id="count" value="3">
+			</div>
+			<div>
+				<label for="messages">Additional Messages to Test (seperate with --- line):</label><br>
+				<textarea name="test_messages" id="messages"></textarea>
+			</div>
+			<button type="submit" class="submit">Test</button>
+			<span class="spinner">Testing...</span>
+		</form>
+	</div>
 	<div id="result"></div>
 	<script>
 		document.body.addEventListener('htmx:responseError', function(evt) {
-			evt.detail.target.innerHTML = '<div class="error">Error: ' + evt.detail.error + '</div>';
+			evt.detail.target.innerHTML = '<div class="error">Error: ' + evt.detail.error + '<br>Response: ' + evt.detail.xhr.responseText + '</div>';
 		});
 	</script>
 </body>
@@ -177,11 +191,47 @@ summary { cursor: pointer; color: #2980b9; }
 pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; }
 .error { color: #e74c3c; }
 hr { border: none; border-top: 1px solid #eee; margin: 30px 0; }
+.download-btn { 
+    background: #2980b9; 
+    color: white; 
+    padding: 10px 20px; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    margin: 20px 0;
+    text-decoration: none;
+    display: inline-block;
+}
+.download-btn:hover { background: #2471a3; }
 </style>
 </head>
 <body>
-<h1>Test Channel Monitor Report</h1>`
-
+<h1>Test Channel Monitor Report</h1>
+<button id="download-btn" onclick="downloadReport()" class="download-btn">Download Report</button>
+<script>
+function downloadReport() {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = 'channel-report-' + timestamp + '.html';
+	// Clone the document and remove the report input content and download button
+    const clonedDoc = document.documentElement.cloneNode(true);
+    const reportInput = clonedDoc.querySelector('#report-input');
+    reportInput.remove();
+	const downloadBtn = clonedDoc.querySelector('#download-btn');
+	downloadBtn.remove();
+    const htmlContent = clonedDoc.outerHTML;
+    
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
+</script>
+`
 	for _, data := range results {
 		reportHTML += fmt.Sprintf(`
 <h3>Message</h3>

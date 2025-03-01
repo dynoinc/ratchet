@@ -63,15 +63,13 @@ channel_monitor_1:
 
 ## Testing a Channel Prompt
 
-To test a prompt, instruct Ratchet to evaluate it using an attached YAML configuration. Ratchet will retrieve the last 10 messages (or a specified number) from the channel, execute the prompt, validate the LLM output against the result_schema, and generate a report.
+To test a prompt, navigate to the `/channel-monitor/test` route on the ratchet http server and enter the yaml for the channel, prompt, and result_schema you want to test.
 
-#### Example
-```
-@ratchet test this channel monitor on the last 25 messages in #platform-ops
-```
+From there you can run the prompt on recent messages in the channel or test messages entered in the web page.
 
-With this yaml file attached
+Example yaml input
 ```yaml
+channel_id: C0123ABC
 prompt: >
   If the message below the horizontal line is asking a question about the kubernetes cluster, respond with {"help": true}. Otherwise, respond with {"help": false}.
   
@@ -85,5 +83,3 @@ result_schema:
   required:
   - text
 ```
-
-Ratchet will fetch the 25 most recent messages in the `#platform-ops` channel and generate a report on what the llm returned and if it passed the result schema validation.
