@@ -28,6 +28,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
+	"github.com/dynoinc/ratchet/internal/modules/usage"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
@@ -122,7 +123,9 @@ func New(
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
-	apiMux.HandleFunc("GET /search", handlers.search)
+	// Bot
+	apiMux.HandleFunc("GET /bot/search", handlers.search)
+	apiMux.HandleFunc("POST /bot/usage", handleJSON(handlers.postUsage))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -481,4 +484,14 @@ func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	table.Render()
+}
+
+func (h *httpHandlers) postUsage(r *http.Request) (any, error) {
+	channelID := r.URL.Query().Get("channel_id")
+
+	if err := usage.Post(r.Context(), schema.New(h.db), h.llmClient, h.slackIntegration, channelID); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }

@@ -204,19 +204,27 @@ func (c *channelMonitor) doOutputActions(ctx context.Context, outputData Executa
 			slog.Warn("getting user ID by email", "error", err)
 			continue
 		}
-		err = c.slackIntegration.PostMessage(ctx, userID, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, dm.Text, false, false), nil, nil))
+		blocks := []slack.Block{
+			slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, dm.Text, false, false), nil, nil),
+		}
+		blocks = append(blocks, slack_integration.CreateSignatureBlock("Channel Monitor")...)
+		err = c.slackIntegration.PostMessage(ctx, userID, blocks...)
 		if err != nil {
 			return fmt.Errorf("posting direct message: %w", err)
 		}
 	}
 	for _, message := range outputData.ChannelMessages {
+		blocks := []slack.Block{
+			slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, message.Text, false, false), nil, nil),
+		}
+		blocks = append(blocks, slack_integration.CreateSignatureBlock("Channel Monitor")...)
 		if message.SlackTimestamp == "" {
-			err := c.slackIntegration.PostMessage(ctx, message.ChannelID, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, message.Text, false, false), nil, nil))
+			err := c.slackIntegration.PostMessage(ctx, message.ChannelID, blocks...)
 			if err != nil {
 				return fmt.Errorf("posting message: %w", err)
 			}
 		} else {
-			err := c.slackIntegration.PostThreadReply(ctx, message.ChannelID, message.SlackTimestamp, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, message.Text, false, false), nil, nil))
+			err := c.slackIntegration.PostThreadReply(ctx, message.ChannelID, message.SlackTimestamp, blocks...)
 			if err != nil {
 				return fmt.Errorf("posting thread reply: %w", err)
 			}

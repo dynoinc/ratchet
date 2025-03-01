@@ -3,7 +3,6 @@ package report
 import (
 	"context"
 	"fmt"
-	"iter"
 	"slices"
 	"strings"
 	"time"
@@ -38,21 +37,11 @@ func Post(
 		return fmt.Errorf("getting messages for channel: %w", err)
 	}
 
-	userMsgCounts := make(map[string]int)
-	botMsgCounts := make(map[string]int)
 	incidentCounts := make(map[string]int)                // key: "service/alert"
 	incidentDurations := make(map[string][]time.Duration) // key: "service/alert"
 	triageMsgCounts := make(map[string]int)               // key: "service/alert"
 
 	for _, msg := range messages {
-		if msg.Attrs.Message.BotID != "" {
-			if msg.Attrs.Message.BotUsername != "" {
-				botMsgCounts[msg.Attrs.Message.BotUsername]++
-			}
-		} else {
-			userMsgCounts[msg.Attrs.Message.User]++
-		}
-
 		incidentKey := fmt.Sprintf("%s/%s", msg.Attrs.IncidentAction.Service, msg.Attrs.IncidentAction.Alert)
 
 		switch msg.Attrs.IncidentAction.Action {
@@ -132,18 +121,46 @@ func Post(
 		}
 	}
 
-	messageBlocks := format(channelID, userMsgCounts, botMsgCounts, incidentCounts, incidentDurations, suggestions, longRunningAlerts, untriagedAlerts)
+	// Compute frequently firing alerts
+	var frequentAlerts []alertEntry
+	for alert, count := range incidentCounts {
+		if count > 5 {
+			service, alertName, _ := strings.Cut(alert, "/")
+			frequentAlerts = append(frequentAlerts, alertEntry{
+				service: service,
+				alert:   alertName,
+				count:   count,
+			})
+		}
+	}
+	// Sort by count descending and take top 5
+	slices.SortFunc(frequentAlerts, func(a, b alertEntry) int {
+		return b.count - a.count
+	})
+	if len(frequentAlerts) > 5 {
+		frequentAlerts = frequentAlerts[:5]
+	}
+
+	messageBlocks := format(
+		channelID,
+		incidentCounts,
+		incidentDurations,
+		suggestions,
+		longRunningAlerts,
+		untriagedAlerts,
+		frequentAlerts,
+	)
 	return slackIntegration.PostMessage(ctx, channelID, messageBlocks...)
 }
 
 func format(
 	channelID string,
-	userMsgCounts, botMsgCounts map[string]int,
 	incidentCounts map[string]int,
 	incidentDurations map[string][]time.Duration,
 	suggestions string,
 	longRunningAlerts []alertEntry,
 	untriagedAlerts []alertEntry,
+	frequentAlerts []alertEntry,
 ) []slack.Block {
 	var messageBlocks []slack.Block
 
@@ -155,34 +172,6 @@ func format(
 			time.Now().Format("2006-01-02")),
 		false, false)
 	messageBlocks = append(messageBlocks, slack.NewSectionBlock(headerText, nil, nil))
-
-	// Users section
-	if len(userMsgCounts) > 0 {
-		var usersList strings.Builder
-		for user, count := range sortMapByValue(userMsgCounts, 5) {
-			usersList.WriteString(fmt.Sprintf("• <@%s>: %d messages\n", user, count))
-		}
-		usersText := slack.NewTextBlockObject("mrkdwn",
-			fmt.Sprintf("*Top Active Users:*\n%s", usersList.String()),
-			false, false)
-		messageBlocks = append(messageBlocks,
-			slack.NewDividerBlock(),
-			slack.NewSectionBlock(usersText, nil, nil))
-	}
-
-	// Bots section
-	if len(botMsgCounts) > 0 {
-		var botsList strings.Builder
-		for bot, count := range sortMapByValue(botMsgCounts, 5) {
-			botsList.WriteString(fmt.Sprintf("• %s: %d messages\n", bot, count))
-		}
-		botsText := slack.NewTextBlockObject("mrkdwn",
-			fmt.Sprintf("*Top Active Bots:*\n%s", botsList.String()),
-			false, false)
-		messageBlocks = append(messageBlocks,
-			slack.NewDividerBlock(),
-			slack.NewSectionBlock(botsText, nil, nil))
-	}
 
 	// Alerts section
 	if len(incidentCounts) > 0 {
@@ -264,6 +253,46 @@ func format(
 				nil, nil),
 			slack.NewSectionBlock(
 				slack.NewTextBlockObject("mrkdwn", alertsTable.String(), false, false),
+				nil, nil))
+	}
+
+	// Frequently firing alerts section
+	if len(frequentAlerts) > 0 {
+		var frequentAlertsTable strings.Builder
+		frequentAlertsTable.WriteString("*Frequently Firing Alerts:*\n")
+		frequentAlertsTable.WriteString("The following alerts fired more than 5 times this week and may need attention:\n\n```\n")
+
+		table := tablewriter.NewWriter(&frequentAlertsTable)
+		table.SetHeader([]string{"SERVICE", "ALERT", "COUNT"})
+		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
+		table.SetCenterSeparator("|")
+		table.SetColumnSeparator("|")
+		table.SetRowSeparator("-")
+		table.SetAutoWrapText(false)
+		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+		table.SetAlignment(tablewriter.ALIGN_LEFT)
+		table.SetColumnAlignment([]int{
+			tablewriter.ALIGN_LEFT,  // SERVICE
+			tablewriter.ALIGN_LEFT,  // ALERT
+			tablewriter.ALIGN_RIGHT, // COUNT
+		})
+
+		for _, entry := range frequentAlerts {
+			table.Append([]string{
+				entry.service,
+				entry.alert,
+				fmt.Sprintf("%d", entry.count),
+			})
+		}
+
+		table.Render()
+		frequentAlertsTable.WriteString("```\n")
+		frequentAlertsTable.WriteString("Consider reviewing these alerts to reduce noise and improve signal.\n")
+
+		messageBlocks = append(messageBlocks,
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", frequentAlertsTable.String(), false, false),
 				nil, nil))
 	}
 
@@ -372,47 +401,10 @@ func format(
 				nil, nil))
 	}
 
-	// Add signature
-	messageBlocks = append(messageBlocks,
-		slack.NewDividerBlock(),
-		slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn",
-				fmt.Sprintf("_Generated by Ratchet Bot at %s_",
-					time.Now().Format("2006-01-02 15:04:05 MST")),
-				false, false),
-			nil, nil))
+	// Replace old timestamp footer with standardized signature
+	messageBlocks = append(messageBlocks, slack_integration.CreateSignatureBlock("Weekly Report")...)
 
 	return messageBlocks
-}
-
-type kv struct {
-	k string
-	v int
-}
-
-// sortMapByValue sorts a map by value in descending order and returns the top i entries.
-func sortMapByValue(counts map[string]int, i int) iter.Seq2[string, int] {
-	entries := make([]kv, 0, len(counts))
-	for k, v := range counts {
-		entries = append(entries, kv{k: k, v: v})
-	}
-	// Sort by count (descending) first, then by key for stable ordering
-	slices.SortFunc(entries, func(a, b kv) int {
-		if a.v != b.v {
-			return b.v - a.v // Descending order
-		}
-		return strings.Compare(a.k, b.k) // Alphabetical by key if counts are equal
-	})
-	if i > len(entries) {
-		i = len(entries)
-	}
-	return func(yield func(string, int) bool) {
-		for _, entry := range entries[:i] {
-			if !yield(entry.k, entry.v) {
-				return
-			}
-		}
-	}
 }
 
 func calculateAverage(durations []time.Duration) time.Duration {
