@@ -265,9 +265,29 @@ func TimeToTs(t time.Time) string {
 func (b *Bot) RecordLLMUsage(ctx context.Context, tx pgx.Tx, params schema.AddLLMUsageParams) error {
 	qtx := schema.New(b.DB).WithTx(tx)
 
+	// Add new LLM usage record
 	_, err := qtx.AddLLMUsage(ctx, params)
 	if err != nil {
 		return fmt.Errorf("adding LLM usage: %w", err)
+	}
+
+	// Purge old LLM usage records, keeping only the last 2 years
+	cutoffTime := time.Now().AddDate(-2, 0, 0) // 2 years ago
+	pgCutoffTime := pgtype.Timestamptz{
+		Time:  cutoffTime,
+		Valid: true,
+	}
+
+	rowsDeleted, err := qtx.PurgeLLMUsageOlderThan(ctx, pgCutoffTime)
+	if err != nil {
+		// Log the error but don't fail the transaction
+		slog.ErrorContext(ctx, "failed to purge old LLM usage records",
+			"error", err,
+			"cutoff_time", cutoffTime)
+	} else if rowsDeleted > 0 {
+		slog.InfoContext(ctx, "purged old LLM usage records",
+			"count", rowsDeleted,
+			"cutoff_time", cutoffTime)
 	}
 
 	return nil

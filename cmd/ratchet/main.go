@@ -27,11 +27,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/dynoinc/ratchet/internal"
-	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
-	"github.com/dynoinc/ratchet/internal/background/llm_usage_purge_worker"
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
 	"github.com/dynoinc/ratchet/internal/background/persist_llm_usage_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
@@ -67,9 +65,6 @@ type config struct {
 
 	// Channel Monitor Configuration
 	ChannelMonitor channel_monitor.Config `split_words:"true"`
-
-	// LLM Usage Retention Configuration
-	LLMRetentionDays int `split_words:"true" default:"90"`
 }
 
 func main() {
@@ -203,9 +198,6 @@ func main() {
 	// LLM usage persistence worker setup
 	llmUsagePersistenceWorker := persist_llm_usage_worker.New(bot)
 
-	// LLM usage purge worker setup
-	llmUsagePurgeWorker := llm_usage_purge_worker.New(bot)
-
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
@@ -213,27 +205,13 @@ func main() {
 	river.AddWorker(workers, backfillThreadWorker)
 	river.AddWorker(workers, modulesWorker)
 	river.AddWorker(workers, llmUsagePersistenceWorker)
-	river.AddWorker(workers, llmUsagePurgeWorker)
 
-	// Add periodic job configuration for LLM usage purge
-	periodicJobs := []*river.PeriodicJob{
-		river.NewPeriodicJob(
-			river.PeriodicInterval(24*time.Hour),
-			func() (river.JobArgs, *river.InsertOpts) {
-				return background.LLMUsagePurgeWorkerArgs{
-					RetentionDays: c.LLMRetentionDays,
-				}, nil
-			},
-			&river.PeriodicJobOpts{RunOnStart: true},
-		),
-	}
-
+	// Start River client
 	riverClient, err := river.NewClient(riverpgxv5.New(db), &river.Config{
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: 100},
 		},
-		Workers:      workers,
-		PeriodicJobs: periodicJobs,
+		Workers: workers,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to create river client", "error", err)
