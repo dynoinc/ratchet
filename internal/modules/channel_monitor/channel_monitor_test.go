@@ -163,7 +163,7 @@ func TestHandleMessage(t *testing.T) {
 		Message: dto.SlackMessage{Text: "world"},
 	}
 
-	mockLLM.EXPECT().RunJSONModePrompt(ctx, "Hello world", entry.ResultSchema).Return("{\"response\": \"ok\"}", nil).Times(1)
+	mockLLM.EXPECT().RunJSONModePrompt(ctx, "Hello world", entry.ResultSchema).Return("{\"response\": \"ok\"}", "", nil).Times(1)
 	mockSlack.EXPECT().GetUserIDByEmail(ctx, "user@example.com").Return("U123", nil).Times(1)
 	mockSlack.EXPECT().PostMessage(ctx, "U123", gomock.Any()).Return(nil).Times(1)
 	mockSlack.EXPECT().PostMessage(ctx, "C321", gomock.Any()).Return(nil).Times(1)

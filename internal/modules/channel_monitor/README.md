@@ -60,3 +60,26 @@ channel_monitor_1:
     executable_args: 
         - '(.llm_output | fromjson | .help) as $help | if $help then {"direct_messages": [{"email": "mike@example.com", "text": "User posted message in channel asking about k8s: \(.message.text)"}]} else {} end'
 ```
+
+## Testing a Prompt
+
+To test a prompt, navigate to the `/channelmonitor/test` route on the ratchet http server and enter the yaml for the channel, prompt, and result_schema you want to test.
+
+From there you can run the prompt on recent messages in the channel or test messages entered in the web page.
+
+Example yaml input
+```yaml
+channel_id: C0123ABC
+prompt: >
+  If the message below the horizontal line is asking a question about the kubernetes cluster, respond with {"help": true}. Otherwise, respond with {"help": false}.
+  
+  ---
+  {{.Message.Text}}
+result_schema: 
+  type: object
+  properties:
+      help:
+          type: boolean
+  required:
+  - help
+```

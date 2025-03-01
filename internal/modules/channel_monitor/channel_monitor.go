@@ -158,7 +158,7 @@ func (c *channelMonitor) handleMessage(ctx context.Context, slug string, entry *
 	if err != nil {
 		return fmt.Errorf("executing prompt template: %w", err)
 	}
-	lmmOutput, err := c.llmClient.RunJSONModePrompt(ctx, prompt.String(), entry.ResultSchema)
+	lmmOutput, _, err := c.llmClient.RunJSONModePrompt(ctx, prompt.String(), entry.ResultSchema)
 	if err != nil {
 		return fmt.Errorf("running prompt: %w", err)
 	}

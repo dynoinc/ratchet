@@ -24,6 +24,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
@@ -129,6 +130,7 @@ func New(
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
 	mux.Handle("/api/", withoutTrailingSlash(http.StripPrefix("/api", apiMux)))
+	mux.Handle("/channelmonitor/", http.StripPrefix("/channelmonitor", channel_monitor.HTTPHandler(handlers.llmClient, handlers.slackIntegration, "/channelmonitor")))
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(versioninfo.Short()))
