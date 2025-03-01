@@ -225,3 +225,17 @@ func (mr *MockIntegrationMockRecorder) Run(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockIntegration)(nil).Run), ctx)
 }
+
+// UploadFileToThread mocks base method.
+func (m *MockIntegration) UploadFileToThread(ctx context.Context, channelID, threadTs, filename string, content []byte, title string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UploadFileToThread", ctx, channelID, threadTs, filename, content, title)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UploadFileToThread indicates an expected call of UploadFileToThread.
+func (mr *MockIntegrationMockRecorder) UploadFileToThread(ctx, channelID, threadTs, filename, content, title any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UploadFileToThread", reflect.TypeOf((*MockIntegration)(nil).UploadFileToThread), ctx, channelID, threadTs, filename, content, title)
+}

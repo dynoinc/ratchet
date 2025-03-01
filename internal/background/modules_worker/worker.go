@@ -3,6 +3,7 @@ package modules_worker
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -46,4 +47,9 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWork
 	}
 
 	return nil
+}
+
+// Longer timeouts for modules worker because it has to do a lot of things
+func (w *Worker) Timeout(job *river.Job[background.ModulesWorkerArgs]) time.Duration {
+	return 5 * time.Minute
 }

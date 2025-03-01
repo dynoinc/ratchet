@@ -33,6 +33,7 @@ type Integration interface {
 	GetUserIDByEmail(ctx context.Context, email string) (string, error)
 	GetFiles(ctx context.Context, channelID, ts string) ([]slack.File, error)
 	FetchFile(ctx context.Context, file slack.File) ([]byte, error)
+	UploadFileToThread(ctx context.Context, channelID, threadTs, filename string, content []byte, title string) error
 }
 
 type integration struct {
@@ -281,4 +282,23 @@ func (b *integration) FetchFile(ctx context.Context, file slack.File) ([]byte, e
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
+}
+
+func (b *integration) UploadFileToThread(ctx context.Context, channelID, threadTs, filename string, content []byte, title string) error {
+	if b.c.DevChannel != "" {
+		channelID = b.c.DevChannel
+	}
+	params := slack.UploadFileV2Parameters{
+		Channel:         channelID,
+		ThreadTimestamp: threadTs,
+		Filename:        filename,
+		Title:           title,
+		Content:         string(content),
+		FileSize:        int(len(content)),
+	}
+	_, err := b.client.UploadFileV2Context(ctx, params)
+	if err != nil {
+		return fmt.Errorf("uploading file to thread: %w", err)
+	}
+	return nil
 }
