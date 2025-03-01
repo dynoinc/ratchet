@@ -261,3 +261,14 @@ func TimeToTs(t time.Time) string {
 	// Convert Unix seconds and nanoseconds to a Slack timestamp
 	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
 }
+
+func (b *Bot) RecordLLMUsage(ctx context.Context, tx pgx.Tx, params schema.AddLLMUsageParams) error {
+	qtx := schema.New(b.DB).WithTx(tx)
+
+	_, err := qtx.AddLLMUsage(ctx, params)
+	if err != nil {
+		return fmt.Errorf("adding LLM usage: %w", err)
+	}
+
+	return nil
+}

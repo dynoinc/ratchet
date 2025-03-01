@@ -1,5 +1,7 @@
 package background
 
+import "github.com/dynoinc/ratchet/internal/storage/schema/dto"
+
 type ClassifierArgs struct {
 	ChannelID  string `json:"channel_id"`
 	SlackTS    string `json:"slack_ts"`
@@ -35,4 +37,15 @@ type ModulesWorkerArgs struct {
 
 func (m ModulesWorkerArgs) Kind() string {
 	return "modules"
+}
+
+type PersistLLMUsageWorkerArgs struct {
+	Input  dto.LLMInput  `json:"input"`
+	Output dto.LLMOutput `json:"output"`
+	Model  string        `json:"model"`
+	Prompt string        `json:"prompt"`
+}
+
+func (p PersistLLMUsageWorkerArgs) Kind() string {
+	return "persist_llm_usage"
 }

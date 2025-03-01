@@ -31,6 +31,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
+	"github.com/dynoinc/ratchet/internal/background/persist_llm_usage_worker"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
@@ -194,12 +195,16 @@ func main() {
 		channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient),
 	})
 
+	// LLM usage persistence worker setup
+	llmUsagePersistenceWorker := persist_llm_usage_worker.New(bot)
+
 	// Background job setup
 	workers := river.NewWorkers()
 	river.AddWorker(workers, classifier)
 	river.AddWorker(workers, channelOnboardWorker)
 	river.AddWorker(workers, backfillThreadWorker)
 	river.AddWorker(workers, modulesWorker)
+	river.AddWorker(workers, llmUsagePersistenceWorker)
 	riverClient, err := background.New(db, workers)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up background worker", "error", err)
@@ -210,6 +215,9 @@ func main() {
 		slog.ErrorContext(ctx, "initializing bot", "error", err)
 		os.Exit(1)
 	}
+
+	// Set the river client on the LLM client for usage tracking
+	llmClient.SetRiverClient(llm.NewRiverClientAdapter(riverClient))
 
 	// HTTP server setup
 	handler, err := web.New(ctx, db, riverClient, slackIntegration, llmClient)
