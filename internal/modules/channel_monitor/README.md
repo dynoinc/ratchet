@@ -61,9 +61,9 @@ channel_monitor_1:
         - '(.llm_output | fromjson | .help) as $help | if $help then {"direct_messages": [{"email": "mike@example.com", "text": "User posted message in channel asking about k8s: \(.message.text)"}]} else {} end'
 ```
 
-## Testing a Channel Prompt
+## Testing a Prompt
 
-To test a prompt, navigate to the `/channel-monitor/test` route on the ratchet http server and enter the yaml for the channel, prompt, and result_schema you want to test.
+To test a prompt, navigate to the `/channelmonitor/test` route on the ratchet http server and enter the yaml for the channel, prompt, and result_schema you want to test.
 
 From there you can run the prompt on recent messages in the channel or test messages entered in the web page.
 
@@ -81,5 +81,5 @@ result_schema:
       help:
           type: boolean
   required:
-  - text
+  - help
 ```

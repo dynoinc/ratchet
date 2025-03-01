@@ -353,7 +353,6 @@ Given a message, respond with exactly one of these commands:
 - weekly_report
 - usage_report
 - leave_channel
-- test_channel_monitor_prompt
 - none
 
 Examples:

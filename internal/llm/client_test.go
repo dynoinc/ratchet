@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/qri-io/jsonschema"
-
 	"github.com/stretchr/testify/require"
 )
 

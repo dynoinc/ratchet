@@ -127,7 +127,7 @@ func New(
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
 	mux.Handle("/api/", withoutTrailingSlash(http.StripPrefix("/api", apiMux)))
-	mux.Handle("/channel-monitor/", http.StripPrefix("/channel-monitor", channel_monitor.HTTPHandler(handlers.llmClient, handlers.slackIntegration, "/channel-monitor")))
+	mux.Handle("/channelmonitor/", http.StripPrefix("/channelmonitor", channel_monitor.HTTPHandler(handlers.llmClient, handlers.slackIntegration, "/channelmonitor")))
 	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(versioninfo.Short()))
