@@ -10,6 +10,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olekukonko/tablewriter"
 	"github.com/slack-go/slack"
 )
@@ -19,6 +20,7 @@ type UsageReport struct {
 	EndTs        time.Time
 	ChannelUsage map[string]ChannelUsage
 	ModuleUsage  map[string]ModuleUsage
+	LLMUsage     map[string]LLMUsageStats
 }
 
 type ChannelUsage struct {
@@ -31,6 +33,15 @@ type ModuleUsage struct {
 	TotalMessages   int
 	TotalThumbsUp   int
 	TotalThumbsDown int
+}
+
+type LLMUsageStats struct {
+	TotalRequests     int
+	TotalPromptTokens int
+	TotalOutputTokens int
+	TotalTokens       int
+	AveragePromptSize float64
+	AverageOutputSize float64
 }
 
 func Get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) (UsageReport, error) {
@@ -82,12 +93,71 @@ func Get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackInt
 		moduleUsage[module] = modUsage
 	}
 
+	// Get LLM usage data
+	llmUsage, err := getLLMUsage(ctx, db, startTs, endTs)
+	if err != nil {
+		return UsageReport{}, fmt.Errorf("getting LLM usage: %w", err)
+	}
+
 	return UsageReport{
 		StartTs:      startTs,
 		EndTs:        endTs,
 		ChannelUsage: channelUsage,
 		ModuleUsage:  moduleUsage,
+		LLMUsage:     llmUsage,
 	}, nil
+}
+
+// getLLMUsage fetches LLM usage statistics from the database
+func getLLMUsage(ctx context.Context, db *schema.Queries, startTs, endTs time.Time) (map[string]LLMUsageStats, error) {
+	// Convert timestamps to pgtype.Timestamptz
+	start := pgtype.Timestamptz{}
+	if err := start.Scan(startTs); err != nil {
+		return nil, fmt.Errorf("scanning start timestamp: %w", err)
+	}
+
+	end := pgtype.Timestamptz{}
+	if err := end.Scan(endTs); err != nil {
+		return nil, fmt.Errorf("scanning end timestamp: %w", err)
+	}
+
+	// Fetch LLM usage records for the given time range
+	llmRecords, err := db.GetLLMUsageByTimeRange(ctx, schema.GetLLMUsageByTimeRangeParams{
+		StartTime: start,
+		EndTime:   end,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("querying LLM usage: %w", err)
+	}
+
+	// Aggregate usage statistics by model
+	llmUsage := make(map[string]LLMUsageStats)
+	for _, record := range llmRecords {
+		model := record.Model
+		stats := llmUsage[model]
+
+		stats.TotalRequests++
+
+		// Add token usage if available
+		if record.Output.Usage != nil {
+			stats.TotalPromptTokens += record.Output.Usage.PromptTokens
+			stats.TotalOutputTokens += record.Output.Usage.CompletionTokens
+			stats.TotalTokens += record.Output.Usage.TotalTokens
+		}
+
+		llmUsage[model] = stats
+	}
+
+	// Calculate averages
+	for model, stats := range llmUsage {
+		if stats.TotalRequests > 0 {
+			stats.AveragePromptSize = float64(stats.TotalPromptTokens) / float64(stats.TotalRequests)
+			stats.AverageOutputSize = float64(stats.TotalOutputTokens) / float64(stats.TotalRequests)
+			llmUsage[model] = stats
+		}
+	}
+
+	return llmUsage, nil
 }
 
 func Post(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) error {
@@ -153,6 +223,38 @@ func Format(ctx context.Context, qtx *schema.Queries, slackIntegration slack_int
 		return modules[i].messages > modules[j].messages
 	})
 
+	// Prepare LLM usage statistics
+	type llmStats struct {
+		model         string
+		requests      int
+		promptTokens  int
+		outputTokens  int
+		totalTokens   int
+		avgPromptSize float64
+		avgOutputSize float64
+	}
+
+	var llmModels []llmStats
+	var totalRequests, totalTokens int
+	for model, usage := range report.LLMUsage {
+		totalRequests += usage.TotalRequests
+		totalTokens += usage.TotalTokens
+
+		llmModels = append(llmModels, llmStats{
+			model:         model,
+			requests:      usage.TotalRequests,
+			promptTokens:  usage.TotalPromptTokens,
+			outputTokens:  usage.TotalOutputTokens,
+			totalTokens:   usage.TotalTokens,
+			avgPromptSize: usage.AveragePromptSize,
+			avgOutputSize: usage.AverageOutputSize,
+		})
+	}
+
+	sort.Slice(llmModels, func(i, j int) bool {
+		return llmModels[i].requests > llmModels[j].requests
+	})
+
 	blocks := []slack.Block{
 		// Header
 		slack.NewHeaderBlock(
@@ -171,19 +273,63 @@ func Format(ctx context.Context, qtx *schema.Queries, slackIntegration slack_int
 		// Summary
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn",
-				fmt.Sprintf("*Summary*: Total Messages: %d, Total 👍: %d, Total 👎: %d",
-					totalMessages, totalThumbsUp, totalThumbsDown),
+				fmt.Sprintf("*Summary*: Total Messages: %d, Total 👍: %d, Total 👎: %d, LLM Requests: %d, Total Tokens: %d",
+					totalMessages, totalThumbsUp, totalThumbsDown, totalRequests, totalTokens),
 				false, false),
 			nil, nil,
 		),
 		slack.NewDividerBlock(),
+	}
 
-		// Module Breakdown Header
+	// Add LLM Usage section if we have data
+	if len(llmModels) > 0 {
+		blocks = append(blocks,
+			// LLM Usage Header
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", "*LLM Usage Breakdown*", false, false),
+				nil, nil,
+			),
+		)
+
+		// LLM Usage Table
+		var llmTableBuilder strings.Builder
+		llmTable := tablewriter.NewWriter(&llmTableBuilder)
+		llmTable.SetHeader([]string{"Model", "Requests", "Prompt Tokens", "Output Tokens", "Total Tokens", "Avg Prompt", "Avg Output"})
+		llmTable.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
+		llmTable.SetCenterSeparator("|")
+		llmTable.SetAlignment(tablewriter.ALIGN_LEFT)
+
+		for _, model := range llmModels {
+			llmTable.Append([]string{
+				model.model,
+				fmt.Sprintf("%d", model.requests),
+				fmt.Sprintf("%d", model.promptTokens),
+				fmt.Sprintf("%d", model.outputTokens),
+				fmt.Sprintf("%d", model.totalTokens),
+				fmt.Sprintf("%.1f", model.avgPromptSize),
+				fmt.Sprintf("%.1f", model.avgOutputSize),
+			})
+		}
+		llmTable.Render()
+
+		blocks = append(blocks,
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn",
+					"```\n"+llmTableBuilder.String()+"```",
+					false, false),
+				nil, nil,
+			),
+			slack.NewDividerBlock(),
+		)
+	}
+
+	// Module Breakdown Header
+	blocks = append(blocks,
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", "*Module Breakdown*", false, false),
 			nil, nil,
 		),
-	}
+	)
 
 	// Module Breakdown Table
 	var moduleTableBuilder strings.Builder
