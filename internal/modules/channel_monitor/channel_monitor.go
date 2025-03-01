@@ -332,16 +332,13 @@ hr { border: none; border-top: 1px solid #eee; margin: 30px 0; }
 func getEntryAndHistoryForTest(ctx context.Context, slackIntegration slack_integration.Integration, msg dto.MessageAttrs, channelID string, slackTS string) (*Entry, []slack.Message, error) {
 	files, err := slackIntegration.GetFiles(ctx, channelID, slackTS)
 	if err != nil {
-		slog.Error("getting files", "error", err)
 		return nil, nil, fmt.Errorf("getting files: %w", err)
 	}
 	if len(files) != 1 {
-		slog.Error("no files found")
-		return nil, nil, fmt.Errorf("prompt file must be attached to the message")
+		return nil, nil, fmt.Errorf("expected 1 file to be attached to the message, got %d", len(files))
 	}
 	file := files[0]
 	if file.Filetype != "yaml" && file.Filetype != "yml" {
-		slog.Error("file is not a yaml file", "filename", file.Name, "mimetype", file.Mimetype)
 		return nil, nil, fmt.Errorf("file %s is not a yaml file", file.Name)
 	}
 	fileBytes, err := slackIntegration.FetchFile(ctx, file)
@@ -366,6 +363,10 @@ func getEntryAndHistoryForTest(ctx context.Context, slackIntegration slack_integ
 	}
 	entry.PromptTemplate = tmpl
 	historyChannelID := channelID
+	// check if the yaml has the channel_id field
+	if entry.ChannelID != "" {
+		historyChannelID = entry.ChannelID
+	}
 	// Check if the message contains a channel ID like "test for <#C08DRE5HMQB|>" and pull out the channel ID, e.g. C08DRE5HMQB otherwise use the channel ID from the paramer
 	re := regexp.MustCompile(`<#([^>|]+)\|([^>]*)>`)
 	matches := re.FindStringSubmatch(msg.Message.Text)

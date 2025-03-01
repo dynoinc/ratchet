@@ -1,6 +1,7 @@
 package slack_integration
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -293,7 +294,7 @@ func (b *integration) UploadFileToThread(ctx context.Context, channelID, threadT
 		ThreadTimestamp: threadTs,
 		Filename:        filename,
 		Title:           title,
-		Content:         string(content),
+		Reader:          bytes.NewReader(content),
 		FileSize:        int(len(content)),
 	}
 	_, err := b.client.UploadFileV2Context(ctx, params)
