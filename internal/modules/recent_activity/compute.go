@@ -26,18 +26,19 @@ func Get(
 	ctx context.Context,
 	qtx *schema.Queries,
 	llmClient llm.Client,
-	queryText string,
+	lexicalQuery string,
+	semanticQuery string,
 	interval time.Duration,
 	botID string,
 ) ([]Activity, error) {
-	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", queryText)
+	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", semanticQuery)
 	if err != nil {
 		return nil, fmt.Errorf("generating embedding: %w", err)
 	}
 
 	embedding := pgvector.NewVector(queryEmbedding)
 	updates, err := qtx.GetLatestServiceUpdates(ctx, schema.GetLatestServiceUpdatesParams{
-		QueryText:      queryText,
+		QueryText:      lexicalQuery,
 		QueryEmbedding: &embedding,
 		Interval:       pgtype.Interval{Microseconds: interval.Microseconds(), Valid: true},
 		BotID:          botID,
@@ -71,18 +72,19 @@ func GetDebug(
 	ctx context.Context,
 	qtx *schema.Queries,
 	llmClient llm.Client,
-	queryText string,
+	lexicalQuery string,
+	semanticQuery string,
 	interval time.Duration,
 	botID string,
 ) ([]schema.DebugGetLatestServiceUpdatesRow, error) {
-	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", queryText)
+	queryEmbedding, err := llmClient.GenerateEmbedding(ctx, "search_query", semanticQuery)
 	if err != nil {
 		return nil, fmt.Errorf("generating embedding: %w", err)
 	}
 
 	embedding := pgvector.NewVector(queryEmbedding)
 	updates, err := qtx.DebugGetLatestServiceUpdates(ctx, schema.DebugGetLatestServiceUpdatesParams{
-		QueryText:      queryText,
+		QueryText:      lexicalQuery,
 		QueryEmbedding: &embedding,
 		Interval:       pgtype.Interval{Microseconds: interval.Microseconds(), Valid: true},
 		BotID:          botID,

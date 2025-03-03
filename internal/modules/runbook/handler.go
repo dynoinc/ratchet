@@ -49,7 +49,7 @@ func (h *handler) Handle(ctx context.Context, channelID string, slackTS string, 
 		return nil
 	}
 
-	updates, err := recent_activity.Get(ctx, qtx, h.llmClient, runbook.SearchQuery, time.Hour, h.slackIntegration.BotUserID())
+	updates, err := recent_activity.Get(ctx, qtx, h.llmClient, runbook.LexicalSearchQuery, runbook.SemanticSearchQuery, time.Hour, h.slackIntegration.BotUserID())
 	if err != nil {
 		return fmt.Errorf("getting updates: %w", err)
 	}
@@ -109,7 +109,11 @@ func Format(service, alert string, runbook *llm.RunbookResponse, updates []recen
 				nil, nil,
 			),
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "*Search Query*\n"+runbook.SearchQuery, false, false),
+				slack.NewTextBlockObject(slack.MarkdownType, "*Lexical Search Query*\n"+runbook.LexicalSearchQuery, false, false),
+				nil, nil,
+			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, "*Semantic Search Query*\n"+runbook.SemanticSearchQuery, false, false),
 				nil, nil,
 			),
 			slack.NewDividerBlock(),

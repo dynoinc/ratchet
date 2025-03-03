@@ -202,7 +202,8 @@ type RunbookResponse struct {
 	AlertOverview        string   `json:"alert_overview"`
 	HistoricalRootCauses []string `json:"historical_root_causes"`
 	ResolutionSteps      []string `json:"resolution_steps"`
-	SearchQuery          string   `json:"search_query"`
+	LexicalSearchQuery   string   `json:"lexical_search_query"`
+	SemanticSearchQuery  string   `json:"semantic_search_query"`
 }
 
 func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error) {
@@ -216,7 +217,8 @@ func (c *client) CreateRunbook(ctx context.Context, service string, alert string
   "alert_overview": "Brief description of the alert and what triggers it (2-3 sentences)",
   "historical_root_causes": ["List of specific causes from past incidents"],
   "resolution_steps": ["Concrete troubleshooting steps that were successful, with commands and outcomes"],
-  "search_query": "A search query containing key technical terms, error patterns, and components involved in this alert"
+  "lexical_search_query": "A keyword-based search query with exact terms, error codes, and component names for exact matching",
+  "semantic_search_query": "A natural language query describing the problem conceptually for semantic/meaning-based search"
 }
 
 RULES:
@@ -238,7 +240,8 @@ Example 1:
     "Check connection pool metrics: kubectl get metrics -n payments | grep pool_size",
     "Restart affected pods if connection count > 80%: kubectl rollout restart deployment/payment-svc"
   ],
-  "search_query": "payment service latency database connection pool redis cache performance"
+  "lexical_search_query": "payment-svc latency 500ms connection pool redis cache",
+  "semantic_search_query": "payment service high latency issues related to database connections and caching"
 }
 
 Example 2:
@@ -252,7 +255,8 @@ Example 2:
     "Review memory profile: curl localhost:6060/debug/pprof/heap > heap.out",
     "Temporary mitigation: kubectl rollout restart deployment/auth-svc"
   ],
-  "search_query": "auth service memory leak JWT validation session objects garbage collection OOM"
+  "lexical_search_query": "auth-svc OOM JWT validation memory leak pprof heap",
+  "semantic_search_query": "authentication service memory issues related to JWT validation and session object garbage collection"
 }
 
 Example 3:
@@ -267,7 +271,8 @@ Example 3:
     "Force log rotation: logrotate -f /etc/logrotate.d/application",
     "Compress old logs: find /var/log -name '*.log.*' -exec gzip {} \\;"
   ],
-  "search_query": "logging service disk usage log rotation cleanup compression storage"
+  "lexical_search_query": "logging disk usage 90% logrotate /var/log",
+  "semantic_search_query": "logging service disk space issues related to log rotation and cleanup"
 }
 
 Example 4:
@@ -282,7 +287,8 @@ Example 4:
     "Analyze rate limit metrics: curl -s localhost:9090/metrics | grep rate_limit",
     "Scale up replicas if needed: kubectl scale deployment/user-svc --replicas=5"
   ],
-  "search_query": "user service API 5xx errors rate limiting database deadlocks high traffic"
+  "lexical_search_query": "user-svc 5xx error rate_limit database deadlock",
+  "semantic_search_query": "user service API errors related to rate limiting and database deadlocks during high traffic"
 }`
 
 	content := fmt.Sprintf("Service: %s\nAlert: %s\nMessages:\n", service, alert)

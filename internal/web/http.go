@@ -317,7 +317,8 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,
-		runbook.SearchQuery,
+		runbook.LexicalSearchQuery,
+		runbook.SemanticSearchQuery,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)
@@ -360,7 +361,8 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 		r.Context(),
 		qtx,
 		h.llmClient,
-		runbookMessage.SearchQuery,
+		runbookMessage.LexicalSearchQuery,
+		runbookMessage.SemanticSearchQuery,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)
@@ -377,7 +379,8 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
-	var query string
+	var lexicalQuery string
+	var semanticQuery string
 	serviceName := r.URL.Query().Get("service")
 	alertName := r.URL.Query().Get("alert")
 
@@ -399,14 +402,16 @@ func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no runbook found", http.StatusNotFound)
 			return
 		}
-		query = runbookMessage.SearchQuery
+		lexicalQuery = runbookMessage.LexicalSearchQuery
+		semanticQuery = runbookMessage.SemanticSearchQuery
 	} else {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("reading request body: %v", err), http.StatusInternalServerError)
 			return
 		}
-		query = string(body)
+		lexicalQuery = string(body)
+		semanticQuery = string(body)
 	}
 
 	interval := cmp.Or(r.URL.Query().Get("interval"), "1h")
@@ -427,7 +432,8 @@ func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,
-		query,
+		lexicalQuery,
+		semanticQuery,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)
