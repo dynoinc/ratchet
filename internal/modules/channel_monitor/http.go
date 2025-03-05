@@ -1,4 +1,5 @@
 package channel_monitor
+import "html"
 
 import (
 	"bytes"
@@ -239,23 +240,23 @@ function downloadReport() {
 <details>
 <summary>Prompt</summary>
 <pre>%s</pre>
-</details>`, data.Message.Text, data.Prompt)
+</details>`, html.EscapeString(data.Message.Text), html.EscapeString(data.Prompt))
 
 		if data.ValidatedOutput != "" {
 			reportHTML += fmt.Sprintf(`
 <h3>Output</h3>
-<pre>%s</pre>`, data.ValidatedOutput)
+<pre>%s</pre>`, html.EscapeString(data.ValidatedOutput))
 		}
 
 		if data.InvalidOutput != "" {
 			reportHTML += fmt.Sprintf(`
 <h3>Invalid Output</h3>
-<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">%s</pre>`, data.InvalidOutput)
+<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">%s</pre>`, html.EscapeString(data.InvalidOutput))
 		}
 
 		if data.Error != "" {
 			reportHTML += fmt.Sprintf(`
-<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">Error: %s</pre>`, data.Error)
+<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">Error: %s</pre>`, html.EscapeString(data.Error))
 		}
 
 		reportHTML += "<hr>"
