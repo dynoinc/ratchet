@@ -1,11 +1,11 @@
 package channel_monitor
-import "html"
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
