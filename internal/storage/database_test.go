@@ -1,37 +1,33 @@
 package storage
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-func TestDBSetup(t *testing.T) {
+func setupTestDB(t *testing.T) *pgxpool.Pool {
 	ctx := t.Context()
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
+	t.Cleanup(func() { _ = postgresContainer.Terminate(context.Background()) })
 
-	_, err = New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
+	pool, err := New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
 	require.NoError(t, err)
+	return pool
 }
 
 func TestUpdateReaction(t *testing.T) {
+	db := setupTestDB(t)
 	ctx := t.Context()
-	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
 
-	db, err := New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
-	require.NoError(t, err)
-
-	// add channel
-	_, err = schema.New(db).AddChannel(ctx, "C0706000000")
+	_, err := schema.New(db).AddChannel(ctx, "C0706000000")
 	require.NoError(t, err)
 
 	err = schema.New(db).AddMessage(ctx, schema.AddMessageParams{
