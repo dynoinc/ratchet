@@ -12,7 +12,7 @@ COPY . .
 RUN go build -trimpath -ldflags="-s -w" -o ratchet ./cmd/ratchet
 
 # Stage 2: Create the final image
-FROM public.ecr.aws/lts/ubuntu:edge AS runner
+FROM public.ecr.aws/lts/ubuntu:24.04_stable AS runner
 
 RUN apt-get update && \
     if dpkg --compare-versions "$(dpkg-query -f '${Version}' -W liblzma5 2>/dev/null || echo '0')" ge "5.6.1+really5.4.5-1ubuntu0.2"; then \

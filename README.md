@@ -62,20 +62,20 @@ and computes embeddings for Slack messages. After that, a set of modules are ran
 | [SQLc](https://sqlc.dev/) | Type-safe SQL query generation from schema |
 | [Riverqueue](http://riverqueue.com/) | Background job processing and scheduling |
 | [pgvector](https://github.com/pgvector/pgvector) | Vector database for storing embeddings |
-| [Docker](https://www.docker.com/) | Containerization and deployment |
+| [Podman](https://podman.io/) | Containerization and deployment |
 | [Github Actions](https://github.com/features/actions) | CI/CD pipeline automation |
 | [Cursor](https://www.cursor.com/) | IDE for writing code |
 
 ## Lessons learned
 
-* PostgreSQL as database, queue and vector DB is working out.
+* PostgreSQL as database, queue and vector DB is working out great.
 * Slack as data source seems to be enough to derive value.
   * Though Slack API is poorly documented and inconsistent.
 * Investing in building UI for visibility ended up wasting a lot of time. 
   * Even with AI tools, it is hard to get right for a backend engineer.
   * Even after you figure out HTML/CSS/JS, dealing with security concerns and deploying to production is a pain.
   * JSON API on the other hand is great. Just works and can post-process output with `jq` efficiently.
-  * River and its UI is great though.
+  * River queue and its UI is great though.
 * For database schema, instead of using individual columns for each attribute, using `attrs` column as jsonb is great.
   * SQLc support for custom types and automatic serialization/deserialization to jsonb is great.
 * Given the focus of the bot is on AI, could have saved time by:
@@ -97,7 +97,7 @@ and computes embeddings for Slack messages. After that, a set of modules are ran
   RATCHET_SLACK_BOT_TOKEN=xoxb-...
   RATCHET_CLASSIFIER_INCIDENT_CLASSIFICATION_BINARY=path/to/binary
 ```
-* Install docker (for postgres) and ollama (for local LLM access).
+* Install podman (for postgres) and ollama (for local LLM access).
 * Start the binary using 
 ```bash
   go run ./cmd/ratchet --help
