@@ -60,26 +60,15 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 	}
 
 	openaiClient := openai.NewClient(option.WithBaseURL(cfg.URL), option.WithAPIKey(cfg.APIKey))
-	if _, err := openaiClient.Models.Get(ctx, cfg.Model); err != nil {
-		var aerr *openai.Error
-		if errors.As(err, &aerr) && aerr.StatusCode == http.StatusNotFound && cfg.URL == "http://localhost:11434/v1/" {
-			if err := downloadOllamaModel(ctx, cfg.Model); err != nil {
-				return nil, fmt.Errorf("downloading model %s: %w", cfg.Model, err)
-			}
-		} else {
-			return nil, fmt.Errorf("getting model: %w", err)
-		}
+
+	// Check and download the main model if needed
+	if err := checkAndDownloadModel(ctx, openaiClient, cfg.Model, cfg.URL); err != nil {
+		return nil, err
 	}
 
-	if _, err := openaiClient.Models.Get(ctx, cfg.EmbeddingModel); err != nil {
-		var aerr *openai.Error
-		if errors.As(err, &aerr) && aerr.StatusCode == http.StatusNotFound && cfg.URL == "http://localhost:11434/v1/" {
-			if err := downloadOllamaModel(ctx, cfg.EmbeddingModel); err != nil {
-				return nil, fmt.Errorf("downloading embedding model %s: %w", cfg.EmbeddingModel, err)
-			}
-		} else {
-			return nil, fmt.Errorf("getting embedding model: %w", err)
-		}
+	// Check and download the embedding model if needed
+	if err := checkAndDownloadModel(ctx, openaiClient, cfg.EmbeddingModel, cfg.URL); err != nil {
+		return nil, err
 	}
 
 	return &client{
@@ -87,6 +76,20 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 		cfg:    cfg,
 		db:     db,
 	}, nil
+}
+
+func checkAndDownloadModel(ctx context.Context, client openai.Client, modelName string, baseURL string) error {
+	if _, err := client.Models.Get(ctx, modelName); err != nil {
+		var aerr *openai.Error
+		if errors.As(err, &aerr) && aerr.StatusCode == http.StatusNotFound && baseURL == "http://localhost:11434/v1/" {
+			if err := downloadOllamaModel(ctx, modelName); err != nil {
+				return fmt.Errorf("downloading model %s: %w", modelName, err)
+			}
+		} else {
+			return fmt.Errorf("getting model %s: %w", modelName, err)
+		}
+	}
+	return nil
 }
 
 func downloadOllamaModel(ctx context.Context, s string) error {
@@ -130,6 +133,86 @@ func (c *client) Config() Config {
 	return c.cfg
 }
 
+// runChatCompletion is a helper function to run chat completions with common logic
+func (c *client) runChatCompletion(
+	ctx context.Context,
+	inputMessages []dto.LLMMessage,
+	messages []openai.ChatCompletionMessageParamUnion,
+	temperature float64,
+	jsonMode bool,
+) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	params := openai.ChatCompletionNewParams{
+		Model:       openai.ChatModel(c.cfg.Model),
+		Messages:    messages,
+		Temperature: param.NewOpt(temperature),
+	}
+
+	if jsonMode {
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		}
+	}
+
+	resp, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return "", err
+	}
+
+	content := resp.Choices[0].Message.Content
+
+	// Persist LLM usage
+	c.persistLLMUsage(ctx,
+		dto.LLMInput{
+			Messages: inputMessages,
+		},
+		dto.LLMOutput{
+			Content: content,
+			Usage: &dto.LLMUsageStats{
+				PromptTokens:     int(resp.Usage.PromptTokens),
+				CompletionTokens: int(resp.Usage.CompletionTokens),
+				TotalTokens:      int(resp.Usage.TotalTokens),
+			},
+		},
+		string(c.cfg.Model),
+	)
+
+	return content, nil
+}
+
+// createLLMMessages creates a slice of message params from system and user content
+func createLLMMessages(systemContent string, userContent string) ([]openai.ChatCompletionMessageParamUnion, []dto.LLMMessage) {
+	messages := []openai.ChatCompletionMessageParamUnion{
+		{
+			OfSystem: &openai.ChatCompletionSystemMessageParam{
+				Content: openai.ChatCompletionSystemMessageParamContentUnion{
+					OfString: param.NewOpt(systemContent),
+				},
+			},
+		},
+	}
+
+	inputMessages := []dto.LLMMessage{
+		{Role: "system", Content: systemContent},
+	}
+
+	if userContent != "" {
+		messages = append(messages, openai.ChatCompletionMessageParamUnion{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.ChatCompletionUserMessageParamContentUnion{
+					OfString: param.NewOpt(userContent),
+				},
+			},
+		})
+		inputMessages = append(inputMessages, dto.LLMMessage{Role: "user", Content: userContent})
+	}
+
+	return messages, inputMessages
+}
+
 func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
 	if c == nil {
 		return "", nil
@@ -161,54 +244,17 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	• Specific improvement details
 	`
 
-	params := openai.ChatCompletionNewParams{
-		Model: openai.ChatModel(c.cfg.Model),
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ChatCompletionSystemMessageParamContentUnion{
-						OfString: param.NewOpt(prompt),
-					},
-				},
-			},
-			{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.ChatCompletionUserMessageParamContentUnion{
-						OfString: param.NewOpt(fmt.Sprintf("Messages:\n%s", messages)),
-					},
-				},
-			},
-		},
-		Temperature: param.NewOpt(0.7),
-	}
+	userContent := fmt.Sprintf("Messages:\n%s", messages)
+	chatMessages, inputMessages := createLLMMessages(prompt, userContent)
 
-	resp, err := c.client.Chat.Completions.New(ctx, params)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
 	if err != nil {
 		return "", fmt.Errorf("generating suggestions: %w", err)
 	}
 
-	slog.DebugContext(ctx, "generated suggestions", "request", params, "response", resp.Choices[0].Message.Content)
+	slog.DebugContext(ctx, "generated suggestions", "response", content)
 
-	// Persist LLM usage (best effort)
-	c.persistLLMUsage(ctx,
-		dto.LLMInput{
-			Messages: []dto.LLMMessage{
-				{Role: "system", Content: prompt},
-				{Role: "user", Content: fmt.Sprintf("Messages:\n%s", messages)},
-			},
-		},
-		dto.LLMOutput{
-			Content: resp.Choices[0].Message.Content,
-			Usage: &dto.LLMUsageStats{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			},
-		},
-		string(c.cfg.Model),
-	)
-
-	return resp.Choices[0].Message.Content, nil
+	return content, nil
 }
 
 type RunbookResponse struct {
@@ -321,58 +367,16 @@ Example 4:
 		content += msg + "\n"
 	}
 
-	params := openai.ChatCompletionNewParams{
-		Model: openai.ChatModel(c.cfg.Model),
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ChatCompletionSystemMessageParamContentUnion{
-						OfString: param.NewOpt(prompt),
-					},
-				},
-			},
-			{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.ChatCompletionUserMessageParamContentUnion{
-						OfString: param.NewOpt(content),
-					},
-				},
-			},
-		},
-		Temperature: param.NewOpt(0.7),
-		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
-			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
-		},
-	}
-
-	resp, err := c.client.Chat.Completions.New(ctx, params)
+	chatMessages, inputMessages := createLLMMessages(prompt, content)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
 	if err != nil {
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
 
-	slog.DebugContext(ctx, "created runbook", "request", params, "response", resp.Choices[0].Message.Content)
-
-	// Persist LLM usage (best effort)
-	c.persistLLMUsage(ctx,
-		dto.LLMInput{
-			Messages: []dto.LLMMessage{
-				{Role: "system", Content: prompt},
-				{Role: "user", Content: content},
-			},
-		},
-		dto.LLMOutput{
-			Content: resp.Choices[0].Message.Content,
-			Usage: &dto.LLMUsageStats{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			},
-		},
-		string(c.cfg.Model),
-	)
+	slog.DebugContext(ctx, "created runbook", "response", respContent)
 
 	var runbook RunbookResponse
-	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &runbook); err != nil {
+	if err := json.Unmarshal([]byte(respContent), &runbook); err != nil {
 		return nil, fmt.Errorf("unmarshaling runbook response: %w", err)
 	}
 
@@ -384,10 +388,11 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 		return nil, nil
 	}
 
+	inputText := fmt.Sprintf("%s: %s", task, text)
 	params := openai.EmbeddingNewParams{
 		Model: openai.EmbeddingModel(c.cfg.EmbeddingModel),
 		Input: openai.EmbeddingNewParamsInputUnion{
-			OfString: param.NewOpt(fmt.Sprintf("%s: %s", task, text)),
+			OfString: param.NewOpt(inputText),
 		},
 		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 		Dimensions:     param.NewOpt[int64](768),
@@ -401,7 +406,7 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	// Persist LLM usage (best effort)
 	c.persistLLMUsage(ctx,
 		dto.LLMInput{
-			Text: fmt.Sprintf("%s: %s", task, text),
+			Text: inputText,
 		},
 		dto.LLMOutput{
 			Embedding: make([]float32, len(resp.Data[0].Embedding)),
@@ -427,47 +432,14 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	if c == nil {
 		return "", "", nil
 	}
-	params := openai.ChatCompletionNewParams{
-		Model: openai.ChatModel(c.cfg.Model),
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ChatCompletionSystemMessageParamContentUnion{
-						OfString: param.NewOpt(prompt),
-					},
-				},
-			},
-		},
-		Temperature: param.NewOpt(0.7),
-		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
-			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
-		},
-	}
 
-	resp, err := c.client.Chat.Completions.New(ctx, params)
+	chatMessages, inputMessages := createLLMMessages(prompt, "")
+	respMsg, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
 	if err != nil {
 		return "", "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
-	respMsg := resp.Choices[0].Message.Content
-	slog.DebugContext(ctx, "ran JSON mode prompt", "request", params, "response", respMsg)
 
-	// Persist LLM usage (best effort)
-	c.persistLLMUsage(ctx,
-		dto.LLMInput{
-			Messages: []dto.LLMMessage{
-				{Role: "system", Content: prompt},
-			},
-		},
-		dto.LLMOutput{
-			Content: respMsg,
-			Usage: &dto.LLMUsageStats{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			},
-		},
-		string(c.cfg.Model),
-	)
+	slog.DebugContext(ctx, "ran JSON mode prompt", "response", respMsg)
 
 	if jsonSchema != nil {
 		if keyErr, err := jsonSchema.ValidateBytes(ctx, []byte(respMsg)); err != nil || len(keyErr) > 0 {
@@ -522,50 +494,11 @@ Response: none
 
 Classify the following message with ONLY the command name and nothing else:`
 
-	params := openai.ChatCompletionNewParams{
-		Model: openai.ChatModel(c.cfg.Model),
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ChatCompletionSystemMessageParamContentUnion{
-						OfString: param.NewOpt(prompt),
-					},
-				},
-			},
-			{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.ChatCompletionUserMessageParamContentUnion{
-						OfString: param.NewOpt(text),
-					},
-				},
-			},
-		},
-		Temperature: param.NewOpt(0.0), // Use 0 temperature for more consistent results
-	}
-
-	resp, err := c.client.Chat.Completions.New(ctx, params)
+	chatMessages, inputMessages := createLLMMessages(prompt, text)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, false)
 	if err != nil {
 		return "", fmt.Errorf("classifying command: %w", err)
 	}
 
-	// Persist LLM usage (best effort)
-	c.persistLLMUsage(ctx,
-		dto.LLMInput{
-			Messages: []dto.LLMMessage{
-				{Role: "system", Content: prompt},
-				{Role: "user", Content: text},
-			},
-		},
-		dto.LLMOutput{
-			Content: resp.Choices[0].Message.Content,
-			Usage: &dto.LLMUsageStats{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			},
-		},
-		string(c.cfg.Model),
-	)
-
-	return resp.Choices[0].Message.Content, nil
+	return content, nil
 }
