@@ -15,6 +15,8 @@ import (
 	ollama "github.com/ollama/ollama/api"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/shared"
 	"github.com/qri-io/jsonschema"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -47,7 +49,7 @@ type Client interface {
 }
 
 type client struct {
-	client *openai.Client
+	client openai.Client
 	cfg    Config
 	db     *pgxpool.Pool
 }
@@ -155,18 +157,24 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	`
 
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.cfg.Model)),
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
-				Content: openai.F(any(prompt)),
+		Model: openai.ChatModel(c.cfg.Model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfSystem: &openai.ChatCompletionSystemMessageParam{
+					Content: openai.ChatCompletionSystemMessageParamContentUnion{
+						OfString: param.NewOpt(prompt),
+					},
+				},
 			},
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
-				Content: openai.F(any(fmt.Sprintf("Messages:\n%s", messages))),
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.ChatCompletionUserMessageParamContentUnion{
+						OfString: param.NewOpt(fmt.Sprintf("Messages:\n%s", messages)),
+					},
+				},
 			},
-		}),
-		Temperature: openai.F(0.7),
+		},
+		Temperature: param.NewOpt(0.7),
 	}
 
 	resp, err := c.client.Chat.Completions.New(ctx, params)
@@ -297,23 +305,27 @@ Example 4:
 	}
 
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.cfg.Model)),
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
-				Content: openai.F(any(prompt)),
+		Model: openai.ChatModel(c.cfg.Model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfSystem: &openai.ChatCompletionSystemMessageParam{
+					Content: openai.ChatCompletionSystemMessageParamContentUnion{
+						OfString: param.NewOpt(prompt),
+					},
+				},
 			},
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
-				Content: openai.F(any(content)),
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.ChatCompletionUserMessageParamContentUnion{
+						OfString: param.NewOpt(content),
+					},
+				},
 			},
-		}),
-		Temperature: openai.F(0.7),
-		ResponseFormat: openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](
-			openai.ResponseFormatJSONObjectParam{
-				Type: openai.F[openai.ResponseFormatJSONObjectType](openai.ResponseFormatJSONObjectTypeJSONObject),
-			},
-		),
+		},
+		Temperature: param.NewOpt(0.7),
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		},
 	}
 
 	resp, err := c.client.Chat.Completions.New(ctx, params)
@@ -356,12 +368,12 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 	}
 
 	params := openai.EmbeddingNewParams{
-		Model: openai.F(openai.EmbeddingModel(c.cfg.EmbeddingModel)),
-		Input: openai.F(openai.EmbeddingNewParamsInputUnion(
-			openai.EmbeddingNewParamsInputArrayOfStrings([]string{fmt.Sprintf("%s: %s", task, text)}),
-		)),
-		EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
-		Dimensions:     openai.F(int64(768)),
+		Model: openai.EmbeddingModel(c.cfg.EmbeddingModel),
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfString: param.NewOpt(fmt.Sprintf("%s: %s", task, text)),
+		},
+		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
+		Dimensions:     param.NewOpt[int64](768),
 	}
 
 	resp, err := c.client.Embeddings.New(ctx, params)
@@ -399,19 +411,21 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 		return "", "", nil
 	}
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.cfg.Model)),
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
-				Content: openai.F(any(prompt)),
+		Model: openai.ChatModel(c.cfg.Model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfSystem: &openai.ChatCompletionSystemMessageParam{
+					Content: openai.ChatCompletionSystemMessageParamContentUnion{
+						OfString: param.NewOpt(prompt),
+					},
+				},
 			},
-		}),
-		Temperature: openai.F(0.7),
-		ResponseFormat: openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](
-			openai.ResponseFormatJSONObjectParam{
-				Type: openai.F[openai.ResponseFormatJSONObjectType](openai.ResponseFormatJSONObjectTypeJSONObject),
-			},
-		)}
+		},
+		Temperature: param.NewOpt(0.7),
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		},
+	}
 
 	resp, err := c.client.Chat.Completions.New(ctx, params)
 	if err != nil {
@@ -482,18 +496,24 @@ Response: none
 Classify the following message:`
 
 	params := openai.ChatCompletionNewParams{
-		Model: openai.F(openai.ChatModel(c.cfg.Model)),
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleSystem),
-				Content: openai.F(any(prompt)),
+		Model: openai.ChatModel(c.cfg.Model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfSystem: &openai.ChatCompletionSystemMessageParam{
+					Content: openai.ChatCompletionSystemMessageParamContentUnion{
+						OfString: param.NewOpt(prompt),
+					},
+				},
 			},
-			openai.ChatCompletionMessageParam{
-				Role:    openai.F(openai.ChatCompletionMessageParamRoleUser),
-				Content: openai.F(any(text)),
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.ChatCompletionUserMessageParamContentUnion{
+						OfString: param.NewOpt(text),
+					},
+				},
 			},
-		}),
-		Temperature: openai.F(0.0), // Use 0 temperature for more consistent results
+		},
+		Temperature: param.NewOpt(0.0), // Use 0 temperature for more consistent results
 	}
 
 	resp, err := c.client.Chat.Completions.New(ctx, params)

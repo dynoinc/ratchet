@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"testing"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -11,7 +10,8 @@ import (
 )
 
 func TestDBSetup(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
@@ -21,7 +21,8 @@ func TestDBSetup(t *testing.T) {
 }
 
 func TestUpdateReaction(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = postgresContainer.Stop(ctx, nil) })
