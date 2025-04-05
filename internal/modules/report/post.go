@@ -107,6 +107,13 @@ func Post(
 			})
 		}
 	}
+	// Sort by duration descending and take top 5
+	slices.SortFunc(longRunningAlerts, func(a, b alertEntry) int {
+		return int(b.duration.Seconds()) - int(a.duration.Seconds())
+	})
+	if len(longRunningAlerts) > 5 {
+		longRunningAlerts = longRunningAlerts[:5]
+	}
 
 	// Compute untriaged alerts
 	var untriagedAlerts []alertEntry
@@ -119,6 +126,13 @@ func Post(
 				count:   count,
 			})
 		}
+	}
+	// Sort by count descending and take top 5
+	slices.SortFunc(untriagedAlerts, func(a, b alertEntry) int {
+		return b.count - a.count
+	})
+	if len(untriagedAlerts) > 5 {
+		untriagedAlerts = untriagedAlerts[:5]
 	}
 
 	// Compute frequently firing alerts

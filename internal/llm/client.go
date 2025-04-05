@@ -135,19 +135,24 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 		return "", nil
 	}
 
-	prompt := `You are a technical analyst reviewing user support messages. Your task is to identify specific, actionable improvements based on the provided messages.
+	prompt := `You are a technical analyst reviewing Slack support channel messages. Your task is to identify specific, actionable improvements to reduce operational toil based on the provided conversation threads.
+
+	Analyze the messages for:
+	1. Recurring technical issues that could be automated
+	2. Knowledge gaps that could be addressed with better documentation
+	3. Process inefficiencies that slow down incident resolution
+	4. Alert fatigue or noisy monitoring that could be optimized
 
 	For each suggestion:
-	1. Focus only on concrete issues mentioned in the messages
+	1. Focus only on concrete issues with evidence in the messages
 	2. Provide a clear, specific title that identifies the problem area
-	3. Include a single, concise bullet point explaining the proposed solution
-	4. Format in Slack-friendly markdown with each suggestion as a separate block
+	3. Include a single, concise bullet point explaining the proposed solution and its expected impact
 
 	Rules:
-	- Maximum 3 suggestions
+	- Maximum 3 high-impact suggestions
 	- Each suggestion must directly relate to issues in the messages
 	- No generic or speculative improvements
-	- Keep titles short and descriptive
+	- Keep titles short and descriptive (5-7 words)
 	- Bullet points should be 1-2 sentences maximum
 	- If no clear improvements can be identified, return "No specific improvements identified from these messages"
 
@@ -231,9 +236,13 @@ func (c *client) CreateRunbook(ctx context.Context, service string, alert string
 
 RULES:
 - Include only information explicitly mentioned in the messages
-- Keep content specific and actionable
-- Focus on technical details and specific patterns
+- Keep content specific, technical, and actionable
+- Focus on technical details, error patterns, and resolution steps
+- Use bullet points for clarity in the JSON arrays
+- Prioritize commands, error codes, and specific metrics when available
 - Return empty arrays if no relevant information exists for a section
+- Ensure lexical search query contains exact technical terms for precise matching
+- Make semantic search query descriptive enough to capture conceptual similarities
 
 EXAMPLES:
 
@@ -242,14 +251,16 @@ Example 1:
   "alert_overview": "High latency alert for the payment processing service. Triggers when p99 latency exceeds 500ms for 5 consecutive minutes.",
   "historical_root_causes": [
     "Database connection pool exhaustion due to connection leaks",
-    "Redis cache misses causing increased DB load"
+    "Redis cache misses causing increased DB load",
+    "Network congestion between payment service and payment gateway"
   ],
   "resolution_steps": [
     "Check connection pool metrics: kubectl get metrics -n payments | grep pool_size",
-    "Restart affected pods if connection count > 80%: kubectl rollout restart deployment/payment-svc"
+    "Restart affected pods if connection count > 80%: kubectl rollout restart deployment/payment-svc",
+    "Verify Redis cache hit ratio: redis-cli info stats | grep hit_rate"
   ],
-  "lexical_search_query": "payment-svc latency 500ms connection pool redis cache",
-  "semantic_search_query": "payment service high latency issues related to database connections and caching"
+  "lexical_search_query": "payment-svc latency 500ms connection pool redis cache timeout",
+  "semantic_search_query": "payment service high latency issues related to database connections, redis caching, and network timeouts"
 }
 
 Example 2:
@@ -257,14 +268,16 @@ Example 2:
   "alert_overview": "Memory usage exceeded threshold on authentication service. Alert fires when memory usage is above 85% for 10 minutes.",
   "historical_root_causes": [
     "Memory leak in JWT validation routine",
-    "Large session objects not being garbage collected"
+    "Large session objects not being garbage collected",
+    "Excessive concurrent requests during peak hours"
   ],
   "resolution_steps": [
     "Review memory profile: curl localhost:6060/debug/pprof/heap > heap.out",
+    "Analyze heap dump: go tool pprof -http=:8080 heap.out",
     "Temporary mitigation: kubectl rollout restart deployment/auth-svc"
   ],
-  "lexical_search_query": "auth-svc OOM JWT validation memory leak pprof heap",
-  "semantic_search_query": "authentication service memory issues related to JWT validation and session object garbage collection"
+  "lexical_search_query": "auth-svc OOM JWT validation memory leak pprof heap garbage collection",
+  "semantic_search_query": "authentication service memory issues related to JWT validation, session object garbage collection, and request handling during peak load"
 }
 
 Example 3:
@@ -272,15 +285,17 @@ Example 3:
   "alert_overview": "Disk usage alert for logging service. Triggers when disk utilization exceeds 90% on logging nodes.",
   "historical_root_causes": [
     "Log rotation not cleaning up old files properly",
-    "Sudden spike in debug logging from application"
+    "Sudden spike in debug logging from application",
+    "Insufficient disk space allocation for log volume"
   ],
   "resolution_steps": [
     "Check disk usage: df -h /var/log",
     "Force log rotation: logrotate -f /etc/logrotate.d/application",
-    "Compress old logs: find /var/log -name '*.log.*' -exec gzip {} \\;"
+    "Compress old logs: find /var/log -name '*.log.*' -exec gzip {} \\;",
+    "Increase log volume if needed: lvcreate -L +10G -n log_vol vg_logs"
   ],
-  "lexical_search_query": "logging disk usage 90% logrotate /var/log",
-  "semantic_search_query": "logging service disk space issues related to log rotation and cleanup"
+  "lexical_search_query": "logging disk usage 90% logrotate /var/log compression retention",
+  "semantic_search_query": "logging service disk space issues related to log rotation, cleanup, and volume management"
 }
 
 Example 4:
@@ -288,15 +303,17 @@ Example 4:
   "alert_overview": "API error rate alert for user service. Triggers when 5xx errors exceed 5% over 5 minutes.",
   "historical_root_causes": [
     "Rate limiting configuration too aggressive",
-    "Database deadlocks during peak traffic"
+    "Database deadlocks during peak traffic",
+    "Timeout in downstream dependency causing cascading failures"
   ],
   "resolution_steps": [
     "Check error distribution: kubectl logs -l app=user-svc | grep ERROR | sort | uniq -c",
     "Analyze rate limit metrics: curl -s localhost:9090/metrics | grep rate_limit",
+    "Check database locks: SELECT * FROM pg_locks WHERE granted = false;",
     "Scale up replicas if needed: kubectl scale deployment/user-svc --replicas=5"
   ],
-  "lexical_search_query": "user-svc 5xx error rate_limit database deadlock",
-  "semantic_search_query": "user service API errors related to rate limiting and database deadlocks during high traffic"
+  "lexical_search_query": "user-svc 5xx error rate_limit database deadlock timeout dependency",
+  "semantic_search_query": "user service API errors related to rate limiting, database deadlocks, and dependency timeouts during high traffic periods"
 }`
 
 	content := fmt.Sprintf("Service: %s\nAlert: %s\nMessages:\n", service, alert)
@@ -465,11 +482,12 @@ func (c *client) ClassifyCommand(ctx context.Context, text string) (string, erro
 		return "", nil
 	}
 
-	prompt := `You are a command classifier that identifies the most appropriate command from user input. 
-Given a message, respond with exactly one of these commands:
-- weekly_report
-- usage_report
-- none
+	prompt := `You are a command classifier for a Slack bot named Ratchet that helps reduce operational toil. Your task is to identify the most appropriate command from user input.
+
+Given a message, respond with EXACTLY ONE of these commands (no explanation, just the command name):
+- weekly_report (for generating incident/alert reports or summaries for a channel)
+- usage_report (for showing bot usage statistics and feedback metrics)
+- none (for messages that don't match any supported command)
 
 Examples:
 User: "generate weekly incident report for this channel"
@@ -481,10 +499,16 @@ Response: weekly_report
 User: "what's the status report"
 Response: weekly_report
 
+User: "show me the weekly summary"
+Response: weekly_report
+
 User: "show ratchet bot usage statistics"
 Response: usage_report
 
 User: "post usage report"
+Response: usage_report
+
+User: "how many people are using the bot?"
 Response: usage_report
 
 User: "how are you doing?"
@@ -493,7 +517,10 @@ Response: none
 User: "what's the weather like?"
 Response: none
 
-Classify the following message:`
+User: "can you help me with something?"
+Response: none
+
+Classify the following message with ONLY the command name and nothing else:`
 
 	params := openai.ChatCompletionNewParams{
 		Model: openai.ChatModel(c.cfg.Model),
