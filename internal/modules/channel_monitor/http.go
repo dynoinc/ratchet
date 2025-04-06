@@ -204,7 +204,7 @@ func getMessagesForTest(ctx context.Context, slackIntegration slack_integration.
 
 func renderPage(w http.ResponseWriter, prefix string) {
 	w.Header().Set("Content-Type", "text/html")
-	w.Write(fmt.Appendf(nil, `<!DOCTYPE html>
+	w.Write([]byte(fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
 	<title>Test Channel Monitor</title>
@@ -263,7 +263,7 @@ func renderPage(w http.ResponseWriter, prefix string) {
 		});
 	</script>
 </body>
-</html>`, prefix))
+</html>`, prefix)))
 }
 
 func renderTestReport(results []*TestChannelMonitorReportData) string {
