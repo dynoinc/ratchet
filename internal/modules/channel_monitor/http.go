@@ -208,6 +208,7 @@ func renderPage(w http.ResponseWriter, prefix string) {
 <html>
 <head>
 	<title>Test Channel Monitor</title>
+	<script src="https://unpkg.com/htmx.org@2.0.4"></script>
 	<style>
 		body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
 		textarea { width: 100%%; height: 300px; margin: 10px 0; font-family: monospace; }
@@ -269,26 +270,27 @@ func renderTestReport(results []*TestChannelMonitorReportData) string {
 	reportHTML := `<!DOCTYPE html>
 <html>
 <head>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-h3 { color: #34495e; margin-top: 30px; }
-details { background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; }
-summary { cursor: pointer; color: #2980b9; }
-pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; }
-.error { color: #e74c3c; }
-hr { border: none; border-top: 1px solid #eee; margin: 30px 0; }
-.download-btn { 
-    background: #2980b9; 
-    color: white; 
-    padding: 10px 20px; 
-    border: none; 
-    border-radius: 4px; 
-    cursor: pointer; 
-    margin: 20px 0;
-    text-decoration: none;
-    display: inline-block;
-}
-.download-btn:hover { background: #2471a3; }
+<style>
+	body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+	h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+	h3 { color: #34495e; margin-top: 30px; }
+	details { background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; }
+	summary { cursor: pointer; color: #2980b9; }
+	pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; }
+	.error { color: #e74c3c; }
+	hr { border: none; border-top: 1px solid #eee; margin: 30px 0; }
+	.download-btn { 
+		background: #2980b9; 
+		color: white; 
+		padding: 10px 20px; 
+		border: none; 
+		border-radius: 4px; 
+		cursor: pointer; 
+		margin: 20px 0;
+		text-decoration: none;
+		display: inline-block;
+	}
+	.download-btn:hover { background: #2471a3; }
 </style>
 </head>
 <body>
