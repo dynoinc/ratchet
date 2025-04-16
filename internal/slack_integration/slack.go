@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/dynoinc/ratchet/internal"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+
+	"github.com/dynoinc/ratchet/internal"
 )
 
 type Config struct {
@@ -204,7 +205,7 @@ func (b *integration) GetBotChannels() ([]slack.Channel, error) {
 		ExcludeArchived: true,
 	}
 
-	channels := []slack.Channel{}
+	var channels []slack.Channel
 	for {
 		response, nextCursor, err := b.client.GetConversationsForUserContext(context.Background(), params)
 		if err != nil {

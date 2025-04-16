@@ -16,25 +16,25 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
-type handler struct {
+type Handler struct {
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
 }
 
-func New(bot *internal.Bot, slackIntegration slack_integration.Integration, llmClient llm.Client) *handler {
-	return &handler{
+func New(bot *internal.Bot, slackIntegration slack_integration.Integration, llmClient llm.Client) *Handler {
+	return &Handler{
 		bot:              bot,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
 	}
 }
 
-func (h *handler) Name() string {
+func (h *Handler) Name() string {
 	return "runbook"
 }
 
-func (h *handler) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	if msg.IncidentAction.Action != dto.ActionOpenIncident {
 		return nil
 	}

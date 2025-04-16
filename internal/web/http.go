@@ -290,12 +290,12 @@ func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
 
-	runbook, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
+	rbk, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
 	if err != nil {
 		return nil, err
 	}
 
-	return runbook, nil
+	return rbk, nil
 }
 
 func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
@@ -308,7 +308,7 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	runbook, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
+	rbk, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
 	if err != nil {
 		return nil, err
 	}
@@ -317,8 +317,8 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		r.Context(),
 		schema.New(h.db),
 		h.llmClient,
-		runbook.LexicalSearchQuery,
-		runbook.SemanticSearchQuery,
+		rbk.LexicalSearchQuery,
+		rbk.SemanticSearchQuery,
 		intervalDuration,
 		h.slackIntegration.BotUserID(),
 	)

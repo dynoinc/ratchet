@@ -4,30 +4,31 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-type backfillThreadWorker struct {
+type BackfillThreadWorker struct {
 	river.WorkerDefaults[background.BackfillThreadWorkerArgs]
 
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 }
 
-func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *backfillThreadWorker {
-	return &backfillThreadWorker{
+func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *BackfillThreadWorker {
+	return &BackfillThreadWorker{
 		bot:              bot,
 		slackIntegration: slackIntegration,
 	}
 }
 
-func (w *backfillThreadWorker) Work(ctx context.Context, job *river.Job[background.BackfillThreadWorkerArgs]) error {
+func (w *BackfillThreadWorker) Work(ctx context.Context, job *river.Job[background.BackfillThreadWorkerArgs]) error {
 	messages, err := w.slackIntegration.GetConversationReplies(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		return fmt.Errorf("getting conversation replies for channel ID %s: %w", job.Args.ChannelID, err)

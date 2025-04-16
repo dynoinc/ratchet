@@ -196,10 +196,10 @@ func main() {
 
 	// Background job setup
 	workers := river.NewWorkers()
-	river.AddWorker(workers, classifier)
-	river.AddWorker(workers, channelOnboardWorker)
-	river.AddWorker(workers, backfillThreadWorker)
-	river.AddWorker(workers, modulesWorker)
+	river.AddWorker[background.ClassifierArgs](workers, classifier)
+	river.AddWorker[background.ChannelOnboardWorkerArgs](workers, channelOnboardWorker)
+	river.AddWorker[background.BackfillThreadWorkerArgs](workers, backfillThreadWorker)
+	river.AddWorker[background.ModulesWorkerArgs](workers, modulesWorker)
 
 	// Start River client
 	riverClient, err := background.New(db, workers)

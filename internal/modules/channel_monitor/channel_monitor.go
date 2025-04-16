@@ -24,9 +24,9 @@ type Config struct {
 	ConfigFile string `split_words:"true"`
 }
 
-type config = map[string]*Entry
+type config = map[string]*entry
 
-type Entry struct {
+type entry struct {
 	ChannelID      string             `yaml:"channel_id" json:"channel_id"`
 	Prompt         string             `yaml:"prompt" json:"prompt"`
 	PromptTemplate *template.Template `yaml:"-" json:"-"`
@@ -35,11 +35,11 @@ type Entry struct {
 	ExecutableArgs []string           `yaml:"executable_args" json:"executable_args"`
 }
 
-type PromptData struct {
+type promptData struct {
 	Message dto.SlackMessage
 }
 
-type ExecutableStdInData struct {
+type executableStdInData struct {
 	Slug      string           `json:"slug"`
 	ChannelID string           `json:"channel_id"`
 	SlackTS   string           `json:"slack_ts"`
@@ -47,30 +47,30 @@ type ExecutableStdInData struct {
 	Message   dto.SlackMessage `json:"message"`
 }
 
-type ExecutableStdOutData struct {
-	DirectMessages  []DirectMessage   `json:"direct_messages"`
-	ChannelMessages []*ChannelMessage `json:"channel_messages"`
+type executableStdOutData struct {
+	DirectMessages  []directMessage   `json:"direct_messages"`
+	ChannelMessages []*channelMessage `json:"channel_messages"`
 }
 
-type DirectMessage struct {
+type directMessage struct {
 	Email string `json:"email"`
 	Text  string `json:"text"`
 }
 
-type ChannelMessage struct {
+type channelMessage struct {
 	ChannelID      string `json:"channel_id"`
 	Text           string `json:"text"`
 	SlackTimestamp string `json:"slack_ts"`
 }
 
-type channelMonitor struct {
+type ChannelMonitor struct {
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
 	cfg              config
 }
 
-func (c *channelMonitor) Name() string {
+func (c *ChannelMonitor) Name() string {
 	return "channel_monitor"
 }
 
@@ -79,7 +79,7 @@ func New(
 	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
-) *channelMonitor {
+) *ChannelMonitor {
 	cfg := config{}
 	if c.ConfigFile != "" {
 		b, err := os.ReadFile(c.ConfigFile)
@@ -91,7 +91,7 @@ func New(
 			slog.Error("loading config file", "error", err)
 		}
 	}
-	return &channelMonitor{
+	return &ChannelMonitor{
 		bot:              bot,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
@@ -109,7 +109,7 @@ func parseConfig(b []byte) (config, error) {
 	if err != nil {
 		return nil, err
 	}
-	parsed := &map[string]*Entry{}
+	parsed := &map[string]*entry{}
 	if err := json.Unmarshal(marshaled, parsed); err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func parseConfig(b []byte) (config, error) {
 	return *parsed, nil
 }
 
-func (c *channelMonitor) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+func (c *ChannelMonitor) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	if msg.Message.SubType != "" {
 		return nil
 	}
@@ -151,8 +151,8 @@ func (c *channelMonitor) Handle(ctx context.Context, channelID string, slackTS s
 	return nil
 }
 
-func (c *channelMonitor) handleMessage(ctx context.Context, slug string, entry *Entry, slackTS string, msg dto.MessageAttrs) error {
-	data := PromptData{msg.Message}
+func (c *ChannelMonitor) handleMessage(ctx context.Context, slug string, entry *entry, slackTS string, msg dto.MessageAttrs) error {
+	data := promptData{msg.Message}
 	var prompt bytes.Buffer
 	err := entry.PromptTemplate.Execute(&prompt, data)
 	if err != nil {
@@ -167,15 +167,15 @@ func (c *channelMonitor) handleMessage(ctx context.Context, slug string, entry *
 		return err
 	}
 	slog.Debug("command output", "output", output)
-	outputData := ExecutableStdOutData{}
+	outputData := executableStdOutData{}
 	if err := json.Unmarshal([]byte(output), &outputData); err != nil {
 		return fmt.Errorf("unmarshalling command output: %w", err)
 	}
 	return c.doOutputActions(ctx, outputData)
 }
 
-func (c *channelMonitor) runExecutable(slug string, entry *Entry, slackTS string, lmmOutput string, msg dto.MessageAttrs) (string, error) {
-	stdInData := ExecutableStdInData{
+func (c *ChannelMonitor) runExecutable(slug string, entry *entry, slackTS string, lmmOutput string, msg dto.MessageAttrs) (string, error) {
+	stdInData := executableStdInData{
 		Slug:      slug,
 		ChannelID: entry.ChannelID,
 		SlackTS:   slackTS,
@@ -197,7 +197,7 @@ func (c *channelMonitor) runExecutable(slug string, entry *Entry, slackTS string
 	return output, nil
 }
 
-func (c *channelMonitor) doOutputActions(ctx context.Context, outputData ExecutableStdOutData) error {
+func (c *ChannelMonitor) doOutputActions(ctx context.Context, outputData executableStdOutData) error {
 	for _, dm := range outputData.DirectMessages {
 		userID, err := c.slackIntegration.GetUserIDByEmail(ctx, dm.Email)
 		if err != nil {

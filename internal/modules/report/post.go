@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
+	"github.com/slack-go/slack"
+
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
-	"github.com/olekukonko/tablewriter"
-	"github.com/slack-go/slack"
 )
 
 type alertEntry struct {

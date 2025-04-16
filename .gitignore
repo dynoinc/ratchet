@@ -31,3 +31,6 @@ bin/
 
 # IntelliJ IDEA
 .idea
+
+# VS Code
+.vscode

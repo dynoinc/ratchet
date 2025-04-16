@@ -50,7 +50,7 @@ func TestParseConfigFullFeature(t *testing.T) {
 	require.Equal(t, "test-prompt {{.Message.Text}}", c["test-slug-1"].Prompt)
 	require.NotNil(t, c["test-slug-1"].PromptTemplate)
 	buffer := bytes.Buffer{}
-	err = c["test-slug-1"].PromptTemplate.Execute(&buffer, PromptData{Message: dto.SlackMessage{Text: "test"}})
+	err = c["test-slug-1"].PromptTemplate.Execute(&buffer, promptData{Message: dto.SlackMessage{Text: "test"}})
 	require.NoError(t, err)
 	require.Equal(t, "test-prompt test", buffer.String())
 	require.NotNil(t, c["test-slug-1"].ResultSchema)
@@ -140,22 +140,22 @@ func TestHandleMessage(t *testing.T) {
 	mockLLM := mocks.NewMockClient(mockCtl)
 	mockSlack := mocks.NewMockIntegration(mockCtl)
 
-	entry := Entry{
+	e := entry{
 		ChannelID:      "C123",
 		Prompt:         "Hello {{.Message.Text}}",
 		Executable:     "echo",
 		ExecutableArgs: []string{`{"direct_messages": [{"email": "user@example.com", "text": "Hello world"}], "channel_messages": [{"channel_id": "C321", "text": "Demo message"}]}`},
 	}
 
-	tmpl, err := template.New("test").Parse(entry.Prompt)
+	tmpl, err := template.New("test").Parse(e.Prompt)
 	require.NoError(t, err)
-	entry.PromptTemplate = tmpl
+	e.PromptTemplate = tmpl
 
-	cm := &channelMonitor{
+	cm := &ChannelMonitor{
 		llmClient:        mockLLM,
 		slackIntegration: mockSlack,
-		cfg: map[string]*Entry{
-			"test_slug": &entry,
+		cfg: map[string]*entry{
+			"test_slug": &e,
 		},
 	}
 
@@ -163,7 +163,7 @@ func TestHandleMessage(t *testing.T) {
 		Message: dto.SlackMessage{Text: "world"},
 	}
 
-	mockLLM.EXPECT().RunJSONModePrompt(ctx, "Hello world", entry.ResultSchema).Return("{\"response\": \"ok\"}", "", nil).Times(1)
+	mockLLM.EXPECT().RunJSONModePrompt(ctx, "Hello world", e.ResultSchema).Return("{\"response\": \"ok\"}", "", nil).Times(1)
 	mockSlack.EXPECT().GetUserIDByEmail(ctx, "user@example.com").Return("U123", nil).Times(1)
 	mockSlack.EXPECT().PostMessage(ctx, "U123", gomock.Any()).Return(nil).Times(1)
 	mockSlack.EXPECT().PostMessage(ctx, "C321", gomock.Any()).Return(nil).Times(1)

@@ -12,7 +12,7 @@ import (
 )
 
 type sentryMiddleware struct {
-	river.WorkerMiddlewareDefaults
+	river.MiddlewareDefaults
 }
 
 func (m *sentryMiddleware) Work(ctx context.Context, job *rivertype.JobRow, doInner func(ctx context.Context) error) error {
@@ -43,7 +43,7 @@ func New(db *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error
 			},
 		},
 		Workers: workers,
-		WorkerMiddleware: []rivertype.WorkerMiddleware{
+		Middleware: []rivertype.Middleware{
 			&sentryMiddleware{},
 		},
 	})

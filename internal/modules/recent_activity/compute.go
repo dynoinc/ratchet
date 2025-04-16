@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
+
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/pgvector/pgvector-go"
 )
 
 type Activity struct {

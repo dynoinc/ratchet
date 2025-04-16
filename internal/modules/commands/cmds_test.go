@@ -6,8 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dynoinc/ratchet/internal/llm"
 )
 
 func TestFindCommand(t *testing.T) {

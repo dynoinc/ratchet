@@ -1,13 +1,13 @@
 package dto
 
-type OnboardingStatus string
+type onboardingStatus string
 
 const (
-	OnboardingStatusStarted  OnboardingStatus = "started"
-	OnboardingStatusFinished OnboardingStatus = "finished"
+	OnboardingStatusStarted  onboardingStatus = "started"
+	OnboardingStatusFinished onboardingStatus = "finished"
 )
 
 type ChannelAttrs struct {
-	OnboardingStatus OnboardingStatus `json:"onboarding_status,omitzero"`
+	OnboardingStatus onboardingStatus `json:"onboarding_status,omitzero"`
 	Name             string           `json:"name,omitzero"`
 }

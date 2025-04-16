@@ -7,10 +7,11 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/dynoinc/ratchet/internal/modules/channel_monitor/mocks"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
+
+	"github.com/dynoinc/ratchet/internal/modules/channel_monitor/mocks"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 func TestGetTestResults_MaintainsOrder(t *testing.T) {
@@ -27,7 +28,7 @@ func TestGetTestResults_MaintainsOrder(t *testing.T) {
 	}
 
 	// Create entry with simple template
-	entry := &Entry{
+	entry := &entry{
 		PromptTemplate: template.Must(template.New("test").Parse("prompt for: {{.Message.Text}}")),
 	}
 
@@ -76,7 +77,7 @@ func TestGetTestResults_HandlesErrors(t *testing.T) {
 	}
 
 	// Create entry with invalid template to trigger error
-	entry := &Entry{
+	entry := &entry{
 		PromptTemplate: template.Must(template.New("test").Parse("{{.InvalidField}}")),
 	}
 
@@ -102,7 +103,7 @@ func TestGetTestResults_ConcurrencyLimit(t *testing.T) {
 	}
 
 	// Create entry with simple template
-	entry := &Entry{
+	entry := &entry{
 		PromptTemplate: template.Must(template.New("test").Parse("prompt for: {{.Message.Text}}")),
 	}
 

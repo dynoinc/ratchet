@@ -98,7 +98,7 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 		Host:   "localhost:11434",
 	}, http.DefaultClient)
 	if err := client.Pull(ctx, &ollama.PullRequest{
-		Name: s,
+		Model: s,
 	}, func(resp ollama.ProgressResponse) error {
 		fmt.Fprintf(os.Stderr, "\r%s: %s [%d/%d]", s, resp.Status, resp.Completed, resp.Total)
 		return nil
@@ -146,7 +146,7 @@ func (c *client) runChatCompletion(
 	}
 
 	params := openai.ChatCompletionNewParams{
-		Model:       openai.ChatModel(c.cfg.Model),
+		Model:       c.cfg.Model,
 		Messages:    messages,
 		Temperature: param.NewOpt(temperature),
 	}
@@ -177,7 +177,7 @@ func (c *client) runChatCompletion(
 				TotalTokens:      int(resp.Usage.TotalTokens),
 			},
 		},
-		string(c.cfg.Model),
+		c.cfg.Model,
 	)
 
 	return content, nil
@@ -390,7 +390,7 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 
 	inputText := fmt.Sprintf("%s: %s", task, text)
 	params := openai.EmbeddingNewParams{
-		Model: openai.EmbeddingModel(c.cfg.EmbeddingModel),
+		Model: c.cfg.EmbeddingModel,
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: param.NewOpt(inputText),
 		},
@@ -415,7 +415,7 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 				TotalTokens:  int(resp.Usage.TotalTokens),
 			},
 		},
-		string(c.cfg.EmbeddingModel),
+		c.cfg.EmbeddingModel,
 	)
 
 	r := make([]float32, len(resp.Data[0].Embedding))

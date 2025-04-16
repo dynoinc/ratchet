@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/dynoinc/ratchet/internal/storage/schema"
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 func setupTestDB(t *testing.T) *pgxpool.Pool {

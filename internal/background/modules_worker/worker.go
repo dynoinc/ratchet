@@ -4,11 +4,12 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/getsentry/sentry-go"
+	"github.com/riverqueue/river"
+
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/modules"
-	"github.com/getsentry/sentry-go"
-	"github.com/riverqueue/river"
 )
 
 type Worker struct {

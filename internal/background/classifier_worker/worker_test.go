@@ -6,8 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 func TestClassifierWorker(t *testing.T) {

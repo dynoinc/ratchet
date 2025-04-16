@@ -22,7 +22,7 @@ const (
 	cmdPostUsageReport
 )
 
-type commands struct {
+type Commands struct {
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
@@ -32,19 +32,19 @@ func New(
 	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
-) *commands {
-	return &commands{
+) *Commands {
+	return &Commands{
 		bot:              bot,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
 	}
 }
 
-func (c *commands) Name() string {
+func (c *Commands) Name() string {
 	return "commands"
 }
 
-func (c *commands) findCommand(ctx context.Context, text string) (cmd, error) {
+func (c *Commands) findCommand(ctx context.Context, text string) (cmd, error) {
 	text = strings.ToLower(strings.TrimSpace(text))
 	if text == "" {
 		return cmdNone, nil
@@ -66,7 +66,7 @@ func (c *commands) findCommand(ctx context.Context, text string) (cmd, error) {
 	}
 }
 
-func (c *commands) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+func (c *Commands) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	botID := c.slackIntegration.BotUserID()
 	text, found := strings.CutPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
 	if !found {
@@ -83,6 +83,7 @@ func (c *commands) Handle(ctx context.Context, channelID string, slackTS string,
 		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdPostUsageReport:
 		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
+	case cmdNone: // nothing to do
 	}
 
 	return nil

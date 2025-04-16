@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -25,7 +23,7 @@ import (
 type messageSource int
 
 const (
-	SourceSlack messageSource = iota
+	sourceSlack messageSource = iota
 	SourceBackfill
 )
 
@@ -125,7 +123,8 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 
 	for _, param := range params {
 		if err := qtx.AddThreadMessage(ctx, param); err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == pgerrcode.ForeignKeyViolation {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.ForeignKeyViolation {
 				continue
 			}
 
@@ -158,7 +157,7 @@ func (b *Bot) NotifyMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 					},
 				},
 			},
-		}, SourceSlack); err != nil {
+		}, sourceSlack); err != nil {
 			return fmt.Errorf("adding message: %w", err)
 		}
 	} else {
@@ -231,28 +230,6 @@ func (b *Bot) GetMessage(
 	return msg, nil
 }
 
-func TsToTime(ts string) (time.Time, error) {
-	// Split the timestamp into seconds and microseconds
-	parts := strings.Split(ts, ".")
-	if len(parts) != 2 {
-		return time.Time{}, fmt.Errorf("invalid Slack timestamp format: %s", ts)
-	}
-
-	// Convert seconds and microseconds to integers
-	seconds, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse seconds: %w", err)
-	}
-
-	microseconds, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse microseconds: %w", err)
-	}
-
-	// Create a time.Time object using Unix seconds and nanoseconds
-	return time.Unix(seconds, microseconds*1000).UTC(), nil
-}
-
 func TimeToTs(t time.Time) string {
 	// Convert time.Time to Unix seconds and nanoseconds
 	seconds := t.Unix()
@@ -260,35 +237,4 @@ func TimeToTs(t time.Time) string {
 
 	// Convert Unix seconds and nanoseconds to a Slack timestamp
 	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
-}
-
-func (b *Bot) RecordLLMUsage(ctx context.Context, tx pgx.Tx, params schema.AddLLMUsageParams) error {
-	qtx := schema.New(b.DB).WithTx(tx)
-
-	// Add new LLM usage record
-	_, err := qtx.AddLLMUsage(ctx, params)
-	if err != nil {
-		return fmt.Errorf("adding LLM usage: %w", err)
-	}
-
-	// Purge old LLM usage records, keeping only the last 2 years
-	cutoffTime := time.Now().AddDate(-2, 0, 0) // 2 years ago
-	pgCutoffTime := pgtype.Timestamptz{
-		Time:  cutoffTime,
-		Valid: true,
-	}
-
-	rowsDeleted, err := qtx.PurgeLLMUsageOlderThan(ctx, pgCutoffTime)
-	if err != nil {
-		// Log the error but don't fail the transaction
-		slog.ErrorContext(ctx, "failed to purge old LLM usage records",
-			"error", err,
-			"cutoff_time", cutoffTime)
-	} else if rowsDeleted > 0 {
-		slog.InfoContext(ctx, "purged old LLM usage records",
-			"count", rowsDeleted,
-			"cutoff_time", cutoffTime)
-	}
-
-	return nil
 }

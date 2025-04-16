@@ -7,35 +7,36 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dynoinc/ratchet/internal/llm"
-	"github.com/dynoinc/ratchet/internal/slack_integration"
-	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olekukonko/tablewriter"
 	"github.com/slack-go/slack"
+
+	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/slack_integration"
+	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
-type UsageReport struct {
+type report struct {
 	StartTs      time.Time
 	EndTs        time.Time
-	ChannelUsage map[string]ChannelUsage
-	ModuleUsage  map[string]ModuleUsage
-	LLMUsage     map[string]LLMUsageStats
+	ChannelUsage map[string]channelUsage
+	ModuleUsage  map[string]moduleUsage
+	LLMUsage     map[string]llmUsageStats
 }
 
-type ChannelUsage struct {
+type channelUsage struct {
 	TotalMessages   int
 	TotalThumbsUp   int
 	TotalThumbsDown int
 }
 
-type ModuleUsage struct {
+type moduleUsage struct {
 	TotalMessages   int
 	TotalThumbsUp   int
 	TotalThumbsDown int
 }
 
-type LLMUsageStats struct {
+type llmUsageStats struct {
 	TotalRequests     int
 	TotalPromptTokens int
 	TotalOutputTokens int
@@ -44,7 +45,7 @@ type LLMUsageStats struct {
 	AverageOutputSize float64
 }
 
-func Get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) (UsageReport, error) {
+func get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) (report, error) {
 	startTs := time.Now().AddDate(0, 0, -7)
 	endTs := time.Now()
 
@@ -54,12 +55,12 @@ func Get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackInt
 		UserID:  slackIntegration.BotUserID(),
 	})
 	if err != nil {
-		return UsageReport{}, fmt.Errorf("getting messages: %w", err)
+		return report{}, fmt.Errorf("getting messages: %w", err)
 	}
 
 	// Build usage report by channel and module
-	channelUsage := make(map[string]ChannelUsage)
-	moduleUsage := make(map[string]ModuleUsage)
+	channelUsage := make(map[string]channelUsage)
+	moduleUsage := make(map[string]moduleUsage)
 
 	for _, msg := range msgs {
 		// Channel usage
@@ -96,10 +97,10 @@ func Get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackInt
 	// Get LLM usage data
 	llmUsage, err := getLLMUsage(ctx, db, startTs, endTs)
 	if err != nil {
-		return UsageReport{}, fmt.Errorf("getting LLM usage: %w", err)
+		return report{}, fmt.Errorf("getting LLM usage: %w", err)
 	}
 
-	return UsageReport{
+	return report{
 		StartTs:      startTs,
 		EndTs:        endTs,
 		ChannelUsage: channelUsage,
@@ -109,7 +110,7 @@ func Get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackInt
 }
 
 // getLLMUsage fetches LLM usage statistics from the database
-func getLLMUsage(ctx context.Context, db *schema.Queries, startTs, endTs time.Time) (map[string]LLMUsageStats, error) {
+func getLLMUsage(ctx context.Context, db *schema.Queries, startTs, endTs time.Time) (map[string]llmUsageStats, error) {
 	// Convert timestamps to pgtype.Timestamptz
 	start := pgtype.Timestamptz{}
 	if err := start.Scan(startTs); err != nil {
@@ -131,7 +132,7 @@ func getLLMUsage(ctx context.Context, db *schema.Queries, startTs, endTs time.Ti
 	}
 
 	// Aggregate usage statistics by model
-	llmUsage := make(map[string]LLMUsageStats)
+	llmUsage := make(map[string]llmUsageStats)
 	for _, record := range llmRecords {
 		model := record.Model
 		stats := llmUsage[model]
@@ -161,16 +162,16 @@ func getLLMUsage(ctx context.Context, db *schema.Queries, startTs, endTs time.Ti
 }
 
 func Post(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) error {
-	report, err := Get(ctx, db, llmClient, slackIntegration, channelID)
+	report, err := get(ctx, db, llmClient, slackIntegration, channelID)
 	if err != nil {
 		return fmt.Errorf("getting usage report: %w", err)
 	}
 
-	blocks := Format(ctx, db, slackIntegration, channelID, report)
+	blocks := format(ctx, db, slackIntegration, channelID, report)
 	return slackIntegration.PostMessage(ctx, channelID, blocks...)
 }
 
-func Format(ctx context.Context, qtx *schema.Queries, slackIntegration slack_integration.Integration, channelID string, report UsageReport) []slack.Block {
+func format(ctx context.Context, qtx *schema.Queries, slackIntegration slack_integration.Integration, channelID string, report report) []slack.Block {
 	// Calculate totals
 	var totalMessages, totalThumbsUp, totalThumbsDown int
 	for _, usage := range report.ChannelUsage {

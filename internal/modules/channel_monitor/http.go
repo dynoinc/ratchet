@@ -19,13 +19,13 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
-type TestChannelMonitorRequest struct {
+type testChannelMonitorRequest struct {
 	ConfigYaml   string
 	MessageCount int
 	TestMessages []string
 }
 
-type TestChannelMonitorReportData struct {
+type testChannelMonitorReportData struct {
 	Message         dto.SlackMessage
 	Prompt          string
 	ValidatedOutput string
@@ -48,7 +48,7 @@ func HTTPHandler(
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			req := TestChannelMonitorRequest{
+			req := testChannelMonitorRequest{
 				ConfigYaml:   r.FormValue("config_yaml"),
 				MessageCount: 0, // Will parse below
 				TestMessages: []string{},
@@ -91,7 +91,7 @@ func HTTPHandler(
 func testChannelMonitorPrompt(ctx context.Context,
 	llmClient llm.Client,
 	slackIntegration slack_integration.Integration,
-	req TestChannelMonitorRequest,
+	req testChannelMonitorRequest,
 ) (string, error) {
 	entry, err := getEntryForTest(req)
 	if err != nil {
@@ -105,8 +105,8 @@ func testChannelMonitorPrompt(ctx context.Context,
 	return renderTestReport(results), nil
 }
 
-func getTestResults(ctx context.Context, history []dto.SlackMessage, entry *Entry, llmClient llm.Client) []*TestChannelMonitorReportData {
-	results := make([]*TestChannelMonitorReportData, len(history))
+func getTestResults(ctx context.Context, history []dto.SlackMessage, entry *entry, llmClient llm.Client) []*testChannelMonitorReportData {
+	results := make([]*testChannelMonitorReportData, len(history))
 	var wg sync.WaitGroup
 	resultsMutex := &sync.Mutex{}
 	semaphore := make(chan struct{}, 5) // Limit concurrency to 5 parallel requests
@@ -118,11 +118,11 @@ func getTestResults(ctx context.Context, history []dto.SlackMessage, entry *Entr
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release semaphore
 
-			data := PromptData{Message: message}
+			data := promptData{Message: message}
 			var prompt bytes.Buffer
 			err := entry.PromptTemplate.Execute(&prompt, data)
 
-			reportData := &TestChannelMonitorReportData{
+			reportData := &testChannelMonitorReportData{
 				Message: message,
 				Prompt:  prompt.String(),
 			}
@@ -147,7 +147,7 @@ func getTestResults(ctx context.Context, history []dto.SlackMessage, entry *Entr
 	return results
 }
 
-func getEntryForTest(req TestChannelMonitorRequest) (*Entry, error) {
+func getEntryForTest(req testChannelMonitorRequest) (*entry, error) {
 	parsedYaml := &map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(req.ConfigYaml), parsedYaml); err != nil {
 		return nil, fmt.Errorf("unmarshalling yaml: %w", err)
@@ -156,7 +156,7 @@ func getEntryForTest(req TestChannelMonitorRequest) (*Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshalling json: %w", err)
 	}
-	entry := &Entry{}
+	entry := &entry{}
 	if err := json.Unmarshal(marshaled, entry); err != nil {
 		return nil, fmt.Errorf("unmarshalling json: %w", err)
 	}
@@ -171,8 +171,8 @@ func getEntryForTest(req TestChannelMonitorRequest) (*Entry, error) {
 	return entry, nil
 }
 
-func getMessagesForTest(ctx context.Context, slackIntegration slack_integration.Integration, entry *Entry, req TestChannelMonitorRequest) ([]dto.SlackMessage, error) {
-	history := []dto.SlackMessage{}
+func getMessagesForTest(ctx context.Context, slackIntegration slack_integration.Integration, entry *entry, req testChannelMonitorRequest) ([]dto.SlackMessage, error) {
+	var history []dto.SlackMessage
 	if req.MessageCount > 0 {
 		slackMessages, err := slackIntegration.GetConversationHistory(ctx, entry.ChannelID, req.MessageCount)
 		if err != nil {
@@ -266,7 +266,7 @@ func renderPage(w http.ResponseWriter, prefix string) {
 </html>`, prefix)))
 }
 
-func renderTestReport(results []*TestChannelMonitorReportData) string {
+func renderTestReport(results []*testChannelMonitorReportData) string {
 	reportHTML := `<!DOCTYPE html>
 <html>
 <head>
