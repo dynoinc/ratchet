@@ -15,6 +15,7 @@ RUN go build -trimpath -ldflags="-s -w" -o ratchet ./cmd/ratchet
 FROM public.ecr.aws/lts/ubuntu:24.04_stable AS runner
 
 RUN apt-get update && \
+    apt-get install -y --no-install-recommends --only-upgrade perl-base=5.38.2-3.2ubuntu0.1 && \
     apt-get install -y --no-install-recommends ca-certificates && \
     update-ca-certificates && \
     apt-get clean && \
