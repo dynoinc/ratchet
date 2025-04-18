@@ -17,6 +17,9 @@ test: lint
 run: gen
         go run ./cmd/ratchet
 
+pgshell:
+        podman exec -it ratchet-db psql -U postgres
+
 reset:
-        docker rm --force ratchet-db
-        docker volume rm postgres_data
+        podman rm --force ratchet-db
+        podman volume rm postgres_data

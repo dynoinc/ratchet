@@ -35,14 +35,15 @@ func (m *sentryMiddleware) Work(ctx context.Context, job *rivertype.JobRow, doIn
 	return err
 }
 
-func New(db *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error) {
+func New(db *pgxpool.Pool, workers *river.Workers, periodicJobs []*river.PeriodicJob) (*river.Client[pgx.Tx], error) {
 	return river.NewClient(riverpgxv5.New(db), &river.Config{
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {
 				MaxWorkers: 10,
 			},
 		},
-		Workers: workers,
+		PeriodicJobs: periodicJobs,
+		Workers:      workers,
 		Middleware: []rivertype.Middleware{
 			&sentryMiddleware{},
 		},

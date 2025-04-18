@@ -41,11 +41,14 @@ func DefaultConfig() Config {
 
 type Client interface {
 	Config() Config
-	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
-	CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
+
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
+	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
+	GenerateDocumentationResponse(ctx context.Context, question string, documents []string) (string, error)
+	GenerateDocumentationUpdate(ctx context.Context, doc string, msgs string) (string, error)
+	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
-	ClassifyCommand(ctx context.Context, text string) (string, error)
+	ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error)
 }
 
 type client struct {
@@ -265,7 +268,7 @@ type RunbookResponse struct {
 	SemanticSearchQuery  string   `json:"semantic_search_query"`
 }
 
-func (c *client) CreateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error) {
+func (c *client) GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error) {
 	if c == nil {
 		return nil, nil
 	}
@@ -449,7 +452,7 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	return respMsg, "", nil
 }
 
-func (c *client) ClassifyCommand(ctx context.Context, text string) (string, error) {
+func (c *client) ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error) {
 	if c == nil {
 		return "", nil
 	}
@@ -459,40 +462,24 @@ func (c *client) ClassifyCommand(ctx context.Context, text string) (string, erro
 Given a message, respond with EXACTLY ONE of these commands (no explanation, just the command name):
 - weekly_report (for generating incident/alert reports or summaries for a channel)
 - usage_report (for showing bot usage statistics and feedback metrics)
+- update_documentation (for updating documentation)
 - none (for messages that don't match any supported command)
 
-Examples:
-User: "generate weekly incident report for this channel"
-Response: weekly_report
+Examples:`
 
-User: "post report"
-Response: weekly_report
+	// Add examples from sampleMessages
+	for cmd, examples := range sampleMessages {
+		for _, example := range examples {
+			prompt += fmt.Sprintf("\nUser: %q\nResponse: %s\n", example, cmd)
+		}
+	}
 
-User: "what's the status report"
-Response: weekly_report
+	prompt += `
+Classify the following message with ONLY the command name and nothing else:
 
-User: "show me the weekly summary"
-Response: weekly_report
-
-User: "show ratchet bot usage statistics"
-Response: usage_report
-
-User: "post usage report"
-Response: usage_report
-
-User: "how many people are using the bot?"
-Response: usage_report
-
-User: "how are you doing?"
-Response: none
-
-User: "what's the weather like?"
-Response: none
-
-User: "can you help me with something?"
-Response: none
-
-Classify the following message with ONLY the command name and nothing else:`
+User: %s
+Response:
+`
 
 	chatMessages, inputMessages := createLLMMessages(prompt, text)
 	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, false)
@@ -501,4 +488,97 @@ Classify the following message with ONLY the command name and nothing else:`
 	}
 
 	return content, nil
+}
+
+func (c *client) GenerateDocumentationResponse(ctx context.Context, question string, documents []string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	prompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to answer questions about the provided documentation.
+
+	Given a question and a list of documentation documents, respond with a concise answer that is helpful and informative.
+	
+	The documents are provided as a list of relevant document content (typically in Markdown format).
+	
+	IMPORTANT INSTRUCTIONS:
+	1. Only answer if you are highly confident and your response is primarily derived from the provided documentation.
+	2. If you cannot find relevant information in the documents, return "nil".
+	3. Keep your answers concise and focused on the question.
+	
+	Here are some examples:
+	
+	Example 1:
+	Question: "How do I configure the database connection?"
+	Documents: [
+		"# Configuration\n\nTo configure the database connection, set the DATABASE_URL environment variable in your .env file...", 
+		"# Database Setup\n\nThe connection string format should be: postgresql://username:password@hostname:port/database_name"
+	]
+	Response: "To configure the database connection, set the DATABASE_URL environment variable in your .env file. The format should be: postgresql://username:password@hostname:port/database_name"
+	
+	Example 2:
+	Question: "What is the maximum file size for uploads?"
+	Documents: ["# API Documentation\n\nThis document describes the REST API endpoints available."]
+	Response: "nil"
+	
+	Question: %s
+	Documents: %s
+	
+	Response:
+	`
+
+	content := fmt.Sprintf(prompt, question, documents)
+	chatMessages, inputMessages := createLLMMessages(prompt, content)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	if err != nil {
+		return "", fmt.Errorf("generating documentation response: %w", err)
+	}
+
+	if respContent == "nil" {
+		return "", nil
+	}
+
+	return respContent, nil
+}
+
+func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, msgs string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	prompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to update the provided documentation based on the provided messages.
+
+	IMPORTANT INSTRUCTIONS:
+	1. Make minimal changes to the original documentation, preserving its structure and style.
+	2. Only update information that is clearly outdated or incorrect based on the messages.
+	3. If new information should be added but doesn't fit the current structure, add it as a FAQ item at the end.
+	4. Follow the existing document style (formatting, tone, terminology).
+	5. Return the complete updated documentation.
+
+	Here are some examples:
+
+	Example 1:
+	Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters: --service, --threshold."
+	Messages: "The /alerts command now supports a new --priority parameter to set alert priority."
+	Updated Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters: --service, --threshold, --priority.\n\n## FAQ\n\n**Q: How do I set the priority of an alert?**\n**A:** Use the --priority parameter with the /alerts command."
+
+	Example 2:
+	Documentation: "# Installation\n\nInstall the package using: npm install ratchet-bot"
+	Messages: "The npm install command is wrong, it should be npm install @dynoinc/ratchet-bot"
+	Updated Documentation: "# Installation\n\nInstall the package using: npm install @dynoinc/ratchet-bot"
+
+	Documentation: %s
+	Messages: %s
+
+	Updated Documentation:
+	`
+
+	content := fmt.Sprintf(prompt, doc, msgs)
+	chatMessages, inputMessages := createLLMMessages(prompt, content)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	if err != nil {
+		return "", fmt.Errorf("generating documentation update: %w", err)
+	}
+
+	return respContent, nil
 }

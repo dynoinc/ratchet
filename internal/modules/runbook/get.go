@@ -33,7 +33,7 @@ func Get(
 		texts[i] = msg.Attrs.Message.Text
 	}
 
-	runbookMessage, err := llmClient.CreateRunbook(ctx, serviceName, alertName, texts)
+	runbookMessage, err := llmClient.GenerateRunbook(ctx, serviceName, alertName, texts)
 	if err != nil {
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}

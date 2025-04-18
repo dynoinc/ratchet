@@ -3,6 +3,7 @@ package backfill_thread_worker
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -26,6 +27,11 @@ func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *Bac
 		bot:              bot,
 		slackIntegration: slackIntegration,
 	}
+}
+
+func (w *BackfillThreadWorker) NextRetry(job *river.Job[background.BackfillThreadWorkerArgs]) time.Time {
+	// Most of the time failure is from slack API rate limiting, so backoff aggresively.
+	return time.Now().Add(30 * time.Second)
 }
 
 func (w *BackfillThreadWorker) Work(ctx context.Context, job *river.Job[background.BackfillThreadWorkerArgs]) error {
@@ -65,7 +71,7 @@ func (w *BackfillThreadWorker) Work(ctx context.Context, job *river.Job[backgrou
 	defer tx.Rollback(ctx)
 
 	if len(addThreadMessageParams) > 0 {
-		if err = w.bot.AddThreadMessages(ctx, tx, addThreadMessageParams); err != nil {
+		if err = w.bot.AddThreadMessages(ctx, tx, addThreadMessageParams, internal.SourceBackfill); err != nil {
 			return fmt.Errorf("adding thread messages to channel %s: %w", job.Args.ChannelID, err)
 		}
 	}

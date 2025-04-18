@@ -168,6 +168,6 @@ func TestHandleMessage(t *testing.T) {
 	mockSlack.EXPECT().PostMessage(ctx, "U123", gomock.Any()).Return(nil).Times(1)
 	mockSlack.EXPECT().PostMessage(ctx, "C321", gomock.Any()).Return(nil).Times(1)
 
-	err = cm.Handle(ctx, "C123", "12345", msg)
+	err = cm.OnMessage(ctx, "C123", "12345", msg)
 	assert.NoError(t, err)
 }

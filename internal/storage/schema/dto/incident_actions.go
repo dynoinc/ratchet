@@ -72,7 +72,7 @@ type durationWrapper struct {
 	time.Duration
 }
 
-func (d *durationWrapper) IsZero() bool {
+func (d durationWrapper) IsZero() bool {
 	return d.Duration == 0
 }
 
@@ -94,10 +94,10 @@ func (d *durationWrapper) UnmarshalJSON(b []byte) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("invalid duration type: %T", v)
+		return fmt.Errorf("invalid duration type: %T (%s)", v, string(b))
 	}
 }
 
-func (d *durationWrapper) MarshalJSON() ([]byte, error) {
+func (d durationWrapper) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.Duration.String())
 }

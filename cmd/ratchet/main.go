@@ -30,11 +30,15 @@ import (
 	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
 	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
+	"github.com/dynoinc/ratchet/internal/background/documentation_refresh_worker"
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
+	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
+	"github.com/dynoinc/ratchet/internal/modules/docrag"
+	"github.com/dynoinc/ratchet/internal/modules/docupdate"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -58,6 +62,9 @@ type config struct {
 
 	// Slack configuration
 	Slack slack_integration.Config
+
+	// Documentation configuration path
+	Documentation string
 
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:"127.0.0.1:5001"`
@@ -174,6 +181,35 @@ func main() {
 		os.Exit(1)
 	}
 
+	var periodicJobs []*river.PeriodicJob
+
+	// Documentation setup
+	var docUpdater *docupdate.DocUpdater
+	if c.Documentation != "" {
+		dc, err := docs.LoadConfig(c.Documentation)
+		if err != nil {
+			slog.ErrorContext(ctx, "loading documentation config", "error", err)
+			os.Exit(1)
+		}
+
+		for _, source := range dc.Sources {
+			periodicJobs = append(periodicJobs, river.NewPeriodicJob(
+				river.PeriodicInterval(10*time.Minute),
+				func() (river.JobArgs, *river.InsertOpts) {
+					return background.DocumentationRefreshArgs{Source: source}, &river.InsertOpts{
+						UniqueOpts: river.UniqueOpts{
+							ByArgs:   true,
+							ByPeriod: time.Hour,
+						},
+					}
+				},
+				&river.PeriodicJobOpts{RunOnStart: true},
+			))
+		}
+
+		docUpdater = docupdate.New(dc, db, llmClient, slackIntegration)
+	}
+
 	// Classifier setup
 	classifier, err := classifier_worker.New(c.Classifier, bot, llmClient)
 	if err != nil {
@@ -189,10 +225,14 @@ func main() {
 
 	// Modules worker setup
 	modulesWorker := modules_worker.New(bot, []modules.Handler{
-		commands.New(bot, slackIntegration, llmClient),
+		commands.New(bot, slackIntegration, llmClient, docUpdater),
 		runbook.New(bot, slackIntegration, llmClient),
 		channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient),
+		docrag.New(bot, slackIntegration, llmClient),
 	})
+
+	// Document refresh worker setup
+	documentationRefreshWorker := documentation_refresh_worker.New(bot, llmClient)
 
 	// Background job setup
 	workers := river.NewWorkers()
@@ -200,9 +240,10 @@ func main() {
 	river.AddWorker[background.ChannelOnboardWorkerArgs](workers, channelOnboardWorker)
 	river.AddWorker[background.BackfillThreadWorkerArgs](workers, backfillThreadWorker)
 	river.AddWorker[background.ModulesWorkerArgs](workers, modulesWorker)
+	river.AddWorker[background.DocumentationRefreshArgs](workers, documentationRefreshWorker)
 
 	// Start River client
-	riverClient, err := background.New(db, workers)
+	riverClient, err := background.New(db, workers, periodicJobs)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to create river client", "error", err)
 		os.Exit(1)
@@ -214,7 +255,7 @@ func main() {
 	}
 
 	// Initialize the HTTP server
-	handler, err := web.New(ctx, db, riverClient, slackIntegration, llmClient)
+	handler, err := web.New(ctx, db, riverClient, slackIntegration, llmClient, docUpdater)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up HTTP server", "error", err)
 		os.Exit(1)

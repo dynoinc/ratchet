@@ -15,6 +15,28 @@ type ChannelsV2 struct {
 	Attrs dto.ChannelAttrs
 }
 
+type DocumentationDoc struct {
+	Url      string
+	Path     string
+	Revision string
+	Content  string
+}
+
+type DocumentationEmbedding struct {
+	Url        string
+	Path       string
+	Revision   string
+	ChunkIndex int32
+	Chunk      string
+	Embedding  *pgvector.Vector
+}
+
+type DocumentationStatus struct {
+	Url       string
+	Revision  string
+	RefreshTs pgtype.Timestamptz
+}
+
 type Llmusagev1 struct {
 	ID        int32
 	Input     dto.LLMInput

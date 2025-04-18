@@ -1,5 +1,7 @@
 package background
 
+import "github.com/dynoinc/ratchet/internal/docs"
+
 type ClassifierArgs struct {
 	ChannelID  string `json:"channel_id"`
 	SlackTS    string `json:"slack_ts"`
@@ -31,8 +33,17 @@ func (b BackfillThreadWorkerArgs) Kind() string {
 type ModulesWorkerArgs struct {
 	ChannelID string `json:"channel_id"`
 	SlackTS   string `json:"slack_ts"`
+	ThreadTS  string `json:"thread_ts"` // non-empty if this is a thread message
 }
 
 func (m ModulesWorkerArgs) Kind() string {
 	return "modules"
+}
+
+type DocumentationRefreshArgs struct {
+	Source docs.Source `json:"source"`
+}
+
+func (d DocumentationRefreshArgs) Kind() string {
+	return "documentation_refresh"
 }

@@ -135,7 +135,7 @@ func parseConfig(b []byte) (config, error) {
 	return *parsed, nil
 }
 
-func (c *ChannelMonitor) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+func (c *ChannelMonitor) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	if msg.Message.SubType != "" {
 		return nil
 	}

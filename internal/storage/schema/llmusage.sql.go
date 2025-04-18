@@ -13,10 +13,8 @@ import (
 )
 
 const addLLMUsage = `-- name: AddLLMUsage :one
-INSERT INTO
-    llmusageV1 (input, output, model)
-VALUES
-    ($1, $2, $3)
+INSERT INTO llmusageV1 (input, output, model)
+VALUES ($1, $2, $3)
 RETURNING
     id, input, output, model, timestamp
 `
@@ -41,16 +39,15 @@ func (q *Queries) AddLLMUsage(ctx context.Context, arg AddLLMUsageParams) (Llmus
 }
 
 const getLLMUsageByModel = `-- name: GetLLMUsageByModel :many
-SELECT
-    id, input, output, model, timestamp
-FROM
-    llmusageV1
-WHERE
-    model = $1
-ORDER BY
-    timestamp DESC
-LIMIT $3
-OFFSET $2
+SELECT id,
+       input,
+       output,
+       model,
+       timestamp
+FROM llmusageV1
+WHERE model = $1
+ORDER BY timestamp DESC
+LIMIT $3 OFFSET $2
 `
 
 type GetLLMUsageByModelParams struct {
@@ -86,14 +83,14 @@ func (q *Queries) GetLLMUsageByModel(ctx context.Context, arg GetLLMUsageByModel
 }
 
 const getLLMUsageByTimeRange = `-- name: GetLLMUsageByTimeRange :many
-SELECT
-    id, input, output, model, timestamp
-FROM
-    llmusageV1
-WHERE
-    timestamp BETWEEN $1 AND $2
-ORDER BY
-    timestamp DESC
+SELECT id,
+       input,
+       output,
+       model,
+       timestamp
+FROM llmusageV1
+WHERE timestamp BETWEEN $1 AND $2
+ORDER BY timestamp DESC
 `
 
 type GetLLMUsageByTimeRangeParams struct {
@@ -128,10 +125,9 @@ func (q *Queries) GetLLMUsageByTimeRange(ctx context.Context, arg GetLLMUsageByT
 }
 
 const purgeLLMUsageOlderThan = `-- name: PurgeLLMUsageOlderThan :execrows
-DELETE FROM
-    llmusageV1
-WHERE
-    timestamp < $1
+DELETE
+FROM llmusageV1
+WHERE timestamp < $1
 `
 
 func (q *Queries) PurgeLLMUsageOlderThan(ctx context.Context, olderThan pgtype.Timestamptz) (int64, error) {

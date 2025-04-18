@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olekukonko/tablewriter"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/riverqueue/river"
 	"riverqueue.com/riverui"
@@ -26,6 +27,8 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
+	"github.com/dynoinc/ratchet/internal/modules/docrag"
+	"github.com/dynoinc/ratchet/internal/modules/docupdate"
 	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
@@ -65,6 +68,7 @@ type httpHandlers struct {
 	riverClient      *river.Client[pgx.Tx]
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
+	docUpdater       *docupdate.DocUpdater
 }
 
 func New(
@@ -73,12 +77,14 @@ func New(
 	riverClient *river.Client[pgx.Tx],
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
+	docUpdater *docupdate.DocUpdater,
 ) (http.Handler, error) {
 	handlers := &httpHandlers{
 		db:               db,
 		riverClient:      riverClient,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
+		docUpdater:       docUpdater,
 	}
 
 	// River UI
@@ -123,6 +129,11 @@ func New(
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
+
+	// Documentation
+	apiMux.HandleFunc("GET /docs/answer", handleJSON(handlers.docsAnswer))
+	apiMux.HandleFunc("GET /docs/update", handlers.docsUpdate)
+	apiMux.HandleFunc("POST /docs/update", handleJSON(handlers.postPR))
 
 	// Bot
 	apiMux.HandleFunc("GET /bot/search", handlers.search)
@@ -576,4 +587,72 @@ func (h *httpHandlers) getLLMUsageByModel(r *http.Request) (any, error) {
 	}
 
 	return usageData, nil
+}
+
+func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
+	question := r.URL.Query().Get("question")
+	if question == "" {
+		return nil, fmt.Errorf("question parameter is required")
+	}
+
+	answer, links, err := docrag.Answer(r.Context(), question, h.db, h.llmClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"answer": answer,
+		"links":  links,
+	}, nil
+}
+
+func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
+	channelID := r.URL.Query().Get("channel_id")
+	threadTS := r.URL.Query().Get("thread_ts")
+	text := r.URL.Query().Get("text")
+
+	if h.docUpdater == nil {
+		http.Error(w, "documentation updater not available", http.StatusInternalServerError)
+		return
+	}
+
+	doc, updatedDoc, err := h.docUpdater.Compute(r.Context(), channelID, threadTS, text)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	diff := difflib.UnifiedDiff{
+		A:        difflib.SplitLines(doc.Content),
+		B:        difflib.SplitLines(updatedDoc),
+		FromFile: "Original",
+		ToFile:   "Updated",
+		Context:  3,
+	}
+
+	diffText, err := difflib.GetUnifiedDiffString(diff)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error generating diff: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(diffText))
+}
+
+func (h *httpHandlers) postPR(r *http.Request) (any, error) {
+	channelID := r.URL.Query().Get("channel_id")
+	threadTS := r.URL.Query().Get("thread_ts")
+	text := r.URL.Query().Get("text")
+
+	if h.docUpdater == nil {
+		return nil, fmt.Errorf("documentation updater not available")
+	}
+
+	err := h.docUpdater.Update(r.Context(), channelID, threadTS, text)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }

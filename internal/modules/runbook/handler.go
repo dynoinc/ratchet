@@ -34,7 +34,7 @@ func (h *Handler) Name() string {
 	return "runbook"
 }
 
-func (h *Handler) Handle(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+func (h *Handler) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	if msg.IncidentAction.Action != dto.ActionOpenIncident {
 		return nil
 	}

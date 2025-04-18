@@ -118,9 +118,10 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 	return nil
 }
 
-func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.AddThreadMessageParams) error {
+func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.AddThreadMessageParams, source messageSource) error {
 	qtx := schema.New(b.DB).WithTx(tx)
 
+	var jobs []river.InsertManyParams
 	for _, param := range params {
 		if err := qtx.AddThreadMessage(ctx, param); err != nil {
 			var pgErr *pgconn.PgError
@@ -129,6 +130,22 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 			}
 
 			return fmt.Errorf("adding thread message to channel %s (ts=%s): %w", param.ChannelID, param.Ts, err)
+		}
+
+		if source != SourceBackfill {
+			jobs = append(jobs, river.InsertManyParams{
+				Args: background.ModulesWorkerArgs{
+					ChannelID: param.ChannelID,
+					SlackTS:   param.Ts,
+					ThreadTS:  param.ParentTs,
+				},
+			})
+		}
+	}
+
+	if len(jobs) > 0 {
+		if _, err := b.riverClient.InsertManyTx(ctx, tx, jobs); err != nil {
+			return fmt.Errorf("scheduling thread message backfill for channel %s: %w", params[0].ChannelID, err)
 		}
 	}
 
@@ -176,7 +193,7 @@ func (b *Bot) NotifyMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 					},
 				},
 			},
-		}); err != nil {
+		}, sourceSlack); err != nil {
 			return fmt.Errorf("adding thread message: %w", err)
 		}
 	}

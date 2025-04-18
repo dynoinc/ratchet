@@ -1,8 +1,9 @@
-CREATE TABLE IF NOT EXISTS llmusageV1 (
-    id SERIAL PRIMARY KEY,
-    input JSONB NOT NULL,
-    output JSONB NOT NULL,
-    model TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS llmusageV1
+(
+    id        SERIAL PRIMARY KEY,
+    input     JSONB       NOT NULL,
+    output    JSONB       NOT NULL,
+    model     TEXT        NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

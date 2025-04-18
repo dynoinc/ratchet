@@ -14,10 +14,9 @@ import (
 )
 
 const addMessage = `-- name: AddMessage :exec
-INSERT INTO
-    messages_v3 (channel_id, ts, attrs)
-VALUES
-    ($1, $2, $3) ON CONFLICT (channel_id, ts) DO NOTHING
+INSERT INTO messages_v3 (channel_id, ts, attrs)
+VALUES ($1, $2, $3)
+ON CONFLICT (channel_id, ts) DO NOTHING
 `
 
 type AddMessageParams struct {
@@ -32,10 +31,9 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
 }
 
 const addThreadMessage = `-- name: AddThreadMessage :exec
-INSERT INTO
-    messages_v3 (channel_id, parent_ts, ts, attrs)
-VALUES
-    ($1, $2 :: text, $3, $4) ON CONFLICT (channel_id, ts) DO NOTHING
+INSERT INTO messages_v3 (channel_id, parent_ts, ts, attrs)
+VALUES ($1, $2 :: text, $3, $4)
+ON CONFLICT (channel_id, ts) DO NOTHING
 `
 
 type AddThreadMessageParams struct {
@@ -56,84 +54,67 @@ func (q *Queries) AddThreadMessage(ctx context.Context, arg AddThreadMessagePara
 }
 
 const debugGetLatestServiceUpdates = `-- name: DebugGetLatestServiceUpdates :many
-WITH valid_messages AS (
-    SELECT
-        channel_id,
-        ts,
-        embedding,
-        CASE 
-            WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(tsvec, plainto_tsquery('english', $1 :: text))
-        END as lexical_score,
-        -- Include the text and tokens for debugging
-        attrs -> 'message' ->> 'text' as message_text,
-        tsvec as text_tokens,
-        plainto_tsquery('english', $1 :: text) as query_tokens
-    FROM
-        messages_v3
-    WHERE
-        CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
-            epoch
-            FROM
-                NOW() - $2 :: interval
-        )
-        AND attrs -> 'message' ->> 'user' != $3 :: text
-        AND attrs -> 'incident_action' ->> 'action' IS NULL 
-),
-semantic_matches AS (
-    SELECT
-        channel_id,
-        ts,
-        embedding <=> $4 as semantic_distance,
-        ROW_NUMBER() OVER (
-            ORDER BY
-                embedding <=> $4
-        ) as semantic_rank
-    FROM
-        valid_messages
-),
-lexical_matches AS (
-    SELECT
-        channel_id,
-        ts,
-        ROW_NUMBER() OVER (
-            ORDER BY
-                lexical_score DESC
-        ) as lexical_rank
-    FROM
-        valid_messages
-),
-results AS (
-    SELECT
-        m.channel_id,
-        m.ts,
-        COALESCE(s.semantic_rank, 1000) as semantic_rank,
-        COALESCE(s.semantic_distance, 2.0) as semantic_distance,
-        COALESCE(l.lexical_rank, 1000) as lexical_rank,
-        1.0 / (1 + COALESCE(s.semantic_rank, 1000)) + 1.0 / (1 + COALESCE(l.lexical_rank, 1000)) as rrf_score,
-        COALESCE(m.message_text, 'NULL') as message_text,
-        COALESCE(m.text_tokens, 'NULL') as text_tokens,
-        COALESCE(m.query_tokens, 'NULL') as query_tokens,
-        m.lexical_score
-    FROM
-        valid_messages m
-        LEFT JOIN semantic_matches s ON m.channel_id = s.channel_id AND m.ts = s.ts
-        LEFT JOIN lexical_matches l ON m.channel_id = l.channel_id AND m.ts = l.ts
-)
-SELECT 
-    channel_id,
-    ts,
-    semantic_rank,
-    semantic_distance::float as semantic_distance,
-    lexical_rank,
-    rrf_score::float as rrf_score,
-    message_text::text as message_text,
-    text_tokens::text as text_tokens,
-    query_tokens::text as query_tokens,
-    lexical_score::float as lexical_score
+WITH valid_messages AS (SELECT channel_id,
+                               ts,
+                               embedding,
+                               CASE
+                                   WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL
+                                       THEN -1
+                                   ELSE ts_rank(tsvec, plainto_tsquery('english', $1 :: text))
+                                   END                                         as lexical_score,
+                               -- Include the text and tokens for debugging
+                               attrs -> 'message' ->> 'text'                   as message_text,
+                               tsvec                                           as text_tokens,
+                               plainto_tsquery('english', $1 :: text) as query_tokens
+                        FROM messages_v3
+                        WHERE CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
+                                epoch
+                                FROM
+                                NOW() - $2 :: interval
+                                                                        )
+                          AND attrs -> 'message' ->> 'user' != $3 :: text
+                          AND attrs -> 'incident_action' ->> 'action' IS NULL),
+     semantic_matches AS (SELECT channel_id,
+                                 ts,
+                                 embedding <=> $4 as semantic_distance,
+                                 ROW_NUMBER() OVER (
+                                     ORDER BY
+                                         embedding <=> $4
+                                     )                          as semantic_rank
+                          FROM valid_messages),
+     lexical_matches AS (SELECT channel_id,
+                                ts,
+                                ROW_NUMBER() OVER (
+                                    ORDER BY
+                                        lexical_score DESC
+                                    ) as lexical_rank
+                         FROM valid_messages),
+     results AS (SELECT m.channel_id,
+                        m.ts,
+                        COALESCE(s.semantic_rank, 1000)                                                          as semantic_rank,
+                        COALESCE(s.semantic_distance, 2.0)                                                       as semantic_distance,
+                        COALESCE(l.lexical_rank, 1000)                                                           as lexical_rank,
+                        1.0 / (1 + COALESCE(s.semantic_rank, 1000)) + 1.0 /
+                                                                      (1 + COALESCE(l.lexical_rank, 1000))       as rrf_score,
+                        COALESCE(m.message_text, 'NULL')                                                         as message_text,
+                        COALESCE(m.text_tokens, 'NULL')                                                          as text_tokens,
+                        COALESCE(m.query_tokens, 'NULL')                                                         as query_tokens,
+                        m.lexical_score
+                 FROM valid_messages m
+                          LEFT JOIN semantic_matches s ON m.channel_id = s.channel_id AND m.ts = s.ts
+                          LEFT JOIN lexical_matches l ON m.channel_id = l.channel_id AND m.ts = l.ts)
+SELECT channel_id,
+       ts,
+       semantic_rank,
+       semantic_distance::float as semantic_distance,
+       lexical_rank,
+       rrf_score::float         as rrf_score,
+       message_text::text       as message_text,
+       text_tokens::text        as text_tokens,
+       query_tokens::text       as query_tokens,
+       lexical_score::float     as lexical_score
 FROM results
-ORDER BY
-    rrf_score DESC
+ORDER BY rrf_score DESC
 `
 
 type DebugGetLatestServiceUpdatesParams struct {
@@ -193,15 +174,14 @@ func (q *Queries) DebugGetLatestServiceUpdates(ctx context.Context, arg DebugGet
 }
 
 const deleteOldMessages = `-- name: DeleteOldMessages :exec
-DELETE FROM
-    messages_v3
-WHERE
-    channel_id = $1
-    AND CAST(ts AS numeric) < EXTRACT(
+DELETE
+FROM messages_v3
+WHERE channel_id = $1
+  AND CAST(ts AS numeric) < EXTRACT(
         epoch
         FROM
-            NOW() - $2 :: interval
-    )
+        NOW() - $2 :: interval
+                            )
 `
 
 type DeleteOldMessagesParams struct {
@@ -215,34 +195,27 @@ func (q *Queries) DeleteOldMessages(ctx context.Context, arg DeleteOldMessagesPa
 }
 
 const getAlerts = `-- name: GetAlerts :many
-WITH alert_counts AS (
-    SELECT
-        m.attrs -> 'incident_action' ->> 'service' as service,
-        m.attrs -> 'incident_action' ->> 'alert' as alert,
-        m.attrs -> 'incident_action' ->> 'priority' as priority,
-        COUNT(t.ts) as thread_message_count
-    FROM
-        messages_v3 m
-    LEFT JOIN messages_v3 t ON
-        t.channel_id = m.channel_id AND
-        t.parent_ts = m.ts
-    WHERE
-        (
-            $1 :: text = '*'
-            OR m.attrs -> 'incident_action' ->> 'service' = $1 :: text
-        )
-        AND m.attrs -> 'incident_action' ->> 'action' = 'open_incident'
-        AND m.parent_ts IS NULL
-    GROUP BY
-        m.attrs -> 'incident_action' ->> 'service',
-        m.attrs -> 'incident_action' ->> 'alert',
-        m.attrs -> 'incident_action' ->> 'priority'
-)
-SELECT
-    service :: text as service,
-    alert :: text as alert,
-    priority :: text as priority,
-    thread_message_count :: bigint as thread_message_count
+WITH alert_counts AS (SELECT m.attrs -> 'incident_action' ->> 'service'  as service,
+                             m.attrs -> 'incident_action' ->> 'alert'    as alert,
+                             m.attrs -> 'incident_action' ->> 'priority' as priority,
+                             COUNT(t.ts)                                 as thread_message_count
+                      FROM messages_v3 m
+                               LEFT JOIN messages_v3 t ON
+                          t.channel_id = m.channel_id AND
+                          t.parent_ts = m.ts
+                      WHERE (
+                          $1 :: text = '*'
+                              OR m.attrs -> 'incident_action' ->> 'service' = $1 :: text
+                          )
+                        AND m.attrs -> 'incident_action' ->> 'action' = 'open_incident'
+                        AND m.parent_ts IS NULL
+                      GROUP BY m.attrs -> 'incident_action' ->> 'service',
+                               m.attrs -> 'incident_action' ->> 'alert',
+                               m.attrs -> 'incident_action' ->> 'priority')
+SELECT service :: text                as service,
+       alert :: text                  as alert,
+       priority :: text               as priority,
+       thread_message_count :: bigint as thread_message_count
 FROM alert_counts
 `
 
@@ -279,16 +252,13 @@ func (q *Queries) GetAlerts(ctx context.Context, service string) ([]GetAlertsRow
 }
 
 const getAllMessages = `-- name: GetAllMessages :many
-SELECT
-    channel_id,
-    ts,
-    attrs
-FROM
-    messages_v3
-WHERE
-    channel_id = $1 AND parent_ts IS NULL
-ORDER BY
-    (ts::float) DESC
+SELECT channel_id,
+       ts,
+       attrs
+FROM messages_v3
+WHERE channel_id = $1
+  AND parent_ts IS NULL
+ORDER BY (ts::float) DESC
 LIMIT $2
 `
 
@@ -324,73 +294,55 @@ func (q *Queries) GetAllMessages(ctx context.Context, arg GetAllMessagesParams) 
 }
 
 const getLatestServiceUpdates = `-- name: GetLatestServiceUpdates :many
-WITH valid_messages AS (
-    SELECT
-        channel_id,
-        ts,
-        attrs,
-        embedding,
-        CASE 
-            WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL THEN -1
-            ELSE ts_rank(tsvec, plainto_tsquery('english', $1 :: text))
-        END as lexical_score
-    FROM
-        messages_v3
-    WHERE
-        CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
-            epoch
-            FROM
-                NOW() - $2 :: interval
-        )
-        AND attrs -> 'message' ->> 'user' != $3 :: text
-        AND attrs -> 'incident_action' ->> 'action' IS NULL 
-),
-semantic_matches AS (
-    SELECT
-        channel_id,
-        ts,
-        ROW_NUMBER() OVER (
-            ORDER BY
-                embedding <=> $4
-        ) as semantic_rank
-    FROM
-        valid_messages
-),
-lexical_matches AS (
-    SELECT
-        channel_id,
-        ts,
-        ROW_NUMBER() OVER (
-            ORDER BY
-                lexical_score DESC
-        ) as lexical_rank
-    FROM
-        valid_messages
-),
-combined_scores AS (
-    SELECT
-        s.channel_id :: text as channel_id,
-        s.ts :: text as ts,
-        COALESCE(s.semantic_rank, 1000) as semantic_rank,
-        COALESCE(l.lexical_rank, 1000) as lexical_rank,
-        -- Reciprocal Rank Fusion with k=1 for small result sets
-        1.0 / (1 + COALESCE(s.semantic_rank, 1000)) + 1.0 / (1 + COALESCE(l.lexical_rank, 1000)) as rrf_score
-    FROM
-        semantic_matches s
-        FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
-)
-SELECT
-    m.channel_id,
-    m.ts,
-    m.attrs,
-    c.semantic_rank,
-    c.lexical_rank,
-    c.rrf_score :: float
-FROM
-    valid_messages m
-    INNER JOIN combined_scores c ON m.channel_id = c.channel_id AND m.ts = c.ts
-ORDER BY
-    c.rrf_score DESC
+WITH valid_messages AS (SELECT channel_id,
+                               ts,
+                               attrs,
+                               embedding,
+                               CASE
+                                   WHEN attrs -> 'message' ->> 'text' = '' OR attrs -> 'message' ->> 'text' IS NULL
+                                       THEN -1
+                                   ELSE ts_rank(tsvec, plainto_tsquery('english', $1 :: text))
+                                   END as lexical_score
+                        FROM messages_v3
+                        WHERE CAST(SPLIT_PART(ts, '.', 1) AS numeric) > EXTRACT(
+                                epoch
+                                FROM
+                                NOW() - $2 :: interval
+                                                                        )
+                          AND attrs -> 'message' ->> 'user' != $3 :: text
+                          AND attrs -> 'incident_action' ->> 'action' IS NULL),
+     semantic_matches AS (SELECT channel_id,
+                                 ts,
+                                 ROW_NUMBER() OVER (
+                                     ORDER BY
+                                         embedding <=> $4
+                                     ) as semantic_rank
+                          FROM valid_messages),
+     lexical_matches AS (SELECT channel_id,
+                                ts,
+                                ROW_NUMBER() OVER (
+                                    ORDER BY
+                                        lexical_score DESC
+                                    ) as lexical_rank
+                         FROM valid_messages),
+     combined_scores AS (SELECT s.channel_id :: text                       as channel_id,
+                                s.ts :: text                               as ts,
+                                COALESCE(s.semantic_rank, 1000)            as semantic_rank,
+                                COALESCE(l.lexical_rank, 1000)             as lexical_rank,
+                                -- Reciprocal Rank Fusion with k=1 for small result sets
+                                1.0 / (1 + COALESCE(s.semantic_rank, 1000)) +
+                                1.0 / (1 + COALESCE(l.lexical_rank, 1000)) as rrf_score
+                         FROM semantic_matches s
+                                  FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts)
+SELECT m.channel_id,
+       m.ts,
+       m.attrs,
+       c.semantic_rank,
+       c.lexical_rank,
+       c.rrf_score :: float
+FROM valid_messages m
+         INNER JOIN combined_scores c ON m.channel_id = c.channel_id AND m.ts = c.ts
+ORDER BY c.rrf_score DESC
 LIMIT 5
 `
 
@@ -443,16 +395,13 @@ func (q *Queries) GetLatestServiceUpdates(ctx context.Context, arg GetLatestServ
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT
-    channel_id,
-    ts,
-    attrs,
-    embedding
-FROM
-    messages_v3
-WHERE
-    channel_id = $1
-    AND ts = $2
+SELECT channel_id,
+       ts,
+       attrs,
+       embedding
+FROM messages_v3
+WHERE channel_id = $1
+  AND ts = $2
 `
 
 type GetMessageParams struct {
@@ -480,15 +429,12 @@ func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (GetMess
 }
 
 const getMessagesByUser = `-- name: GetMessagesByUser :many
-SELECT
-    channel_id,
-    ts,
-    attrs
-FROM 
-    messages_v3
-WHERE
-    ts::float BETWEEN $1 AND $2
-    AND attrs -> 'message' ->> 'user' = $3 :: text
+SELECT channel_id,
+       ts,
+       attrs
+FROM messages_v3
+WHERE ts::float BETWEEN $1 AND $2
+  AND attrs -> 'message' ->> 'user' = $3 :: text
 `
 
 type GetMessagesByUserParams struct {
@@ -524,15 +470,12 @@ func (q *Queries) GetMessagesByUser(ctx context.Context, arg GetMessagesByUserPa
 }
 
 const getMessagesWithinTS = `-- name: GetMessagesWithinTS :many
-SELECT
-    channel_id,
-    ts,
-    attrs
-FROM
-    messages_v3
-WHERE
-    channel_id = $1
-    AND ts::float BETWEEN $2
+SELECT channel_id,
+       ts,
+       attrs
+FROM messages_v3
+WHERE channel_id = $1
+  AND ts::float BETWEEN $2
     AND $3
 `
 
@@ -569,18 +512,11 @@ func (q *Queries) GetMessagesWithinTS(ctx context.Context, arg GetMessagesWithin
 }
 
 const getServices = `-- name: GetServices :many
-SELECT
-    service :: text
-FROM
-    (
-        SELECT
-            DISTINCT attrs -> 'incident_action' ->> 'service' as service
-        FROM
-            messages_v3
-        WHERE
-            attrs -> 'incident_action' ->> 'service' IS NOT NULL 
-            AND parent_ts IS NULL
-    ) s
+SELECT service :: text
+FROM (SELECT DISTINCT attrs -> 'incident_action' ->> 'service' as service
+      FROM messages_v3
+      WHERE attrs -> 'incident_action' ->> 'service' IS NOT NULL
+        AND parent_ts IS NULL) s
 `
 
 func (q *Queries) GetServices(ctx context.Context) ([]string, error) {
@@ -604,16 +540,13 @@ func (q *Queries) GetServices(ctx context.Context) ([]string, error) {
 }
 
 const getThreadMessages = `-- name: GetThreadMessages :many
-SELECT
-    channel_id,
-    parent_ts,
-    ts,
-    attrs
-FROM
-    messages_v3
-WHERE
-    channel_id = $1
-    AND parent_ts = $2 :: text
+SELECT channel_id,
+       parent_ts,
+       ts,
+       attrs
+FROM messages_v3
+WHERE channel_id = $1
+  AND parent_ts = $2 :: text
 `
 
 type GetThreadMessagesParams struct {
@@ -654,20 +587,17 @@ func (q *Queries) GetThreadMessages(ctx context.Context, arg GetThreadMessagesPa
 }
 
 const getThreadMessagesByServiceAndAlert = `-- name: GetThreadMessagesByServiceAndAlert :many
-SELECT
-    t.channel_id,
-    t.parent_ts,
-    t.ts,
-    t.attrs
-FROM
-    messages_v3 t
-    JOIN messages_v3 m ON m.channel_id = t.channel_id
+SELECT t.channel_id,
+       t.parent_ts,
+       t.ts,
+       t.attrs
+FROM messages_v3 t
+         JOIN messages_v3 m ON m.channel_id = t.channel_id
     AND m.ts = t.parent_ts
-WHERE
-    m.attrs -> 'incident_action' ->> 'service' = $1 :: text
-    AND m.attrs -> 'incident_action' ->> 'alert' = $2 :: text
-    AND m.parent_ts IS NULL
-    AND t.attrs -> 'message' ->> 'user' != $3 :: text
+WHERE m.attrs -> 'incident_action' ->> 'service' = $1 :: text
+  AND m.attrs -> 'incident_action' ->> 'alert' = $2 :: text
+  AND m.parent_ts IS NULL
+  AND t.attrs -> 'message' ->> 'user' != $3 :: text
 `
 
 type GetThreadMessagesByServiceAndAlertParams struct {
@@ -711,12 +641,10 @@ func (q *Queries) GetThreadMessagesByServiceAndAlert(ctx context.Context, arg Ge
 const updateMessageAttrs = `-- name: UpdateMessageAttrs :exec
 UPDATE
     messages_v3
-SET
-    attrs = COALESCE(attrs, '{}' :: jsonb) || $1,
+SET attrs     = COALESCE(attrs, '{}' :: jsonb) || $1,
     embedding = $2
-WHERE
-    channel_id = $3
-    AND ts = $4
+WHERE channel_id = $3
+  AND ts = $4
 `
 
 type UpdateMessageAttrsParams struct {
@@ -737,27 +665,27 @@ func (q *Queries) UpdateMessageAttrs(ctx context.Context, arg UpdateMessageAttrs
 }
 
 const updateReaction = `-- name: UpdateReaction :exec
-WITH reaction_count AS (
-  SELECT COALESCE((attrs->'reactions'->>($1::text))::int, 0) + $4::int AS new_count
-  FROM messages_v3 
-  WHERE channel_id = $2 AND ts = $3
-)
+WITH reaction_count AS (SELECT COALESCE((attrs -> 'reactions' ->> ($1::text))::int, 0) + $4::int AS new_count
+                        FROM messages_v3
+                        WHERE channel_id = $2
+                          AND ts = $3)
 UPDATE messages_v3 m
 SET attrs = jsonb_set(
-  COALESCE(m.attrs, '{}'::jsonb),
-  '{reactions}'::text[],
-  CASE
-    WHEN (SELECT new_count FROM reaction_count) <= 0 THEN
-      COALESCE(m.attrs->'reactions', '{}'::jsonb) - $1::text
-    ELSE
-      jsonb_set(
-        COALESCE(m.attrs->'reactions', '{}'::jsonb),
-        array[$1::text],
-        to_jsonb((SELECT new_count FROM reaction_count))
-      )
-  END
-)
-WHERE m.channel_id = $2 AND m.ts = $3
+        COALESCE(m.attrs, '{}'::jsonb),
+        '{reactions}'::text[],
+        CASE
+            WHEN (SELECT new_count FROM reaction_count) <= 0 THEN
+                COALESCE(m.attrs -> 'reactions', '{}'::jsonb) - $1::text
+            ELSE
+                jsonb_set(
+                        COALESCE(m.attrs -> 'reactions', '{}'::jsonb),
+                        array [$1::text],
+                        to_jsonb((SELECT new_count FROM reaction_count))
+                )
+            END
+            )
+WHERE m.channel_id = $2
+  AND m.ts = $3
 `
 
 type UpdateReactionParams struct {

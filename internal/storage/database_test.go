@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
@@ -112,4 +113,48 @@ func TestUpdateReaction(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Empty(t, msg.Attrs.Reactions)
+}
+
+func TestInsertDocWithEmbeddings(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := t.Context()
+
+	// Insert URL
+	_, err := schema.New(db).GetOrInsertDocumentationSource(ctx, "https://example.com")
+	require.NoError(t, err)
+
+	// Create a vector with 768 dimensions (the size required for text-embedding-3-small)
+	embedVector := make([]float32, 768)
+	for i := 0; i < 768; i++ {
+		embedVector[i] = float32(i % 10) // Fill with some pattern of values
+	}
+	newVec := pgvector.NewVector(embedVector)
+
+	err = schema.New(db).InsertDocWithEmbeddings(ctx, schema.InsertDocWithEmbeddingsParams{
+		Url:          "https://example.com",
+		Path:         "path/to/file",
+		Revision:     "1",
+		ChunkIndices: []int32{0, 1, 2},
+		Chunks:       []string{"chunk1", "chunk2", "chunk3"},
+		Embeddings:   []*pgvector.Vector{&newVec, &newVec, &newVec},
+	})
+	require.NoError(t, err)
+
+	// now try updating the doc
+	err = schema.New(db).InsertDocWithEmbeddings(ctx, schema.InsertDocWithEmbeddingsParams{
+		Url:          "https://example.com",
+		Path:         "path/to/file",
+		Revision:     "2",
+		ChunkIndices: []int32{0, 1, 2},
+		Chunks:       []string{"chunk4", "chunk5", "chunk6"},
+		Embeddings:   []*pgvector.Vector{&newVec, &newVec, &newVec},
+	})
+	require.NoError(t, err)
+
+	// now try deleting the doc
+	err = schema.New(db).DeleteDoc(ctx, schema.DeleteDocParams{
+		Url:  "https://example.com",
+		Path: "path/to/file",
+	})
+	require.NoError(t, err)
 }

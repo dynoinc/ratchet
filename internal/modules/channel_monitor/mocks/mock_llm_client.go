@@ -43,18 +43,18 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 }
 
 // ClassifyCommand mocks base method.
-func (m *MockClient) ClassifyCommand(ctx context.Context, text string) (string, error) {
+func (m *MockClient) ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClassifyCommand", ctx, text)
+	ret := m.ctrl.Call(m, "ClassifyCommand", ctx, text, sampleMessages)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ClassifyCommand indicates an expected call of ClassifyCommand.
-func (mr *MockClientMockRecorder) ClassifyCommand(ctx, text any) *gomock.Call {
+func (mr *MockClientMockRecorder) ClassifyCommand(ctx, text, sampleMessages any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyCommand", reflect.TypeOf((*MockClient)(nil).ClassifyCommand), ctx, text)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyCommand", reflect.TypeOf((*MockClient)(nil).ClassifyCommand), ctx, text, sampleMessages)
 }
 
 // Config mocks base method.
@@ -69,21 +69,6 @@ func (m *MockClient) Config() llm.Config {
 func (mr *MockClientMockRecorder) Config() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Config", reflect.TypeOf((*MockClient)(nil).Config))
-}
-
-// CreateRunbook mocks base method.
-func (m *MockClient) CreateRunbook(ctx context.Context, service, alert string, msgs []string) (*llm.RunbookResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRunbook", ctx, service, alert, msgs)
-	ret0, _ := ret[0].(*llm.RunbookResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateRunbook indicates an expected call of CreateRunbook.
-func (mr *MockClientMockRecorder) CreateRunbook(ctx, service, alert, msgs any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRunbook", reflect.TypeOf((*MockClient)(nil).CreateRunbook), ctx, service, alert, msgs)
 }
 
 // GenerateChannelSuggestions mocks base method.
@@ -101,6 +86,36 @@ func (mr *MockClientMockRecorder) GenerateChannelSuggestions(ctx, messages any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateChannelSuggestions", reflect.TypeOf((*MockClient)(nil).GenerateChannelSuggestions), ctx, messages)
 }
 
+// GenerateDocumentationResponse mocks base method.
+func (m *MockClient) GenerateDocumentationResponse(ctx context.Context, question string, documents []string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GenerateDocumentationResponse", ctx, question, documents)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GenerateDocumentationResponse indicates an expected call of GenerateDocumentationResponse.
+func (mr *MockClientMockRecorder) GenerateDocumentationResponse(ctx, question, documents any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDocumentationResponse", reflect.TypeOf((*MockClient)(nil).GenerateDocumentationResponse), ctx, question, documents)
+}
+
+// GenerateDocumentationUpdate mocks base method.
+func (m *MockClient) GenerateDocumentationUpdate(ctx context.Context, doc, msgs string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GenerateDocumentationUpdate", ctx, doc, msgs)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GenerateDocumentationUpdate indicates an expected call of GenerateDocumentationUpdate.
+func (mr *MockClientMockRecorder) GenerateDocumentationUpdate(ctx, doc, msgs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDocumentationUpdate", reflect.TypeOf((*MockClient)(nil).GenerateDocumentationUpdate), ctx, doc, msgs)
+}
+
 // GenerateEmbedding mocks base method.
 func (m *MockClient) GenerateEmbedding(ctx context.Context, task, text string) ([]float32, error) {
 	m.ctrl.T.Helper()
@@ -114,6 +129,21 @@ func (m *MockClient) GenerateEmbedding(ctx context.Context, task, text string) (
 func (mr *MockClientMockRecorder) GenerateEmbedding(ctx, task, text any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateEmbedding", reflect.TypeOf((*MockClient)(nil).GenerateEmbedding), ctx, task, text)
+}
+
+// GenerateRunbook mocks base method.
+func (m *MockClient) GenerateRunbook(ctx context.Context, service, alert string, msgs []string) (*llm.RunbookResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GenerateRunbook", ctx, service, alert, msgs)
+	ret0, _ := ret[0].(*llm.RunbookResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GenerateRunbook indicates an expected call of GenerateRunbook.
+func (mr *MockClientMockRecorder) GenerateRunbook(ctx, service, alert, msgs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateRunbook", reflect.TypeOf((*MockClient)(nil).GenerateRunbook), ctx, service, alert, msgs)
 }
 
 // RunJSONModePrompt mocks base method.
