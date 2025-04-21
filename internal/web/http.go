@@ -133,6 +133,7 @@ func New(
 	// Documentation
 	apiMux.HandleFunc("GET /docs/answer", handleJSON(handlers.docsAnswer))
 	apiMux.HandleFunc("GET /docs/update", handlers.docsUpdate)
+	apiMux.HandleFunc("GET /docs/update/debug", handlers.docsUpdateDebug)
 	apiMux.HandleFunc("POST /docs/update", handleJSON(handlers.postPR))
 
 	// Bot
@@ -637,7 +638,22 @@ func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(diffText))
+	w.Write([]byte(fmt.Sprintf("Updating path: %s\n\n%s", doc.Path, diffText)))
+}
+
+func (h *httpHandlers) docsUpdateDebug(w http.ResponseWriter, r *http.Request) {
+	channelID := r.URL.Query().Get("channel_id")
+	threadTS := r.URL.Query().Get("thread_ts")
+	text := r.URL.Query().Get("text")
+
+	docs, err := h.docUpdater.DebugCompute(r.Context(), channelID, threadTS, text)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(docs)
 }
 
 func (h *httpHandlers) postPR(r *http.Request) (any, error) {

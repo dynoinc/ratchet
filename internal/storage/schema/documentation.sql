@@ -78,7 +78,7 @@ WITH closest_chunks AS (SELECT e.url,
                                e.embedding
                         FROM documentation_embeddings e
                         ORDER BY e.embedding <=> @embedding
-                        LIMIT 15),
+                        LIMIT 25),
      doc_counts AS (SELECT c.url,
                            c.path,
                            c.revision,
@@ -93,3 +93,27 @@ SELECT d.url,
        d.content
 FROM doc_counts dc
          JOIN documentation_docs d ON dc.url = d.url AND dc.path = d.path AND dc.revision = d.revision;
+
+-- name: DebugGetDocumentForUpdate :many
+WITH closest_chunks AS (
+  SELECT e.url,
+    e.path,
+    e.revision,
+    e.chunk_index,
+    e.chunk,
+    e.embedding,
+    e.embedding <=> @embedding as distance
+  FROM documentation_embeddings e
+  ORDER BY e.embedding <=> @embedding
+  LIMIT 25)
+SELECT c.url,
+      c.path,
+      c.revision,
+      c.chunk_index,
+      c.chunk,
+      c.distance,
+      COUNT(*) OVER (PARTITION BY c.url, c.path, c.revision) as chunk_count,
+      AVG(c.distance) OVER (PARTITION BY c.url, c.path, c.revision) as avg_distance,
+      MIN(c.distance) OVER (PARTITION BY c.url, c.path, c.revision) as min_distance
+FROM closest_chunks c
+ORDER BY min_distance ASC, c.url, c.path, c.revision, c.chunk_index;
