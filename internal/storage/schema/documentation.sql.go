@@ -8,6 +8,7 @@ package schema
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -212,6 +213,54 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, embedding *pgvector.
 		&i.Content,
 	)
 	return i, err
+}
+
+const getDocumentationStatus = `-- name: GetDocumentationStatus :many
+SELECT 
+    ds.url AS source,
+    ds.revision,
+    ds.refresh_ts,
+    COUNT(DISTINCT dd.path) AS document_count,
+    COUNT(de.chunk_index) AS chunk_count
+FROM documentation_status ds
+LEFT JOIN documentation_docs dd ON ds.url = dd.url
+LEFT JOIN documentation_embeddings de ON ds.url = de.url
+GROUP BY ds.url, ds.revision, ds.refresh_ts
+ORDER BY ds.url
+`
+
+type GetDocumentationStatusRow struct {
+	Source        string
+	Revision      string
+	RefreshTs     pgtype.Timestamptz
+	DocumentCount int64
+	ChunkCount    int64
+}
+
+func (q *Queries) GetDocumentationStatus(ctx context.Context) ([]GetDocumentationStatusRow, error) {
+	rows, err := q.db.Query(ctx, getDocumentationStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDocumentationStatusRow
+	for rows.Next() {
+		var i GetDocumentationStatusRow
+		if err := rows.Scan(
+			&i.Source,
+			&i.Revision,
+			&i.RefreshTs,
+			&i.DocumentCount,
+			&i.ChunkCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getOrInsertDocumentationSource = `-- name: GetOrInsertDocumentationSource :one

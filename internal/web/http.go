@@ -128,6 +128,7 @@ func New(
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
 	// Documentation
+	apiMux.HandleFunc("GET /docs/status", handleJSON(handlers.docsStatus))
 	apiMux.HandleFunc("GET /docs/answer", handleJSON(handlers.docsAnswer))
 	apiMux.HandleFunc("GET /docs/update", handlers.docsUpdate)
 	apiMux.HandleFunc("GET /docs/update/debug", handleJSON(handlers.docsUpdateDebug))
@@ -585,6 +586,15 @@ func (h *httpHandlers) getLLMUsageByModel(r *http.Request) (any, error) {
 	}
 
 	return usageData, nil
+}
+
+func (h *httpHandlers) docsStatus(r *http.Request) (any, error) {
+	status, err := schema.New(h.bot.DB).GetDocumentationStatus(r.Context())
+	if err != nil {
+		return nil, err
+	}
+
+	return status, nil
 }
 
 func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {

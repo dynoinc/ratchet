@@ -117,3 +117,16 @@ SELECT c.url,
       MIN(c.distance) OVER (PARTITION BY c.url, c.path, c.revision) as min_distance
 FROM closest_chunks c
 ORDER BY min_distance ASC, c.url, c.path, c.revision, c.chunk_index;
+
+-- name: GetDocumentationStatus :many
+SELECT 
+    ds.url AS source,
+    ds.revision,
+    ds.refresh_ts,
+    COUNT(DISTINCT dd.path) AS document_count,
+    COUNT(de.chunk_index) AS chunk_count
+FROM documentation_status ds
+LEFT JOIN documentation_docs dd ON ds.url = dd.url
+LEFT JOIN documentation_embeddings de ON ds.url = de.url
+GROUP BY ds.url, ds.revision, ds.refresh_ts
+ORDER BY ds.url;
