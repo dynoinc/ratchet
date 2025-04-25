@@ -27,12 +27,15 @@ AI bot to help reduce operational toil
           │              │         │   Workers    │         │  Server   │
           └──────┬───────┘         └──────┬───────┘         └───────────┘
                  │                        │
-    ┌────────────┴──────────┐   ┌─────────┴──────────┐
-    │  ● channel_monitor    │   │  ● classifier      │
-    │  ● commands           │   │  ● backfill        │
-    │  ● recent_activity    │   │  ● channel_onboard │
-    │  ● report             │   │  ● modules         │
-    │  ● runbook            │   └────────────────────┘
+    ┌────────────┴──────────┐   ┌─────────┴──────────────────────────┐
+    │  ● channel_monitor    │   │  ● backfill_thread_worker        │
+    │  ● classifier         │   │  ● channel_onboard_worker        │
+    │  ● commands           │   │  ● documentation_refresh_worker  │
+    │  ● docrag             │   │  ● modules_worker                │
+    │  ● docupdate          │   └──────────────────────────────────┘
+    │  ● recent_activity    │
+    │  ● report             │
+    │  ● runbook            │
     │  ● usage              │
     └───────────────────────┘
 ```
