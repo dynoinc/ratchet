@@ -48,11 +48,14 @@ modules are:
 
 | Module                                                        | Description                                                                                                                                            |
 |---------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [channel_monitor](internal/modules/channel_monitor/README.md) | When a message is posted to a channel, the bot will run a prompt on the message and call an external tool to determine the appropriate action to take. |
+| classifier                                                    | Classifies messages (e.g., alerts, questions).                                                                                                         |
 | commands                                                      | Provides a natural language interface to the bot.                                                                                                      |
-| runbook                                                       | When an alert is triggered, the bot posts a message with the runbook for the alert.                                                                    |
+| docrag                                                        | Performs Retrieval-Augmented Generation using internal documentation to answer questions or provide context.                                             |
+| docupdate                                                     | Suggests updates to documentation based on channel activity or code changes.                                                                           |
 | recent_activity                                               | When an alert is triggered, the bot posts a message with the recent activity relevant to the alert.                                                    |
 | report                                                        | Provides a weekly report for a channel with suggestions of what to improve to reduce future support toil.                                              |
-| [channel_monitor](internal/modules/channel_monitor/README.md) | When a message is posted to a channel, the bot will run a prompt on the message and call an external tool to determine the appropriate action to take. |
+| runbook                                                       | When an alert is triggered, the bot posts a message with the runbook for the alert.                                                                    |
 | usage                                                         | Provides a usage report for the bot with statistics of thumbs up/down reactions.                                                                       |
 
 ## Built with
