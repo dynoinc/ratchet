@@ -29,15 +29,14 @@ import (
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/background/backfill_thread_worker"
 	"github.com/dynoinc/ratchet/internal/background/channel_onboard_worker"
-	"github.com/dynoinc/ratchet/internal/background/classifier_worker"
 	"github.com/dynoinc/ratchet/internal/background/documentation_refresh_worker"
 	"github.com/dynoinc/ratchet/internal/background/modules_worker"
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
+	"github.com/dynoinc/ratchet/internal/modules/classifier"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
-	"github.com/dynoinc/ratchet/internal/modules/docrag"
 	"github.com/dynoinc/ratchet/internal/modules/docupdate"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
@@ -52,7 +51,7 @@ type config struct {
 	Database storage.DatabaseConfig
 
 	// Classifier configuration
-	Classifier classifier_worker.Config
+	Classifier classifier.Config
 
 	// OpenAI configuration
 	OpenAI llm.Config `envconfig:"OPENAI"`
@@ -210,12 +209,28 @@ func main() {
 		docUpdater = docupdate.New(dc, db, llmClient, slackIntegration)
 	}
 
-	// Classifier setup
-	classifier, err := classifier_worker.New(c.Classifier, bot, llmClient)
+	// Modules worker setup
+	classifier, err := classifier.New(c.Classifier, bot, llmClient)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up classifier", "error", err)
 		os.Exit(1)
 	}
+
+	channelMonitor, err := channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient)
+	if err != nil {
+		slog.ErrorContext(ctx, "setting up channel monitor", "error", err)
+		os.Exit(1)
+	}
+
+	modulesWorker := modules_worker.New(
+		bot,
+		[]modules.Handler{
+			classifier,
+			channelMonitor,
+			runbook.New(bot, slackIntegration, llmClient),
+			commands.New(bot, slackIntegration, llmClient, docUpdater),
+		},
+	)
 
 	// Channel onboarding worker setup
 	channelOnboardWorker := channel_onboard_worker.New(bot, slackIntegration)
@@ -223,24 +238,15 @@ func main() {
 	// Backfill thread worker setup
 	backfillThreadWorker := backfill_thread_worker.New(bot, slackIntegration)
 
-	// Modules worker setup
-	modulesWorker := modules_worker.New(bot, []modules.Handler{
-		commands.New(bot, slackIntegration, llmClient, docUpdater),
-		runbook.New(bot, slackIntegration, llmClient),
-		channel_monitor.New(c.ChannelMonitor, bot, slackIntegration, llmClient),
-		docrag.New(bot, slackIntegration, llmClient),
-	})
-
 	// Document refresh worker setup
 	documentationRefreshWorker := documentation_refresh_worker.New(bot, llmClient)
 
 	// Background job setup
 	workers := river.NewWorkers()
-	river.AddWorker[background.ClassifierArgs](workers, classifier)
-	river.AddWorker[background.ChannelOnboardWorkerArgs](workers, channelOnboardWorker)
-	river.AddWorker[background.BackfillThreadWorkerArgs](workers, backfillThreadWorker)
-	river.AddWorker[background.ModulesWorkerArgs](workers, modulesWorker)
-	river.AddWorker[background.DocumentationRefreshArgs](workers, documentationRefreshWorker)
+	river.AddWorker(workers, channelOnboardWorker)
+	river.AddWorker(workers, backfillThreadWorker)
+	river.AddWorker(workers, documentationRefreshWorker)
+	river.AddWorker(workers, modulesWorker)
 
 	// Start River client
 	riverClient, err := background.New(db, workers, periodicJobs)

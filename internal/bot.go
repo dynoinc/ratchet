@@ -100,13 +100,17 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 		var insertOpts *river.InsertOpts
 		if source == SourceBackfill {
 			insertOpts = &river.InsertOpts{
-				// Avoid overloading the classifier worker with backfill jobs
+				// Avoid overloading the worker with backfill jobs
 				Priority: 4,
 			}
 		}
 
 		jobs = append(jobs, river.InsertManyParams{
-			Args:       background.ClassifierArgs{ChannelID: param.ChannelID, SlackTS: param.Ts, IsBackfill: source == SourceBackfill},
+			Args: background.ModulesWorkerArgs{
+				ChannelID:  param.ChannelID,
+				SlackTS:    param.Ts,
+				IsBackfill: source == SourceBackfill,
+			},
 			InsertOpts: insertOpts,
 		})
 	}
@@ -132,15 +136,14 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 			return fmt.Errorf("adding thread message to channel %s (ts=%s): %w", param.ChannelID, param.Ts, err)
 		}
 
-		if source != SourceBackfill {
-			jobs = append(jobs, river.InsertManyParams{
-				Args: background.ModulesWorkerArgs{
-					ChannelID: param.ChannelID,
-					SlackTS:   param.Ts,
-					ThreadTS:  param.ParentTs,
-				},
-			})
-		}
+		jobs = append(jobs, river.InsertManyParams{
+			Args: background.ModulesWorkerArgs{
+				ChannelID:  param.ChannelID,
+				SlackTS:    param.Ts,
+				ParentTS:   param.ParentTs,
+				IsBackfill: source == SourceBackfill,
+			},
+		})
 	}
 
 	if len(jobs) > 0 {

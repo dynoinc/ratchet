@@ -185,7 +185,7 @@ WITH closest_chunks AS (SELECT e.url,
                                e.embedding
                         FROM documentation_embeddings e
                         ORDER BY e.embedding <=> $1
-                        LIMIT 15),
+                        LIMIT 25),
      doc_counts AS (SELECT c.url,
                            c.path,
                            c.revision,

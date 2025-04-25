@@ -6,55 +6,36 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"github.com/slack-go/slack"
 
-	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
-	"github.com/dynoinc/ratchet/internal/modules"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
-type docRAG struct {
-	bot              *internal.Bot
-	slackIntegration slack_integration.Integration
-	llmClient        llm.Client
-}
-
-func New(bot *internal.Bot, slackIntegration slack_integration.Integration, llmClient llm.Client) modules.Handler {
-	return &docRAG{
-		bot:              bot,
-		slackIntegration: slackIntegration,
-		llmClient:        llmClient,
-	}
-}
-
-func (d *docRAG) Name() string {
-	return "documentation"
-}
-
-func (d *docRAG) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	if msg.Message.BotID != "" || msg.Message.BotUsername != "" || msg.Message.Text == "" {
-		return nil
-	}
-
-	channelInfo, err := schema.New(d.bot.DB).GetChannel(ctx, channelID)
+func Respond(
+	ctx context.Context,
+	queries *schema.Queries,
+	llmClient llm.Client,
+	slackIntegration slack_integration.Integration,
+	channelID string,
+	slackTS string,
+) error {
+	msg, err := queries.GetMessage(ctx, schema.GetMessageParams{
+		ChannelID: channelID,
+		Ts:        slackTS,
+	})
 	if err != nil {
-		return fmt.Errorf("getting channel info: %w", err)
-	}
-	if !channelInfo.Attrs.DocResponsesEnabled {
-		return nil
+		return fmt.Errorf("getting message: %w", err)
 	}
 
-	answer, links, err := Answer(ctx, msg.Message.Text, d.bot.DB, d.llmClient)
+	answer, links, err := Answer(ctx, queries, llmClient, msg.Attrs.Message.Text)
 	if err != nil {
 		return fmt.Errorf("generating answer: %w", err)
 	}
 
-	err = d.slackIntegration.PostThreadReply(ctx, channelID, slackTS, formatResponse(answer, links)...)
+	err = slackIntegration.PostThreadReply(ctx, channelID, slackTS, formatResponse(answer, links)...)
 	if err != nil {
 		return fmt.Errorf("posting message: %w", err)
 	}
@@ -62,14 +43,14 @@ func (d *docRAG) OnMessage(ctx context.Context, channelID string, slackTS string
 	return nil
 }
 
-func Answer(ctx context.Context, question string, db *pgxpool.Pool, llmClient llm.Client) (string, []string, error) {
+func Answer(ctx context.Context, queries *schema.Queries, llmClient llm.Client, question string) (string, []string, error) {
 	embedding, err := llmClient.GenerateEmbedding(ctx, "search", question)
 	if err != nil {
 		return "", nil, fmt.Errorf("generating embedding: %w", err)
 	}
 	vec := pgvector.NewVector(embedding)
 
-	docs, err := schema.New(db).GetClosestDocs(ctx, schema.GetClosestDocsParams{
+	docs, err := queries.GetClosestDocs(ctx, schema.GetClosestDocsParams{
 		Embedding: &vec,
 		LimitVal:  5,
 	})

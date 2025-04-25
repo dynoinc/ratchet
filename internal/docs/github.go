@@ -138,6 +138,7 @@ func (gs *gitHubSource) ChangesSince(ctx context.Context, revision string) (iter
 				// Process each file in this page of the comparison
 				for _, file := range comparison.Files {
 					filePath := file.GetFilename()
+					slog.Debug("GitHub API: file", "path", filePath, "status", file.GetStatus(), "prefix", gs.Path)
 
 					// Skip files not in our path
 					if !strings.HasPrefix(filePath, gs.Path) {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
@@ -79,16 +80,16 @@ func New(
 	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
-) *ChannelMonitor {
+) (modules.Handler, error) {
 	cfg := config{}
 	if c.ConfigFile != "" {
 		b, err := os.ReadFile(c.ConfigFile)
 		if err != nil {
-			slog.Error("reading config file", "error", err)
+			return nil, fmt.Errorf("reading config file: %w", err)
 		}
 		cfg, err = parseConfig(b)
 		if err != nil {
-			slog.Error("loading config file", "error", err)
+			return nil, fmt.Errorf("parsing config file: %w", err)
 		}
 	}
 	return &ChannelMonitor{
@@ -96,7 +97,7 @@ func New(
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
 		cfg:              cfg,
-	}
+	}, nil
 }
 
 func parseConfig(b []byte) (config, error) {

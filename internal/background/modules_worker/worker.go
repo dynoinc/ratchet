@@ -2,6 +2,7 @@ package modules_worker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/getsentry/sentry-go"
@@ -27,16 +28,21 @@ func New(bot *internal.Bot, modules []modules.Handler) *Worker {
 }
 
 func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
-	if job.Args.ThreadTS == "" {
-		return w.handleMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
+	if job.Args.ParentTS == "" {
+		return w.handleMessage(ctx, job)
 	}
 
-	return w.handleThreadMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, job.Args.ThreadTS)
+	return w.handleThreadMessage(ctx, job)
 }
 
-func (w *Worker) handleThreadMessage(ctx context.Context, channelID string, slackTS string, threadTS string) error {
-	msg, err := w.bot.GetMessage(ctx, channelID, threadTS)
+func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
+	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.ParentTS)
 	if err != nil {
+		if errors.Is(err, internal.ErrMessageNotFound) {
+			slog.WarnContext(ctx, "thread message not found", "channel_id", job.Args.ChannelID, "thread_ts", job.Args.ParentTS)
+			return nil
+		}
+
 		return err
 	}
 
@@ -46,7 +52,13 @@ func (w *Worker) handleThreadMessage(ctx context.Context, channelID string, slac
 			continue
 		}
 
-		if err := threadHandler.OnThreadMessage(ctx, channelID, slackTS, threadTS, msg.Attrs); err != nil {
+		if job.Args.IsBackfill {
+			if enabled, ok := module.(modules.OnBackfillMessage); !ok || !enabled.EnabledForBackfill() {
+				continue
+			}
+		}
+
+		if err := threadHandler.OnThreadMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, job.Args.ParentTS, msg.Attrs); err != nil {
 			slog.Info("thread module error", "module", module.Name(), "error", err)
 			sentry.WithScope(func(scope *sentry.Scope) {
 				scope.AddBreadcrumb(&sentry.Breadcrumb{
@@ -62,14 +74,25 @@ func (w *Worker) handleThreadMessage(ctx context.Context, channelID string, slac
 	return nil
 }
 
-func (w *Worker) handleMessage(ctx context.Context, channelID string, slackTS string) error {
-	msg, err := w.bot.GetMessage(ctx, channelID, slackTS)
+func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
+	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
+		if errors.Is(err, internal.ErrMessageNotFound) {
+			slog.WarnContext(ctx, "thread message not found", "channel_id", job.Args.ChannelID, "thread_ts", job.Args.ParentTS)
+			return nil
+		}
+
 		return err
 	}
 
 	for _, module := range w.modules {
-		if err := module.OnMessage(ctx, channelID, slackTS, msg.Attrs); err != nil {
+		if job.Args.IsBackfill {
+			if enabled, ok := module.(modules.OnBackfillMessage); !ok || !enabled.EnabledForBackfill() {
+				continue
+			}
+		}
+
+		if err := module.OnMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, msg.Attrs); err != nil {
 			slog.Info("module error", "module", module.Name(), "error", err)
 			sentry.WithScope(func(scope *sentry.Scope) {
 				scope.AddBreadcrumb(&sentry.Breadcrumb{

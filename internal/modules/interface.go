@@ -13,5 +13,9 @@ type Handler interface {
 }
 
 type ThreadHandler interface {
-	OnThreadMessage(ctx context.Context, channelID string, slackTS string, threadTS string, msg dto.MessageAttrs) error
+	OnThreadMessage(ctx context.Context, channelID string, slackTS string, parentTS string, msg dto.MessageAttrs) error
+}
+
+type OnBackfillMessage interface {
+	EnabledForBackfill() bool
 }

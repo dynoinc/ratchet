@@ -1,22 +1,18 @@
-package classifier_worker
+package classifier
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
 	"github.com/dynoinc/ratchet/internal"
-	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
@@ -25,85 +21,60 @@ type Config struct {
 	IncidentClassificationBinary string `split_words:"true" required:"true"`
 }
 
-type classifierWorker struct {
-	river.WorkerDefaults[background.ClassifierArgs]
-
+type classifier struct {
 	incidentBinary string
 	bot            *internal.Bot
 	llmClient      llm.Client
 }
 
-func New(c Config, bot *internal.Bot, llmClient llm.Client) (river.Worker[background.ClassifierArgs], error) {
+func New(c Config, bot *internal.Bot, llmClient llm.Client) (modules.Handler, error) {
 	if _, err := exec.LookPath(c.IncidentClassificationBinary); err != nil {
 		return nil, fmt.Errorf("looking up incident classification binary: %w", err)
 	}
 
-	return &classifierWorker{
+	return &classifier{
 		incidentBinary: c.IncidentClassificationBinary,
 		bot:            bot,
 		llmClient:      llmClient,
 	}, nil
 }
 
-func (w *classifierWorker) Work(ctx context.Context, job *river.Job[background.ClassifierArgs]) error {
-	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
-	if err != nil {
-		if errors.Is(err, internal.ErrMessageNotFound) {
-			slog.WarnContext(ctx, "message not found", "channel_id", job.Args.ChannelID, "slack_ts", job.Args.SlackTS)
-			return nil
-		}
+func (w *classifier) Name() string {
+	return "classifier"
+}
 
-		return fmt.Errorf("getting message: %w", err)
-	}
+func (w *classifier) EnabledForBackfill() bool {
+	return true
+}
 
-	action, err := runIncidentBinary(w.incidentBinary, msg.Attrs.Message.BotUsername, msg.Attrs.Message.Text)
+func (w *classifier) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+	action, err := runIncidentBinary(w.incidentBinary, msg.Message.BotUsername, msg.Message.Text)
 	if err != nil {
 		return fmt.Errorf("classifying incident with binary: %w", err)
 	}
 
-	embedding, err := w.llmClient.GenerateEmbedding(ctx, "search_document", msg.Attrs.Message.Text)
+	embedding, err := w.llmClient.GenerateEmbedding(ctx, "search_document", msg.Message.Text)
 	if err != nil {
 		return fmt.Errorf("generating embedding: %w", err)
 	}
 
 	vector := pgvector.NewVector(embedding)
 	params := schema.UpdateMessageAttrsParams{
-		ChannelID: job.Args.ChannelID,
-		Ts:        job.Args.SlackTS,
+		ChannelID: channelID,
+		Ts:        slackTS,
 		Embedding: &vector,
 	}
 	if action.Action != dto.ActionNone {
 		params.Attrs = dto.MessageAttrs{IncidentAction: action}
 	}
 
-	slog.DebugContext(ctx, "classified message", "channel_id", params.ChannelID, "slack_ts", params.Ts, "text", msg.Attrs.Message.Text, "attrs", params.Attrs)
+	slog.DebugContext(ctx, "classified message", "channel_id", params.ChannelID, "slack_ts", params.Ts, "text", msg.Message.Text, "attrs", params.Attrs)
 
-	tx, err := w.bot.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	qtx := schema.New(w.bot.DB).WithTx(tx)
-	if err := qtx.UpdateMessageAttrs(ctx, params); err != nil {
+	if err := schema.New(w.bot.DB).UpdateMessageAttrs(ctx, params); err != nil {
 		return fmt.Errorf("updating message %s (ts=%s): %w", params.ChannelID, params.Ts, err)
 	}
 
-	if !job.Args.IsBackfill {
-		riverclient := river.ClientFromContext[pgx.Tx](ctx)
-		if _, err := riverclient.InsertTx(ctx, tx, background.ModulesWorkerArgs{
-			ChannelID: params.ChannelID,
-			SlackTS:   params.Ts,
-		}, nil); err != nil {
-			return fmt.Errorf("scheduling modules worker: %w", err)
-		}
-	}
-
-	if _, err = river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job); err != nil {
-		return fmt.Errorf("completing job: %w", err)
-	}
-
-	return tx.Commit(ctx)
+	return nil
 }
 
 type binaryInput struct {

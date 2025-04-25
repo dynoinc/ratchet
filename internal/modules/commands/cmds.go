@@ -7,6 +7,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules/docrag"
 	"github.com/dynoinc/ratchet/internal/modules/docupdate"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/usage"
@@ -21,6 +22,7 @@ const (
 	cmdNone                cmd = "none"
 	cmdPostWeeklyReport    cmd = "weekly_report"
 	cmdPostUsageReport     cmd = "usage_report"
+	cmdLookupDocumentation cmd = "lookup_documentation"
 	cmdUpdateDocumentation cmd = "update_documentation"
 )
 
@@ -41,6 +43,11 @@ var (
 			"show ratchet bot usage statistics",
 			"post usage report",
 			"how many people are using the bot?",
+		},
+		string(cmdLookupDocumentation): {
+			"lookup documentation",
+			"what does the documentation say",
+			"reference the docs",
 		},
 		string(cmdUpdateDocumentation): {
 			"update the documentation",
@@ -99,14 +106,14 @@ func (c *Commands) findCommand(ctx context.Context, text string) (cmd, error) {
 }
 
 func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	return c.handleMessage(ctx, channelID, slackTS, "", msg)
+	return c.handleMessage(ctx, channelID, slackTS, msg)
 }
 
-func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackTS string, threadTS string, msg dto.MessageAttrs) error {
-	return c.handleMessage(ctx, channelID, slackTS, threadTS, msg)
+func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackTS string, parentTS string, msg dto.MessageAttrs) error {
+	return c.handleMessage(ctx, channelID, parentTS, msg)
 }
 
-func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS string, threadTS string, msg dto.MessageAttrs) error {
+func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	botID := c.slackIntegration.BotUserID()
 	text, found := strings.CutPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
 	if !found {
@@ -123,9 +130,11 @@ func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS 
 		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdPostUsageReport:
 		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
+	case cmdLookupDocumentation:
+		return docrag.Respond(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS)
 	case cmdUpdateDocumentation:
 		if c.docUpdater != nil {
-			return c.docUpdater.Update(ctx, channelID, threadTS, text)
+			return c.docUpdater.Update(ctx, channelID, slackTS, text)
 		}
 	case cmdNone: // nothing to do
 	}

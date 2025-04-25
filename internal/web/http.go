@@ -596,7 +596,7 @@ func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("question parameter is required")
 	}
 
-	answer, links, err := docrag.Answer(r.Context(), question, h.db, h.llmClient)
+	answer, links, err := docrag.Answer(r.Context(), schema.New(h.db), h.llmClient, question)
 	if err != nil {
 		return nil, err
 	}

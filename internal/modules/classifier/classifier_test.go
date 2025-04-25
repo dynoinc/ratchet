@@ -1,4 +1,4 @@
-package classifier_worker
+package classifier
 
 import (
 	"encoding/json"

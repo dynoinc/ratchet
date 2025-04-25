@@ -2,16 +2,6 @@ package background
 
 import "github.com/dynoinc/ratchet/internal/docs"
 
-type ClassifierArgs struct {
-	ChannelID  string `json:"channel_id"`
-	SlackTS    string `json:"slack_ts"`
-	IsBackfill bool   `json:"is_backfill"`
-}
-
-func (c ClassifierArgs) Kind() string {
-	return "classifier"
-}
-
 type ChannelOnboardWorkerArgs struct {
 	ChannelID string `json:"channel_id"`
 	LastNMsgs int    `json:"last_n_msgs"`
@@ -31,9 +21,10 @@ func (b BackfillThreadWorkerArgs) Kind() string {
 }
 
 type ModulesWorkerArgs struct {
-	ChannelID string `json:"channel_id"`
-	SlackTS   string `json:"slack_ts"`
-	ThreadTS  string `json:"thread_ts"` // non-empty if this is a thread message
+	ChannelID  string `json:"channel_id"`
+	SlackTS    string `json:"slack_ts"`
+	ParentTS   string `json:"parent_ts"`
+	IsBackfill bool   `json:"is_backfill"`
 }
 
 func (m ModulesWorkerArgs) Kind() string {
