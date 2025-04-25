@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	slack "github.com/slack-go/slack"
+	slackevents "github.com/slack-go/slack/slackevents"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -194,4 +195,70 @@ func (m *MockIntegration) Run(ctx context.Context) error {
 func (mr *MockIntegrationMockRecorder) Run(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockIntegration)(nil).Run), ctx)
+}
+
+// Mockhandler is a mock of handler interface.
+type Mockhandler struct {
+	ctrl     *gomock.Controller
+	recorder *MockhandlerMockRecorder
+	isgomock struct{}
+}
+
+// MockhandlerMockRecorder is the mock recorder for Mockhandler.
+type MockhandlerMockRecorder struct {
+	mock *Mockhandler
+}
+
+// NewMockhandler creates a new mock instance.
+func NewMockhandler(ctrl *gomock.Controller) *Mockhandler {
+	mock := &Mockhandler{ctrl: ctrl}
+	mock.recorder = &MockhandlerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *Mockhandler) EXPECT() *MockhandlerMockRecorder {
+	return m.recorder
+}
+
+// NotifyMessage mocks base method.
+func (m *Mockhandler) NotifyMessage(ctx context.Context, ev *slackevents.MessageEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyMessage", ctx, ev)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyMessage indicates an expected call of NotifyMessage.
+func (mr *MockhandlerMockRecorder) NotifyMessage(ctx, ev any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyMessage", reflect.TypeOf((*Mockhandler)(nil).NotifyMessage), ctx, ev)
+}
+
+// NotifyReactionAdded mocks base method.
+func (m *Mockhandler) NotifyReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyReactionAdded", ctx, ev)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyReactionAdded indicates an expected call of NotifyReactionAdded.
+func (mr *MockhandlerMockRecorder) NotifyReactionAdded(ctx, ev any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyReactionAdded", reflect.TypeOf((*Mockhandler)(nil).NotifyReactionAdded), ctx, ev)
+}
+
+// NotifyReactionRemoved mocks base method.
+func (m *Mockhandler) NotifyReactionRemoved(ctx context.Context, ev *slackevents.ReactionRemovedEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyReactionRemoved", ctx, ev)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyReactionRemoved indicates an expected call of NotifyReactionRemoved.
+func (mr *MockhandlerMockRecorder) NotifyReactionRemoved(ctx, ev any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyReactionRemoved", reflect.TypeOf((*Mockhandler)(nil).NotifyReactionRemoved), ctx, ev)
 }

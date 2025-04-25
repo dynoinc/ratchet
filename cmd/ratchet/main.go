@@ -260,7 +260,7 @@ func main() {
 	}
 
 	// Initialize the HTTP server
-	handler, err := web.New(ctx, db, riverClient, slackIntegration, llmClient, docsConfig)
+	handler, err := web.New(ctx, bot, slackIntegration, llmClient, docsConfig)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up HTTP server", "error", err)
 		os.Exit(1)

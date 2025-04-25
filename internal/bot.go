@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
@@ -35,7 +34,7 @@ var (
 type Bot struct {
 	DB          *pgxpool.Pool
 	DocsConfig  *docs.Config
-	riverClient *river.Client[pgx.Tx]
+	RiverClient *river.Client[pgx.Tx]
 }
 
 func New(ctx context.Context, db *pgxpool.Pool) (*Bot, error) {
@@ -43,7 +42,7 @@ func New(ctx context.Context, db *pgxpool.Pool) (*Bot, error) {
 }
 
 func (b *Bot) Init(riverClient *river.Client[pgx.Tx], docsConfig *docs.Config) error {
-	b.riverClient = riverClient
+	b.RiverClient = riverClient
 	b.DocsConfig = docsConfig
 	return nil
 }
@@ -77,7 +76,7 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 			return fmt.Errorf("updating channel %s: %w", channelID, err)
 		}
 
-		if _, err := b.riverClient.InsertTx(ctx, tx, background.ChannelOnboardWorkerArgs{
+		if _, err := b.RiverClient.InsertTx(ctx, tx, background.ChannelOnboardWorkerArgs{
 			ChannelID: channelID,
 		}, nil); err != nil {
 			return fmt.Errorf("scheduling channel onboarding for channel %s: %w", channelID, err)
@@ -116,7 +115,7 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 		})
 	}
 
-	if _, err := b.riverClient.InsertManyTx(ctx, tx, jobs); err != nil {
+	if _, err := b.RiverClient.InsertManyTx(ctx, tx, jobs); err != nil {
 		return fmt.Errorf("scheduling message classification for channel %s: %w", channelID, err)
 	}
 
@@ -148,7 +147,7 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 	}
 
 	if len(jobs) > 0 {
-		if _, err := b.riverClient.InsertManyTx(ctx, tx, jobs); err != nil {
+		if _, err := b.RiverClient.InsertManyTx(ctx, tx, jobs); err != nil {
 			return fmt.Errorf("scheduling thread message backfill for channel %s: %w", params[0].ChannelID, err)
 		}
 	}
@@ -249,13 +248,4 @@ func (b *Bot) GetMessage(
 	}
 
 	return msg, nil
-}
-
-func TimeToTs(t time.Time) string {
-	// Convert time.Time to Unix seconds and nanoseconds
-	seconds := t.Unix()
-	nanoseconds := int64(t.Nanosecond())
-
-	// Convert Unix seconds and nanoseconds to a Slack timestamp
-	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
 }

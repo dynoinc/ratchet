@@ -17,13 +17,12 @@ import (
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/riverqueue/river"
 	"riverqueue.com/riverui"
 
+	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
@@ -65,8 +64,7 @@ func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 }
 
 type httpHandlers struct {
-	db               *pgxpool.Pool
-	riverClient      *river.Client[pgx.Tx]
+	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
 	docsConfig       *docs.Config
@@ -74,15 +72,13 @@ type httpHandlers struct {
 
 func New(
 	ctx context.Context,
-	db *pgxpool.Pool,
-	riverClient *river.Client[pgx.Tx],
+	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
 	docsConfig *docs.Config,
 ) (http.Handler, error) {
 	handlers := &httpHandlers{
-		db:               db,
-		riverClient:      riverClient,
+		bot:              bot,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
 		docsConfig:       docsConfig,
@@ -90,8 +86,8 @@ func New(
 
 	// River UI
 	opts := &riverui.ServerOpts{
-		Client: riverClient,
-		DB:     db,
+		Client: bot.RiverClient,
+		DB:     bot.DB,
 		Prefix: "/riverui",
 		Logger: slog.Default(),
 	}
@@ -155,7 +151,7 @@ func New(
 }
 
 func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
-	channels, err := schema.New(h.db).GetAllChannels(r.Context())
+	channels, err := schema.New(h.bot.DB).GetAllChannels(r.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +165,7 @@ func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
 
 func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
 	channelName := r.PathValue("channel_name")
-	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	channel, err := schema.New(h.bot.DB).GetChannelByName(r.Context(), channelName)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +176,7 @@ func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("invalid n: %w", err)
 	}
 
-	return schema.New(h.db).GetAllMessages(r.Context(), schema.GetAllMessagesParams{
+	return schema.New(h.bot.DB).GetAllMessages(r.Context(), schema.GetAllMessagesParams{
 		ChannelID: channel.ID,
 		N:         int32(nInt),
 	})
@@ -188,7 +184,7 @@ func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
 
 func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 	channelName := r.PathValue("channel_name")
-	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	channel, err := schema.New(h.bot.DB).GetChannelByName(r.Context(), channelName)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
@@ -219,7 +215,7 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 	}
 
 	// submit job to river to onboard channel
-	if _, err := h.riverClient.Insert(r.Context(), background.ChannelOnboardWorkerArgs{
+	if _, err := h.bot.RiverClient.Insert(r.Context(), background.ChannelOnboardWorkerArgs{
 		ChannelID: channelID,
 		LastNMsgs: lastNMsgsInt,
 	}, nil); err != nil {
@@ -231,12 +227,12 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 
 func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 	channelName := r.PathValue("channel_name")
-	channel, err := schema.New(h.db).GetChannelByName(r.Context(), channelName)
+	channel, err := schema.New(h.bot.DB).GetChannelByName(r.Context(), channelName)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := report.Post(r.Context(), schema.New(h.db), h.llmClient, h.slackIntegration, channel.ID); err != nil {
+	if err := report.Post(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, channel.ID); err != nil {
 		return nil, err
 	}
 
@@ -244,7 +240,7 @@ func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) listServices(r *http.Request) (any, error) {
-	services, err := schema.New(h.db).GetServices(r.Context())
+	services, err := schema.New(h.bot.DB).GetServices(r.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +252,7 @@ func (h *httpHandlers) listAlerts(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 
 	priorityFilter := r.URL.Query().Get("priority")
-	alerts, err := schema.New(h.db).GetAlerts(r.Context(), serviceName)
+	alerts, err := schema.New(h.bot.DB).GetAlerts(r.Context(), serviceName)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +282,7 @@ func (h *httpHandlers) listThreadMessages(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
 
-	qtx := schema.New(h.db)
+	qtx := schema.New(h.bot.DB)
 	msgs, err := qtx.GetThreadMessagesByServiceAndAlert(r.Context(), schema.GetThreadMessagesByServiceAndAlertParams{
 		Service: serviceName,
 		Alert:   alertName,
@@ -303,7 +299,7 @@ func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
 
-	rbk, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
+	rbk, err := runbook.Get(r.Context(), schema.New(h.bot.DB), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
 	if err != nil {
 		return nil, err
 	}
@@ -321,14 +317,14 @@ func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	rbk, err := runbook.Get(r.Context(), schema.New(h.db), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
+	rbk, err := runbook.Get(r.Context(), schema.New(h.bot.DB), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
 	if err != nil {
 		return nil, err
 	}
 
 	messages, err := recent_activity.Get(
 		r.Context(),
-		schema.New(h.db),
+		schema.New(h.bot.DB),
 		h.llmClient,
 		rbk.LexicalSearchQuery,
 		rbk.SemanticSearchQuery,
@@ -353,7 +349,7 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	qtx := schema.New(h.db)
+	qtx := schema.New(h.bot.DB)
 	runbookMessage, err := runbook.Get(
 		r.Context(),
 		qtx,
@@ -398,7 +394,7 @@ func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
 	alertName := r.URL.Query().Get("alert")
 
 	if serviceName != "" && alertName != "" {
-		qtx := schema.New(h.db)
+		qtx := schema.New(h.bot.DB)
 		runbookMessage, err := runbook.Get(
 			r.Context(),
 			qtx,
@@ -443,7 +439,7 @@ func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
 
 	updates, err := recent_activity.GetDebug(
 		r.Context(),
-		schema.New(h.db),
+		schema.New(h.bot.DB),
 		h.llmClient,
 		lexicalQuery,
 		semanticQuery,
@@ -511,7 +507,7 @@ func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
 func (h *httpHandlers) postUsage(r *http.Request) (any, error) {
 	channelID := r.URL.Query().Get("channel_id")
 
-	if err := usage.Post(r.Context(), schema.New(h.db), h.llmClient, h.slackIntegration, channelID); err != nil {
+	if err := usage.Post(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, channelID); err != nil {
 		return nil, err
 	}
 
@@ -547,7 +543,7 @@ func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
 	}
 
 	// Get LLM usage data
-	usageData, err := schema.New(h.db).GetLLMUsageByTimeRange(r.Context(), schema.GetLLMUsageByTimeRangeParams{
+	usageData, err := schema.New(h.bot.DB).GetLLMUsageByTimeRange(r.Context(), schema.GetLLMUsageByTimeRangeParams{
 		StartTime: pgtype.Timestamptz{Time: startTime, Valid: true},
 		EndTime:   pgtype.Timestamptz{Time: endTime, Valid: true},
 	})
@@ -579,7 +575,7 @@ func (h *httpHandlers) getLLMUsageByModel(r *http.Request) (any, error) {
 	}
 
 	// Get LLM usage data by model
-	usageData, err := schema.New(h.db).GetLLMUsageByModel(r.Context(), schema.GetLLMUsageByModelParams{
+	usageData, err := schema.New(h.bot.DB).GetLLMUsageByModel(r.Context(), schema.GetLLMUsageByModelParams{
 		Model:     model,
 		LimitVal:  int32(limitInt),
 		OffsetVal: int32(offsetInt),
@@ -597,7 +593,7 @@ func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("question parameter is required")
 	}
 
-	answer, links, err := docrag.Answer(r.Context(), schema.New(h.db), h.llmClient, question)
+	answer, links, err := docrag.Answer(r.Context(), schema.New(h.bot.DB), h.llmClient, question)
 	if err != nil {
 		return nil, err
 	}
@@ -618,7 +614,7 @@ func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, updatedDoc, err := docupdate.Compute(r.Context(), schema.New(h.db), h.llmClient, channelID, threadTS, text)
+	doc, updatedDoc, err := docupdate.Compute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, threadTS, text)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -651,7 +647,7 @@ func (h *httpHandlers) docsUpdateDebug(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("documentation config not available")
 	}
 
-	docs, err := docupdate.DebugCompute(r.Context(), schema.New(h.db), h.llmClient, channelID, threadTS, text)
+	docs, err := docupdate.DebugCompute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, threadTS, text)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +664,7 @@ func (h *httpHandlers) postPR(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("documentation config not available")
 	}
 
-	err := docupdate.Post(r.Context(), schema.New(h.db), h.llmClient, h.slackIntegration, h.docsConfig, channelID, threadTS, text)
+	err := docupdate.Post(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, h.docsConfig, channelID, threadTS, text)
 	if err != nil {
 		return nil, err
 	}

@@ -9,8 +9,6 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
-
-	"github.com/dynoinc/ratchet/internal"
 )
 
 type Config struct {
@@ -54,16 +52,21 @@ func CreateSignatureBlock(moduleName string) []slack.Block {
 	}
 }
 
+type handler interface {
+	NotifyMessage(ctx context.Context, ev *slackevents.MessageEvent) error
+	NotifyReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error
+	NotifyReactionRemoved(ctx context.Context, ev *slackevents.ReactionRemovedEvent) error
+}
+
 type integration struct {
 	c Config
+	h handler
 
 	botUserID string
 	client    *socketmode.Client
-
-	bot *internal.Bot
 }
 
-func New(ctx context.Context, c Config, bot *internal.Bot) (Integration, error) {
+func New(ctx context.Context, c Config, h handler) (Integration, error) {
 	api := slack.New(c.BotToken, slack.OptionAppLevelToken(c.AppToken))
 
 	authTest, err := api.AuthTestContext(ctx)
@@ -75,9 +78,9 @@ func New(ctx context.Context, c Config, bot *internal.Bot) (Integration, error) 
 
 	return &integration{
 		c:         c,
+		h:         h,
 		botUserID: authTest.UserID,
 		client:    socketClient,
-		bot:       bot,
 	}, nil
 }
 
@@ -118,15 +121,15 @@ func (b *integration) handleEventAPI(ctx context.Context, event slackevents.Even
 	case slackevents.CallbackEvent:
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			if err := b.bot.NotifyMessage(ctx, ev); err != nil {
+			if err := b.h.NotifyMessage(ctx, ev); err != nil {
 				return fmt.Errorf("notifying message for channel: %w", err)
 			}
 		case *slackevents.ReactionAddedEvent:
-			if err := b.bot.NotifyReactionAdded(ctx, ev); err != nil {
+			if err := b.h.NotifyReactionAdded(ctx, ev); err != nil {
 				return fmt.Errorf("notifying reaction added: %w", err)
 			}
 		case *slackevents.ReactionRemovedEvent:
-			if err := b.bot.NotifyReactionRemoved(ctx, ev); err != nil {
+			if err := b.h.NotifyReactionRemoved(ctx, ev); err != nil {
 				return fmt.Errorf("notifying reaction removed: %w", err)
 			}
 		default:
@@ -152,7 +155,7 @@ func (b *integration) GetConversationInfo(ctx context.Context, channelID string)
 func (b *integration) GetConversationHistory(ctx context.Context, channelID string, lastNMsgs int) ([]slack.Message, error) {
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: channelID,
-		Latest:    internal.TimeToTs(time.Now()),
+		Latest:    TimeToTs(time.Now()),
 		Limit:     lastNMsgs,
 	}
 	var messages []slack.Message
@@ -267,4 +270,13 @@ func (b *integration) GetUserIDByEmail(ctx context.Context, email string) (strin
 		return "", fmt.Errorf("getting user by email %s: %w", email, err)
 	}
 	return user.ID, nil
+}
+
+func TimeToTs(t time.Time) string {
+	// Convert time.Time to Unix seconds and nanoseconds
+	seconds := t.Unix()
+	nanoseconds := int64(t.Nanosecond())
+
+	// Convert Unix seconds and nanoseconds to a Slack timestamp
+	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
 }
