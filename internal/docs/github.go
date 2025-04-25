@@ -29,7 +29,7 @@ func (gs *gitHubSource) URL() string {
 	return fmt.Sprintf("%s/%s/%s", gs.GitHubURL, gs.Owner, gs.Repo)
 }
 
-func (gs *gitHubSource) ChangesSince(ctx context.Context, revision string) (iter.Seq[Update], string, func() error) {
+func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter.Seq[Update], string, func() error) {
 	// Get GitHub client
 	start := time.Now()
 	client, err := github_integration.For(gs.AppID, gs.InstallationID, gs.PrivateKeyPath)
@@ -64,7 +64,7 @@ func (gs *gitHubSource) ChangesSince(ctx context.Context, revision string) (iter
 	// If no revision is provided, get the current snapshot
 	if revision == "" {
 		var capturedError error
-		return iter.Seq[Update](func(yield func(Update) bool) {
+		return func(yield func(Update) bool) {
 				// Recursively walk through the directory structure
 				var walkDir func(path string) bool
 				walkDir = func(path string) bool {
@@ -108,14 +108,14 @@ func (gs *gitHubSource) ChangesSince(ctx context.Context, revision string) (iter
 
 				// Start the recursive walk from the root path
 				walkDir(gs.Path)
-			}), newRevision, func() error {
+			}, newRevision, func() error {
 				return capturedError
 			}
 	}
 
 	// If revision is provided, get changes since that revision
 	var capturedError error
-	return iter.Seq[Update](func(yield func(Update) bool) {
+	return func(yield func(Update) bool) {
 			// Get the comparison between revisions
 			opts := &github.ListOptions{PerPage: 100}
 
@@ -177,12 +177,12 @@ func (gs *gitHubSource) ChangesSince(ctx context.Context, revision string) (iter
 				}
 				opts.Page = resp.NextPage
 			}
-		}), newRevision, func() error {
+		}, newRevision, func() error {
 			return capturedError
 		}
 }
 
-func (gs *gitHubSource) Get(ctx context.Context, path, revision string) (string, error) {
+func (gs *gitHubSource) get(ctx context.Context, path, revision string) (string, error) {
 	client, err := github_integration.For(gs.AppID, gs.InstallationID, gs.PrivateKeyPath)
 	if err != nil {
 		return "", fmt.Errorf("creating GitHub client: %w", err)

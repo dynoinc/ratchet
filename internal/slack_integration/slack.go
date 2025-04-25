@@ -155,7 +155,7 @@ func (b *integration) GetConversationInfo(ctx context.Context, channelID string)
 func (b *integration) GetConversationHistory(ctx context.Context, channelID string, lastNMsgs int) ([]slack.Message, error) {
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: channelID,
-		Latest:    TimeToTs(time.Now()),
+		Latest:    timeToTs(time.Now()),
 		Limit:     lastNMsgs,
 	}
 	var messages []slack.Message
@@ -232,7 +232,8 @@ func (b *integration) PostMessage(ctx context.Context, channelID string, message
 		channelID = b.c.DevChannel
 	}
 
-	_, _, err := b.client.PostMessage(
+	_, _, err := b.client.PostMessageContext(
+		ctx,
 		channelID,
 		slack.MsgOptionBlocks(messageBlocks...),
 	)
@@ -251,7 +252,8 @@ func (b *integration) PostThreadReply(ctx context.Context, channelID, ts string,
 		msgOptions = append(msgOptions, slack.MsgOptionTS(ts))
 	}
 
-	if _, _, err := b.client.PostMessage(
+	if _, _, err := b.client.PostMessageContext(
+		ctx,
 		channelID,
 		msgOptions...); err != nil {
 		return fmt.Errorf("posting thread reply: %w", err)
@@ -265,14 +267,14 @@ func (b *integration) BotUserID() string {
 }
 
 func (b *integration) GetUserIDByEmail(ctx context.Context, email string) (string, error) {
-	user, err := b.client.GetUserByEmail(email)
+	user, err := b.client.GetUserByEmailContext(ctx, email)
 	if err != nil {
 		return "", fmt.Errorf("getting user by email %s: %w", email, err)
 	}
 	return user.ID, nil
 }
 
-func TimeToTs(t time.Time) string {
+func timeToTs(t time.Time) string {
 	// Convert time.Time to Unix seconds and nanoseconds
 	seconds := t.Unix()
 	nanoseconds := int64(t.Nanosecond())

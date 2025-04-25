@@ -45,7 +45,7 @@ type llmUsageStats struct {
 	AverageOutputSize float64
 }
 
-func get(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) (report, error) {
+func get(ctx context.Context, db *schema.Queries, slackIntegration slack_integration.Integration) (report, error) {
 	startTs := time.Now().AddDate(0, 0, -7)
 	endTs := time.Now()
 
@@ -162,16 +162,16 @@ func getLLMUsage(ctx context.Context, db *schema.Queries, startTs, endTs time.Ti
 }
 
 func Post(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) error {
-	report, err := get(ctx, db, llmClient, slackIntegration, channelID)
+	report, err := get(ctx, db, slackIntegration)
 	if err != nil {
 		return fmt.Errorf("getting usage report: %w", err)
 	}
 
-	blocks := format(ctx, db, slackIntegration, channelID, report)
+	blocks := format(ctx, db, report)
 	return slackIntegration.PostMessage(ctx, channelID, blocks...)
 }
 
-func format(ctx context.Context, qtx *schema.Queries, slackIntegration slack_integration.Integration, channelID string, report report) []slack.Block {
+func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Block {
 	// Calculate totals
 	var totalMessages, totalThumbsUp, totalThumbsDown int
 	for _, usage := range report.ChannelUsage {

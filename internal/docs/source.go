@@ -33,7 +33,7 @@ type Update struct {
 func (s Source) ChangesSince(ctx context.Context, revision string) (iter.Seq[Update], string, func() error) {
 	switch s.Type {
 	case "github":
-		return s.GitHub.ChangesSince(ctx, revision)
+		return s.GitHub.changesSince(ctx, revision)
 	default:
 		panic("unsupported source type")
 	}
@@ -42,7 +42,7 @@ func (s Source) ChangesSince(ctx context.Context, revision string) (iter.Seq[Upd
 func (s Source) Get(ctx context.Context, path, revision string) (string, error) {
 	switch s.Type {
 	case "github":
-		return s.GitHub.Get(ctx, path, revision)
+		return s.GitHub.get(ctx, path, revision)
 	default:
 		panic("unsupported source type")
 	}

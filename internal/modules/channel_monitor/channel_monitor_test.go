@@ -151,7 +151,7 @@ func TestHandleMessage(t *testing.T) {
 	require.NoError(t, err)
 	e.PromptTemplate = tmpl
 
-	cm := &ChannelMonitor{
+	cm := &channelMonitor{
 		llmClient:        mockLLM,
 		slackIntegration: mockSlack,
 		cfg: map[string]*entry{

@@ -37,8 +37,8 @@ type Bot struct {
 	RiverClient *river.Client[pgx.Tx]
 }
 
-func New(ctx context.Context, db *pgxpool.Pool) (*Bot, error) {
-	return &Bot{DB: db}, nil
+func New(db *pgxpool.Pool) *Bot {
+	return &Bot{DB: db}
 }
 
 func (b *Bot) Init(riverClient *river.Client[pgx.Tx], docsConfig *docs.Config) error {
