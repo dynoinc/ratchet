@@ -1,4 +1,4 @@
-# Ratchet
+![Ratchet Logo](docs/logo.png)
 
 [![build](https://github.com/dynoinc/ratchet/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/dynoinc/ratchet/actions/workflows/build.yml)
 
@@ -20,19 +20,19 @@ AI bot to help reduce operational toil
 │   Ollama     │                  │  (Coordinator)   │                │   Database   │
 └──────────────┘                  └────────┬─────────┘                └──────────────┘
                                            │
-                    ┌──────────────────────┼──────────────────────┐
-                    │                      │                      │
+                  ┌────────────────────────┼──────────────────────┐
+                  │                        │                      │
           ┌───────▼──────┐         ┌───────▼──────┐         ┌─────▼─────┐
           │   Modules    │         │  Background  │         │    Web    │
           │              │         │   Workers    │         │  Server   │
           └──────┬───────┘         └──────┬───────┘         └───────────┘
                  │                        │
     ┌────────────┴──────────┐   ┌─────────┴──────────────────────────┐
-    │  ● channel_monitor    │   │  ● backfill_thread_worker        │
-    │  ● classifier         │   │  ● channel_onboard_worker        │
-    │  ● commands           │   │  ● documentation_refresh_worker  │
-    │  ● docrag             │   │  ● modules_worker                │
-    │  ● docupdate          │   └──────────────────────────────────┘
+    │  ● channel_monitor    │   │  ● backfill_thread_worker          │
+    │  ● classifier         │   │  ● channel_onboard_worker          │
+    │  ● commands           │   │  ● documentation_refresh_worker    │
+    │  ● docrag             │   │  ● modules_worker                  │
+    │  ● docupdate          │   └────────────────────────────────────┘
     │  ● recent_activity    │
     │  ● report             │
     │  ● runbook            │
