@@ -14,7 +14,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
-func Respond(
+func Post(
 	ctx context.Context,
 	queries *schema.Queries,
 	llmClient llm.Client,

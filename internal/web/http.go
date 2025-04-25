@@ -25,6 +25,7 @@ import (
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/docrag"
@@ -68,7 +69,7 @@ type httpHandlers struct {
 	riverClient      *river.Client[pgx.Tx]
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
-	docUpdater       *docupdate.DocUpdater
+	docsConfig       *docs.Config
 }
 
 func New(
@@ -77,14 +78,14 @@ func New(
 	riverClient *river.Client[pgx.Tx],
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
-	docUpdater *docupdate.DocUpdater,
+	docsConfig *docs.Config,
 ) (http.Handler, error) {
 	handlers := &httpHandlers{
 		db:               db,
 		riverClient:      riverClient,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
-		docUpdater:       docUpdater,
+		docsConfig:       docsConfig,
 	}
 
 	// River UI
@@ -133,7 +134,7 @@ func New(
 	// Documentation
 	apiMux.HandleFunc("GET /docs/answer", handleJSON(handlers.docsAnswer))
 	apiMux.HandleFunc("GET /docs/update", handlers.docsUpdate)
-	apiMux.HandleFunc("GET /docs/update/debug", handlers.docsUpdateDebug)
+	apiMux.HandleFunc("GET /docs/update/debug", handleJSON(handlers.docsUpdateDebug))
 	apiMux.HandleFunc("POST /docs/update", handleJSON(handlers.postPR))
 
 	// Bot
@@ -612,12 +613,12 @@ func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
 	threadTS := r.URL.Query().Get("thread_ts")
 	text := r.URL.Query().Get("text")
 
-	if h.docUpdater == nil {
-		http.Error(w, "documentation updater not available", http.StatusInternalServerError)
+	if h.docsConfig == nil {
+		http.Error(w, "documentation config not available", http.StatusBadRequest)
 		return
 	}
 
-	doc, updatedDoc, err := h.docUpdater.Compute(r.Context(), channelID, threadTS, text)
+	doc, updatedDoc, err := docupdate.Compute(r.Context(), schema.New(h.db), h.llmClient, channelID, threadTS, text)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -641,19 +642,21 @@ func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("Updating path: %s\n\n%s", doc.Path, diffText)))
 }
 
-func (h *httpHandlers) docsUpdateDebug(w http.ResponseWriter, r *http.Request) {
+func (h *httpHandlers) docsUpdateDebug(r *http.Request) (any, error) {
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("thread_ts")
 	text := r.URL.Query().Get("text")
 
-	docs, err := h.docUpdater.DebugCompute(r.Context(), channelID, threadTS, text)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if h.docsConfig == nil {
+		return nil, fmt.Errorf("documentation config not available")
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(docs)
+	docs, err := docupdate.DebugCompute(r.Context(), schema.New(h.db), h.llmClient, channelID, threadTS, text)
+	if err != nil {
+		return nil, err
+	}
+
+	return docs, nil
 }
 
 func (h *httpHandlers) postPR(r *http.Request) (any, error) {
@@ -661,11 +664,11 @@ func (h *httpHandlers) postPR(r *http.Request) (any, error) {
 	threadTS := r.URL.Query().Get("thread_ts")
 	text := r.URL.Query().Get("text")
 
-	if h.docUpdater == nil {
-		return nil, fmt.Errorf("documentation updater not available")
+	if h.docsConfig == nil {
+		return nil, fmt.Errorf("documentation config not available")
 	}
 
-	err := h.docUpdater.Update(r.Context(), channelID, threadTS, text)
+	err := docupdate.Post(r.Context(), schema.New(h.db), h.llmClient, h.slackIntegration, h.docsConfig, channelID, threadTS, text)
 	if err != nil {
 		return nil, err
 	}

@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/slack-go/slack"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
+	"github.com/slack-go/slack"
 
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
@@ -15,19 +13,14 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
-type DocUpdater struct {
-	c                *docs.Config
-	db               *pgxpool.Pool
-	llm              llm.Client
-	slackIntegration slack_integration.Integration
-}
-
-func New(c *docs.Config, db *pgxpool.Pool, llm llm.Client, slack slack_integration.Integration) *DocUpdater {
-	return &DocUpdater{c, db, llm, slack}
-}
-
-func (u *DocUpdater) computeEmbedding(ctx context.Context, channelID string, threadTS string, text string) (pgvector.Vector, string, error) {
-	queries := schema.New(u.db)
+func computeEmbedding(
+	ctx context.Context,
+	queries *schema.Queries,
+	llm llm.Client,
+	channelID string,
+	threadTS string,
+	text string,
+) (pgvector.Vector, string, error) {
 	channelInfo, err := queries.GetChannel(ctx, channelID)
 	if err != nil {
 		return pgvector.Vector{}, "", fmt.Errorf("failed to get channel info: %w", err)
@@ -57,21 +50,22 @@ func (u *DocUpdater) computeEmbedding(ctx context.Context, channelID string, thr
 		channelInfo.Attrs.Name,
 		slackMsg.Attrs.Message.Text,
 		text)
-	embedding, err := u.llm.GenerateEmbedding(ctx, "documentation", combinedText)
+	embedding, err := llm.GenerateEmbedding(ctx, "documentation", combinedText)
 	if err != nil {
 		return pgvector.Vector{}, "", fmt.Errorf("failed to generate embedding: %w", err)
 	}
 
 	return pgvector.NewVector(embedding), threadMsgsText, nil
 }
-func (u *DocUpdater) DebugCompute(
+func DebugCompute(
 	ctx context.Context,
+	queries *schema.Queries,
+	llm llm.Client,
 	channelID string,
 	threadTS string,
 	text string,
 ) ([]schema.DebugGetDocumentForUpdateRow, error) {
-	queries := schema.New(u.db)
-	embedding, _, err := u.computeEmbedding(ctx, channelID, threadTS, text)
+	embedding, _, err := computeEmbedding(ctx, queries, llm, channelID, threadTS, text)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute embedding: %w", err)
 	}
@@ -84,14 +78,15 @@ func (u *DocUpdater) DebugCompute(
 	return docs, nil
 }
 
-func (u *DocUpdater) Compute(
+func Compute(
 	ctx context.Context,
+	queries *schema.Queries,
+	llm llm.Client,
 	channelID string,
 	threadTS string,
 	text string,
 ) (schema.DocumentationDoc, string, error) {
-	queries := schema.New(u.db)
-	embedding, threadMsgsText, err := u.computeEmbedding(ctx, channelID, threadTS, text)
+	embedding, threadMsgsText, err := computeEmbedding(ctx, queries, llm, channelID, threadTS, text)
 	if err != nil {
 		return schema.DocumentationDoc{}, "", fmt.Errorf("failed to compute embedding: %w", err)
 	}
@@ -103,7 +98,7 @@ func (u *DocUpdater) Compute(
 
 	// Send doc and faq to LLM with all the slack messages and ask it to return either updated doc or faq
 
-	updatedDoc, err := u.llm.GenerateDocumentationUpdate(ctx, doc.Content, threadMsgsText)
+	updatedDoc, err := llm.GenerateDocumentationUpdate(ctx, doc.Content, threadMsgsText)
 	if err != nil {
 		return schema.DocumentationDoc{}, "", fmt.Errorf("failed to generate documentation update: %w", err)
 	}
@@ -111,19 +106,27 @@ func (u *DocUpdater) Compute(
 	return doc, updatedDoc, nil
 }
 
-func (u *DocUpdater) Update(
+func Post(
 	ctx context.Context,
+	queries *schema.Queries,
+	llm llm.Client,
+	slackIntegration slack_integration.Integration,
+	docsConfig *docs.Config,
 	channelID string,
 	threadTS string,
 	text string,
 ) error {
-	doc, updatedDoc, err := u.Compute(ctx, channelID, threadTS, text)
+	if docsConfig == nil {
+		return fmt.Errorf("documentation config not available")
+	}
+
+	doc, updatedDoc, err := Compute(ctx, queries, llm, channelID, threadTS, text)
 	if err != nil {
 		return fmt.Errorf("failed to compute: %w", err)
 	}
 
 	var source docs.Source
-	for _, s := range u.c.Sources {
+	for _, s := range docsConfig.Sources {
 		if s.URL() == doc.Url {
 			source = s
 			break
@@ -148,7 +151,7 @@ func (u *DocUpdater) Update(
 
 	blocks = append(blocks, slack_integration.CreateSignatureBlock("Doc Update")...)
 
-	err = u.slackIntegration.PostThreadReply(ctx, channelID, threadTS, blocks...)
+	err = slackIntegration.PostThreadReply(ctx, channelID, threadTS, blocks...)
 	if err != nil {
 		return fmt.Errorf("failed to post thread reply: %w", err)
 	}

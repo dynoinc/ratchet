@@ -37,7 +37,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/classifier"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
-	"github.com/dynoinc/ratchet/internal/modules/docupdate"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -183,7 +182,7 @@ func main() {
 	var periodicJobs []*river.PeriodicJob
 
 	// Documentation setup
-	var docUpdater *docupdate.DocUpdater
+	var docsConfig *docs.Config
 	if c.Documentation != "" {
 		dc, err := docs.LoadConfig(c.Documentation)
 		if err != nil {
@@ -206,7 +205,7 @@ func main() {
 			))
 		}
 
-		docUpdater = docupdate.New(dc, db, llmClient, slackIntegration)
+		docsConfig = dc
 	}
 
 	// Modules worker setup
@@ -228,7 +227,7 @@ func main() {
 			classifier,
 			channelMonitor,
 			runbook.New(bot, slackIntegration, llmClient),
-			commands.New(bot, slackIntegration, llmClient, docUpdater),
+			commands.New(bot, slackIntegration, llmClient),
 		},
 	)
 
@@ -255,13 +254,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := bot.Init(riverClient); err != nil {
+	if err := bot.Init(riverClient, docsConfig); err != nil {
 		slog.ErrorContext(ctx, "initializing bot", "error", err)
 		os.Exit(1)
 	}
 
 	// Initialize the HTTP server
-	handler, err := web.New(ctx, db, riverClient, slackIntegration, llmClient, docUpdater)
+	handler, err := web.New(ctx, db, riverClient, slackIntegration, llmClient, docsConfig)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up HTTP server", "error", err)
 		os.Exit(1)

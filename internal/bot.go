@@ -16,6 +16,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 
 	"github.com/dynoinc/ratchet/internal/background"
+	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
@@ -33,17 +34,17 @@ var (
 
 type Bot struct {
 	DB          *pgxpool.Pool
+	DocsConfig  *docs.Config
 	riverClient *river.Client[pgx.Tx]
 }
 
 func New(ctx context.Context, db *pgxpool.Pool) (*Bot, error) {
-	return &Bot{
-		DB: db,
-	}, nil
+	return &Bot{DB: db}, nil
 }
 
-func (b *Bot) Init(riverClient *river.Client[pgx.Tx]) error {
+func (b *Bot) Init(riverClient *river.Client[pgx.Tx], docsConfig *docs.Config) error {
 	b.riverClient = riverClient
+	b.DocsConfig = docsConfig
 	return nil
 }
 

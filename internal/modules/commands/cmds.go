@@ -60,20 +60,17 @@ type Commands struct {
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
-	docUpdater       *docupdate.DocUpdater
 }
 
 func New(
 	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
-	docUpdater *docupdate.DocUpdater,
 ) *Commands {
 	return &Commands{
 		bot:              bot,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
-		docUpdater:       docUpdater,
 	}
 }
 
@@ -131,11 +128,9 @@ func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS 
 	case cmdPostUsageReport:
 		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdLookupDocumentation:
-		return docrag.Respond(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS)
+		return docrag.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS)
 	case cmdUpdateDocumentation:
-		if c.docUpdater != nil {
-			return c.docUpdater.Update(ctx, channelID, slackTS, text)
-		}
+		return docupdate.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, c.bot.DocsConfig, channelID, slackTS, text)
 	case cmdNone: // nothing to do
 	}
 
