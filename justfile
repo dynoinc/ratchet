@@ -18,8 +18,8 @@ run: gen
         go run ./cmd/ratchet
 
 pgshell:
-        podman exec -it ratchet-db psql -U postgres
+        docker exec -it ratchet-db psql -U postgres -d ratchet
 
 reset:
-        podman rm --force ratchet-db
-        podman volume rm postgres_data
+        docker rm --force ratchet-db
+        docker volume rm postgres_data

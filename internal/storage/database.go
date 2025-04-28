@@ -28,7 +28,7 @@ type DatabaseConfig struct {
 	Port       int    `split_words:"true" default:"5432"`
 	User       string `split_words:"true" default:"postgres"`
 	Pass       string `split_words:"true" default:"password"`
-	Name       string `split_words:"true" default:"postgres"`
+	Name       string `split_words:"true" default:"ratchet"`
 	DisableTLS bool   `split_words:"true" default:"true"`
 }
 
