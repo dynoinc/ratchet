@@ -69,7 +69,7 @@ modules are:
 | [SQLc](https://sqlc.dev/)                             | Type-safe SQL query generation from schema                     |
 | [Riverqueue](http://riverqueue.com/)                  | Background job processing and scheduling                       |
 | [pgvector](https://github.com/pgvector/pgvector)      | Vector database for storing embeddings                         |
-| [Podman](https://podman.io/)                          | Containerization and deployment                                |
+| [Docker](https://www.docker.com/)                     | Containerization and deployment                                |
 | [Github Actions](https://github.com/features/actions) | CI/CD pipeline automation                                      |
 | [Cursor](https://www.cursor.com/)                     | IDE for writing code                                           |
 
