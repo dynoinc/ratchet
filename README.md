@@ -106,7 +106,7 @@ modules are:
   RATCHET_CLASSIFIER_INCIDENT_CLASSIFICATION_BINARY=path/to/binary
 ```
 
-* Install podman (for postgres) and ollama (for local LLM access).
+* Install docker (for postgres) and ollama (for local LLM access).
 * Start the binary using
 
 ```bash
