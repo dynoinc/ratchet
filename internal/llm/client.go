@@ -462,6 +462,7 @@ func (c *client) ClassifyCommand(ctx context.Context, text string, sampleMessage
 Given a message, respond with EXACTLY ONE of these commands (no explanation, just the command name):
 - weekly_report (for generating incident/alert reports or summaries for a channel)
 - usage_report (for showing bot usage statistics and feedback metrics)
+- lookup_documentation (for looking up documentation)
 - update_documentation (for updating documentation)
 - none (for messages that don't match any supported command)
 

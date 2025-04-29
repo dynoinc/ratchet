@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -52,6 +53,8 @@ var (
 		string(cmdUpdateDocumentation): {
 			"update the documentation",
 			"update the docs",
+			"open a PR or a pull request",
+			"fix the docs",
 		},
 	}
 )
@@ -95,9 +98,12 @@ func (c *Commands) findCommand(ctx context.Context, text string) (cmd, error) {
 		return cmdPostWeeklyReport, nil
 	case "usage_report":
 		return cmdPostUsageReport, nil
+	case "lookup_documentation":
+		return cmdLookupDocumentation, nil
 	case "update_documentation":
 		return cmdUpdateDocumentation, nil
 	default:
+		slog.DebugContext(ctx, "unknown command", "text", text, "command", result)
 		return cmdNone, nil
 	}
 }

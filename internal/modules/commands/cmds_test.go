@@ -42,6 +42,16 @@ func TestFindCommand(t *testing.T) {
 		{"what are the usage numbers", cmdPostUsageReport},
 		{"display bot usage data", cmdPostUsageReport},
 
+		// Documentation lookup requests
+		{"lookup documentation", cmdLookupDocumentation},
+		{"what does documentation say about this?", cmdLookupDocumentation},
+
+		// Documentation update requests
+		{"update documentation", cmdUpdateDocumentation},
+		{"open a PR", cmdUpdateDocumentation},
+		{"fix documentation", cmdUpdateDocumentation},
+		{"update the docs", cmdUpdateDocumentation},
+
 		// Invalid/unrelated requests
 		{"how are you?", cmdNone},
 		{"what's the weather like?", cmdNone},
