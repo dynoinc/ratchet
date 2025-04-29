@@ -220,12 +220,9 @@ SELECT
     ds.url AS source,
     ds.revision,
     ds.refresh_ts,
-    COUNT(DISTINCT dd.path) AS document_count,
-    COUNT(de.chunk_index) AS chunk_count
+    (SELECT COUNT(path) FROM documentation_docs WHERE url = ds.url) AS document_count,
+    (SELECT COUNT(chunk_index) FROM documentation_embeddings WHERE url = ds.url) AS chunk_count
 FROM documentation_status ds
-LEFT JOIN documentation_docs dd ON ds.url = dd.url
-LEFT JOIN documentation_embeddings de ON ds.url = de.url
-GROUP BY ds.url, ds.revision, ds.refresh_ts
 ORDER BY ds.url
 `
 

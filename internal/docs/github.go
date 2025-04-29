@@ -76,7 +76,7 @@ func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter
 						path,
 						&github.RepositoryContentGetOptions{Ref: newRevision},
 					)
-					slog.Debug("GitHub API: get directory contents", "path", path, "duration", time.Since(start))
+					slog.Info("GitHub API: get directory contents", "path", path, "count", len(dirContent), "duration", time.Since(start))
 					if err != nil {
 						capturedError = fmt.Errorf("getting contents of %s: %w", path, err)
 						return false
@@ -88,6 +88,8 @@ func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter
 								return false
 							}
 						} else if content.GetType() == "file" {
+							slog.Info("GitHub API: file", "path", content.GetPath())
+
 							// Only process .md or .txt files
 							filePath := content.GetPath()
 							ext := strings.ToLower(filepath.Ext(filePath))
@@ -129,7 +131,7 @@ func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter
 					newRevision,
 					opts,
 				)
-				slog.Debug("GitHub API: compare commits", "from", revision, "to", newRevision, "page", opts.Page, "duration", time.Since(start))
+				slog.Info("GitHub API: compare commits", "from", revision, "to", newRevision, "page", opts.Page, "duration", time.Since(start))
 				if err != nil {
 					capturedError = fmt.Errorf("comparing commits: %w", err)
 					return
@@ -138,7 +140,7 @@ func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter
 				// Process each file in this page of the comparison
 				for _, file := range comparison.Files {
 					filePath := file.GetFilename()
-					slog.Debug("GitHub API: file", "path", filePath, "status", file.GetStatus(), "prefix", gs.Path)
+					slog.Info("GitHub API: file", "path", filePath, "status", file.GetStatus())
 
 					// Skip files not in our path
 					if !strings.HasPrefix(filePath, gs.Path) {
