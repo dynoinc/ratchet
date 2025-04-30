@@ -601,7 +601,21 @@ func (h *httpHandlers) docsStatus(r *http.Request) (any, error) {
 func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
 	question := r.URL.Query().Get("question")
 	if question == "" {
-		return nil, fmt.Errorf("question parameter is required")
+		channelID := r.URL.Query().Get("channel_id")
+		threadTS := r.URL.Query().Get("thread_ts")
+		if channelID == "" || threadTS == "" {
+			return nil, fmt.Errorf("channel_id and thread_ts parameters are required")
+		}
+
+		msg, err := schema.New(h.bot.DB).GetMessage(r.Context(), schema.GetMessageParams{
+			ChannelID: channelID,
+			Ts:        threadTS,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("getting message: %w", err)
+		}
+
+		question = msg.Attrs.Message.Text
 	}
 
 	answer, links, err := docrag.Answer(r.Context(), schema.New(h.bot.DB), h.llmClient, question)
