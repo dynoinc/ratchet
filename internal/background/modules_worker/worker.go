@@ -36,10 +36,10 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWork
 }
 
 func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
-	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.ParentTS)
+	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		if errors.Is(err, internal.ErrMessageNotFound) {
-			slog.WarnContext(ctx, "thread message not found", "channel_id", job.Args.ChannelID, "thread_ts", job.Args.ParentTS)
+			slog.WarnContext(ctx, "thread message not found", "channel_id", job.Args.ChannelID, "slack_ts", job.Args.SlackTS)
 			return nil
 		}
 
