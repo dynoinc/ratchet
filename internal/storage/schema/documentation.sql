@@ -53,21 +53,73 @@ WHERE url = @url
   AND path = @path;
 
 -- name: GetClosestDocs :many
-WITH closest_chunks AS (SELECT DISTINCT ON (e.url, e.path) e.url,
-                                                           e.path,
-                                                           e.revision,
-                                                           e.chunk_index,
-                                                           e.chunk,
-                                                           e.embedding
-                        FROM documentation_embeddings e
-                        ORDER BY e.url, e.path, e.embedding <=> @embedding
-                        LIMIT @limit_val)
-SELECT c.url,
-       c.path,
-       c.revision,
-       d.content
-FROM closest_chunks c
-         JOIN documentation_docs d ON c.url = d.url AND c.path = d.path AND c.revision = d.revision;
+WITH ranked_chunks AS (
+    SELECT
+        e.url,
+        e.path,
+        e.revision,
+        e.embedding <=> @embedding AS distance,
+        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.revision ORDER BY e.embedding <=> @embedding ASC) as rn
+    FROM
+        documentation_embeddings e
+),
+closest_doc_chunks AS (
+    SELECT
+        url,
+        path,
+        revision,
+        distance
+    FROM
+        ranked_chunks
+    WHERE
+        rn = 1
+)
+SELECT
+    cdc.url,
+    cdc.path,
+    cdc.revision,
+    d.content
+FROM
+    closest_doc_chunks cdc
+JOIN
+    documentation_docs d ON cdc.url = d.url AND cdc.path = d.path AND cdc.revision = d.revision
+ORDER BY
+    cdc.distance ASC
+LIMIT @limit_val;
+
+-- name: DebugGetClosestDocs :many
+WITH ranked_chunks AS (
+    SELECT
+        e.url,
+        e.path,
+        e.revision,
+        e.chunk_index,
+        e.chunk,
+        e.embedding <=> @embedding AS distance,
+        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.revision ORDER BY e.embedding <=> @embedding ASC) as rn
+    FROM
+        documentation_embeddings e
+),
+closest_doc_chunks AS (
+    SELECT
+        url,
+        path,
+        revision,
+        chunk_index,
+        chunk,
+        distance
+    FROM
+        ranked_chunks
+    WHERE
+        rn = 1
+)
+SELECT
+    *
+FROM
+    closest_doc_chunks
+ORDER BY
+    distance ASC
+LIMIT @limit_val;
 
 -- name: GetDocumentForUpdate :one
 WITH closest_chunks AS (SELECT e.url,

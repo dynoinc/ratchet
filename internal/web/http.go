@@ -130,6 +130,7 @@ func New(
 	// Documentation
 	apiMux.HandleFunc("GET /docs/status", handleJSON(handlers.docsStatus))
 	apiMux.HandleFunc("GET /docs/answer", handleJSON(handlers.docsAnswer))
+	apiMux.HandleFunc("GET /docs/answer/debug", handleJSON(handlers.docsAnswerDebug))
 	apiMux.HandleFunc("GET /docs/update", handlers.docsUpdate)
 	apiMux.HandleFunc("GET /docs/update/debug", handleJSON(handlers.docsUpdateDebug))
 	apiMux.HandleFunc("POST /docs/update", handleJSON(handlers.postPR))
@@ -612,6 +613,15 @@ func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
 		"answer": answer,
 		"links":  links,
 	}, nil
+}
+
+func (h *httpHandlers) docsAnswerDebug(r *http.Request) (any, error) {
+	question := r.URL.Query().Get("question")
+	if question == "" {
+		return nil, fmt.Errorf("question parameter is required")
+	}
+
+	return docrag.Debug(r.Context(), schema.New(h.bot.DB), h.llmClient, question)
 }
 
 func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {

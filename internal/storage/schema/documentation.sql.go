@@ -12,6 +12,82 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
+const debugGetClosestDocs = `-- name: DebugGetClosestDocs :many
+WITH ranked_chunks AS (
+    SELECT
+        e.url,
+        e.path,
+        e.revision,
+        e.chunk_index,
+        e.chunk,
+        e.embedding <=> $2 AS distance,
+        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.revision ORDER BY e.embedding <=> $2 ASC) as rn
+    FROM
+        documentation_embeddings e
+),
+closest_doc_chunks AS (
+    SELECT
+        url,
+        path,
+        revision,
+        chunk_index,
+        chunk,
+        distance
+    FROM
+        ranked_chunks
+    WHERE
+        rn = 1
+)
+SELECT
+    url, path, revision, chunk_index, chunk, distance
+FROM
+    closest_doc_chunks
+ORDER BY
+    distance ASC
+LIMIT $1
+`
+
+type DebugGetClosestDocsParams struct {
+	LimitVal  int32
+	Embedding *pgvector.Vector
+}
+
+type DebugGetClosestDocsRow struct {
+	Url        string
+	Path       string
+	Revision   string
+	ChunkIndex int32
+	Chunk      string
+	Distance   interface{}
+}
+
+func (q *Queries) DebugGetClosestDocs(ctx context.Context, arg DebugGetClosestDocsParams) ([]DebugGetClosestDocsRow, error) {
+	rows, err := q.db.Query(ctx, debugGetClosestDocs, arg.LimitVal, arg.Embedding)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DebugGetClosestDocsRow
+	for rows.Next() {
+		var i DebugGetClosestDocsRow
+		if err := rows.Scan(
+			&i.Url,
+			&i.Path,
+			&i.Revision,
+			&i.ChunkIndex,
+			&i.Chunk,
+			&i.Distance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const debugGetDocumentForUpdate = `-- name: DebugGetDocumentForUpdate :many
 WITH closest_chunks AS (
   SELECT e.url,
@@ -97,26 +173,44 @@ func (q *Queries) DeleteDoc(ctx context.Context, arg DeleteDocParams) error {
 }
 
 const getClosestDocs = `-- name: GetClosestDocs :many
-WITH closest_chunks AS (SELECT DISTINCT ON (e.url, e.path) e.url,
-                                                           e.path,
-                                                           e.revision,
-                                                           e.chunk_index,
-                                                           e.chunk,
-                                                           e.embedding
-                        FROM documentation_embeddings e
-                        ORDER BY e.url, e.path, e.embedding <=> $1
-                        LIMIT $2)
-SELECT c.url,
-       c.path,
-       c.revision,
-       d.content
-FROM closest_chunks c
-         JOIN documentation_docs d ON c.url = d.url AND c.path = d.path AND c.revision = d.revision
+WITH ranked_chunks AS (
+    SELECT
+        e.url,
+        e.path,
+        e.revision,
+        e.embedding <=> $2 AS distance,
+        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.revision ORDER BY e.embedding <=> $2 ASC) as rn
+    FROM
+        documentation_embeddings e
+),
+closest_doc_chunks AS (
+    SELECT
+        url,
+        path,
+        revision,
+        distance
+    FROM
+        ranked_chunks
+    WHERE
+        rn = 1
+)
+SELECT
+    cdc.url,
+    cdc.path,
+    cdc.revision,
+    d.content
+FROM
+    closest_doc_chunks cdc
+JOIN
+    documentation_docs d ON cdc.url = d.url AND cdc.path = d.path AND cdc.revision = d.revision
+ORDER BY
+    cdc.distance ASC
+LIMIT $1
 `
 
 type GetClosestDocsParams struct {
-	Embedding *pgvector.Vector
 	LimitVal  int32
+	Embedding *pgvector.Vector
 }
 
 type GetClosestDocsRow struct {
@@ -127,7 +221,7 @@ type GetClosestDocsRow struct {
 }
 
 func (q *Queries) GetClosestDocs(ctx context.Context, arg GetClosestDocsParams) ([]GetClosestDocsRow, error) {
-	rows, err := q.db.Query(ctx, getClosestDocs, arg.Embedding, arg.LimitVal)
+	rows, err := q.db.Query(ctx, getClosestDocs, arg.LimitVal, arg.Embedding)
 	if err != nil {
 		return nil, err
 	}

@@ -68,16 +68,30 @@ func Answer(ctx context.Context, queries *schema.Queries, llmClient llm.Client, 
 		return "", nil, fmt.Errorf("generating documentation response: %w", err)
 	}
 
-	if answer == "" {
-		return "", nil, nil
-	}
-
 	links := make([]string, 0, len(docs))
 	for _, doc := range docs {
 		links = append(links, fmt.Sprintf("%s/blob/%s/%s", doc.Url, doc.Revision, doc.Path))
 	}
 
 	return answer, links, nil
+}
+
+func Debug(ctx context.Context, queries *schema.Queries, llmClient llm.Client, question string) ([]schema.DebugGetClosestDocsRow, error) {
+	embedding, err := llmClient.GenerateEmbedding(ctx, "search", question)
+	if err != nil {
+		return nil, fmt.Errorf("generating embedding: %w", err)
+	}
+	vec := pgvector.NewVector(embedding)
+
+	docs, err := queries.DebugGetClosestDocs(ctx, schema.DebugGetClosestDocsParams{
+		Embedding: &vec,
+		LimitVal:  5,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting closest docs: %w", err)
+	}
+
+	return docs, nil
 }
 
 func formatResponse(answer string, links []string) []slack.Block {
