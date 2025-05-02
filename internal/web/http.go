@@ -679,7 +679,7 @@ func (h *httpHandlers) docsAnswerDebug(r *http.Request) (any, error) {
 
 func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
 	channelID := r.URL.Query().Get("channel_id")
-	threadTS := r.URL.Query().Get("thread_ts")
+	ts := r.URL.Query().Get("ts")
 	text := r.URL.Query().Get("text")
 
 	if h.docsConfig == nil {
@@ -687,7 +687,7 @@ func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, updatedDoc, err := docupdate.Compute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, threadTS, text)
+	doc, updatedDoc, err := docupdate.Compute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, ts, text)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -713,14 +713,14 @@ func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *httpHandlers) docsUpdateDebug(r *http.Request) (any, error) {
 	channelID := r.URL.Query().Get("channel_id")
-	threadTS := r.URL.Query().Get("thread_ts")
+	ts := r.URL.Query().Get("ts")
 	text := r.URL.Query().Get("text")
 
 	if h.docsConfig == nil {
 		return nil, fmt.Errorf("documentation config not available")
 	}
 
-	docs, err := docupdate.DebugCompute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, threadTS, text)
+	docs, err := docupdate.DebugCompute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, ts, text)
 	if err != nil {
 		return nil, err
 	}

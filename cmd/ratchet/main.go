@@ -268,7 +268,7 @@ func main() {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,  // Prevent Slowloris attacks
 		ReadTimeout:       30 * time.Second,  // Maximum duration for reading entire request
-		WriteTimeout:      30 * time.Second,  // Maximum duration before timing out writes
+		WriteTimeout:      2 * time.Minute,   // Maximum duration before timing out writes
 		IdleTimeout:       120 * time.Second, // Maximum amount of time to wait for the next request
 		MaxHeaderBytes:    1 << 20,           // 1MB - Prevent header size attacks
 	}

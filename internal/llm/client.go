@@ -571,37 +571,42 @@ func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, ms
 		return "", nil
 	}
 
-	prompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to update the provided documentation based on the provided messages.
+	systemPrompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to update the provided documentation based on the provided messages.
 
 	IMPORTANT INSTRUCTIONS:
-	1. Make minimal changes to the original documentation, preserving its structure and style.
-	2. Only update information that is clearly outdated or incorrect based on the messages.
-	3. If new information should be added but doesn't fit the current structure, add it as a FAQ item at the end.
-	4. If messages provide additional detail or clarification for existing points, integrate the new information smoothly into the existing text.
-	5. Follow the existing document style (formatting, tone, terminology).
-	6. Do not add any information that is not present in the original documentation or the provided messages.
-	7. Return the complete updated documentation.
+	1.  **Preserve & Minimize:** Edit the original documentation minimally. Preserve its existing structure, formatting, tone, and terminology. Avoid unnecessary changes or removing content unless the messages explicitly state it's wrong or deprecated.
+	2.  **Update from Messages:** Modify the documentation *only* based on information clearly present in the provided messages. Use the messages to correct outdated/incorrect information or to integrate additional details and clarifications smoothly into the existing text.
+	3.  **Handle New Topics:** If messages introduce relevant information that doesn't fit the current structure, add it as a new FAQ item (Q&A format) at the end of the document.
+	4.  **Source Constraint:** Do *not* add any information that is not present in the original documentation or the provided messages. Stick strictly to the provided text.
+	5.  **Handle Irrelevance:** If the messages are not relevant to the content of the original documentation (e.g., they discuss a different topic or are just chit-chat), return the original documentation *exactly* as provided, without any changes.
+	6.  **Output:** Return the *complete* updated documentation (or the unchanged original if step 5 applies).
 
 	Here are some examples:
 
 	Example 1:
-	Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters: --service, --threshold."
+	Original Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters: --service, --threshold."
 	Messages: "The /alerts command now supports a new --priority parameter to set alert priority."
 	Updated Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters: --service, --threshold, --priority.\n\n## FAQ\n\n**Q: How do I set the priority of an alert?**\n**A:** Use the --priority parameter with the /alerts command."
 
 	Example 2:
-	Documentation: "# Installation\n\nInstall the package using: npm install ratchet-bot"
+	Original Documentation: "# Installation\n\nInstall the package using: npm install ratchet-bot"
 	Messages: "The npm install command is wrong, it should be npm install @dynoinc/ratchet-bot"
 	Updated Documentation: "# Installation\n\nInstall the package using: npm install @dynoinc/ratchet-bot"
-
-	Documentation: %s
-	Messages: %s
-
-	Updated Documentation:
 	`
 
-	content := fmt.Sprintf(prompt, doc, msgs)
-	chatMessages, inputMessages := createLLMMessages(prompt, content)
+	userContent := fmt.Sprintf(`Here is the original documentation and the relevant messages. Please update the documentation according to the instructions provided in the system prompt. Provide only the complete updated documentation in your response.
+
+**Original Documentation:**
+---
+%s
+---
+
+**Messages:**
+---
+%s
+---`, doc, msgs)
+
+	chatMessages, inputMessages := createLLMMessages(systemPrompt, userContent)
 	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation update: %w", err)

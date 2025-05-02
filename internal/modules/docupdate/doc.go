@@ -3,6 +3,7 @@ package docupdate
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/pgvector/pgvector-go"
 	"github.com/slack-go/slack"
@@ -18,7 +19,7 @@ func computeEmbedding(
 	queries *schema.Queries,
 	llm llm.Client,
 	channelID string,
-	threadTS string,
+	ts string,
 	text string,
 ) (pgvector.Vector, string, error) {
 	channelInfo, err := queries.GetChannel(ctx, channelID)
@@ -27,7 +28,7 @@ func computeEmbedding(
 	}
 	slackMsg, err := queries.GetMessage(ctx, schema.GetMessageParams{
 		ChannelID: channelID,
-		Ts:        threadTS,
+		Ts:        ts,
 	})
 	if err != nil {
 		return pgvector.Vector{}, "", fmt.Errorf("failed to get message: %w", err)
@@ -35,7 +36,7 @@ func computeEmbedding(
 
 	threadMsgs, err := queries.GetThreadMessages(ctx, schema.GetThreadMessagesParams{
 		ChannelID: channelID,
-		ParentTs:  threadTS,
+		ParentTs:  ts,
 	})
 	if err != nil {
 		return pgvector.Vector{}, "", fmt.Errorf("failed to get thread messages: %w", err)
@@ -62,10 +63,10 @@ func DebugCompute(
 	queries *schema.Queries,
 	llm llm.Client,
 	channelID string,
-	threadTS string,
+	ts string,
 	text string,
 ) ([]schema.DebugGetDocumentForUpdateRow, error) {
-	embedding, _, err := computeEmbedding(ctx, queries, llm, channelID, threadTS, text)
+	embedding, _, err := computeEmbedding(ctx, queries, llm, channelID, ts, text)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute embedding: %w", err)
 	}
@@ -83,10 +84,10 @@ func Compute(
 	queries *schema.Queries,
 	llm llm.Client,
 	channelID string,
-	threadTS string,
+	ts string,
 	text string,
 ) (schema.DocumentationDoc, string, error) {
-	embedding, threadMsgsText, err := computeEmbedding(ctx, queries, llm, channelID, threadTS, text)
+	embedding, threadMsgsText, err := computeEmbedding(ctx, queries, llm, channelID, ts, text)
 	if err != nil {
 		return schema.DocumentationDoc{}, "", fmt.Errorf("failed to compute embedding: %w", err)
 	}
@@ -97,7 +98,7 @@ func Compute(
 	}
 
 	// Send doc and faq to LLM with all the slack messages and ask it to return either updated doc or faq
-
+	slog.Info("Generating documentation update", "doc", doc.Path, "text", text)
 	updatedDoc, err := llm.GenerateDocumentationUpdate(ctx, doc.Content, threadMsgsText)
 	if err != nil {
 		return schema.DocumentationDoc{}, "", fmt.Errorf("failed to generate documentation update: %w", err)
@@ -113,14 +114,14 @@ func Post(
 	slackIntegration slack_integration.Integration,
 	docsConfig *docs.Config,
 	channelID string,
-	threadTS string,
+	ts string,
 	text string,
 ) error {
 	if docsConfig == nil {
 		return fmt.Errorf("documentation config not available")
 	}
 
-	doc, updatedDoc, err := Compute(ctx, queries, llm, channelID, threadTS, text)
+	doc, updatedDoc, err := Compute(ctx, queries, llm, channelID, ts, text)
 	if err != nil {
 		return fmt.Errorf("failed to compute: %w", err)
 	}
@@ -151,7 +152,7 @@ func Post(
 
 	blocks = append(blocks, slack_integration.CreateSignatureBlock("Doc Update")...)
 
-	err = slackIntegration.PostThreadReply(ctx, channelID, threadTS, blocks...)
+	err = slackIntegration.PostThreadReply(ctx, channelID, ts, blocks...)
 	if err != nil {
 		return fmt.Errorf("failed to post thread reply: %w", err)
 	}
