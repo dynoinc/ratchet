@@ -600,38 +600,19 @@ func (h *httpHandlers) docsStatus(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
-	channelName := r.URL.Query().Get("channel_name")
-	question := r.URL.Query().Get("question")
-	if question == "" {
-		channelID := r.URL.Query().Get("channel_id")
-		ts := r.URL.Query().Get("ts")
-		if channelID == "" || ts == "" {
-			return nil, fmt.Errorf("channel_id and thread_ts parameters are required")
-		}
+	channelID := r.URL.Query().Get("channel_id")
+	ts := r.URL.Query().Get("ts")
+	text := r.URL.Query().Get("text")
 
-		channelInfo, err := schema.New(h.bot.DB).GetChannel(r.Context(), channelID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get channel info: %w", err)
-		}
-
-		msg, err := schema.New(h.bot.DB).GetMessage(r.Context(), schema.GetMessageParams{
-			ChannelID: channelID,
-			Ts:        ts,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("getting message: %w", err)
-		}
-
-		channelName = channelInfo.Attrs.Name
-		question = msg.Attrs.Message.Text
+	if channelID == "" || ts == "" {
+		return nil, fmt.Errorf("channel_id and thread_ts parameters are required")
 	}
 
-	text := r.URL.Query().Get("text")
 	if text == "" {
 		text = "lookup documentation"
 	}
 
-	answer, links, err := docrag.Answer(r.Context(), schema.New(h.bot.DB), h.llmClient, channelName, question, text)
+	answer, links, err := docrag.Compute(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, channelID, ts, text)
 	if err != nil {
 		return nil, err
 	}

@@ -58,6 +58,7 @@ func computeEmbedding(
 
 	return pgvector.NewVector(embedding), threadMsgsText, nil
 }
+
 func DebugCompute(
 	ctx context.Context,
 	queries *schema.Queries,

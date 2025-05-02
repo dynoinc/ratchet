@@ -547,11 +547,13 @@ SELECT channel_id,
 FROM messages_v3
 WHERE channel_id = $1
   AND parent_ts = $2 :: text
+  AND ($3 :: text = '' OR attrs -> 'message' ->> 'user' != $3 :: text)
 `
 
 type GetThreadMessagesParams struct {
 	ChannelID string
 	ParentTs  string
+	BotID     string
 }
 
 type GetThreadMessagesRow struct {
@@ -562,7 +564,7 @@ type GetThreadMessagesRow struct {
 }
 
 func (q *Queries) GetThreadMessages(ctx context.Context, arg GetThreadMessagesParams) ([]GetThreadMessagesRow, error) {
-	rows, err := q.db.Query(ctx, getThreadMessages, arg.ChannelID, arg.ParentTs)
+	rows, err := q.db.Query(ctx, getThreadMessages, arg.ChannelID, arg.ParentTs, arg.BotID)
 	if err != nil {
 		return nil, err
 	}

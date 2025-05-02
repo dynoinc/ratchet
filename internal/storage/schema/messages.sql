@@ -113,7 +113,8 @@ SELECT channel_id,
        attrs
 FROM messages_v3
 WHERE channel_id = @channel_id
-  AND parent_ts = @parent_ts :: text;
+  AND parent_ts = @parent_ts :: text
+  AND (@bot_id :: text = '' OR attrs -> 'message' ->> 'user' != @bot_id :: text);
 
 -- name: GetThreadMessagesByServiceAndAlert :many
 SELECT t.channel_id,

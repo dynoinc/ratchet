@@ -3,6 +3,7 @@ package docrag
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -20,27 +21,15 @@ func Post(
 	llmClient llm.Client,
 	slackIntegration slack_integration.Integration,
 	channelID string,
-	slackTS string,
+	ts string,
 	text string,
 ) error {
-	channelInfo, err := queries.GetChannel(ctx, channelID)
-	if err != nil {
-		return fmt.Errorf("failed to get channel info: %w", err)
-	}
-	msg, err := queries.GetMessage(ctx, schema.GetMessageParams{
-		ChannelID: channelID,
-		Ts:        slackTS,
-	})
-	if err != nil {
-		return fmt.Errorf("getting message: %w", err)
-	}
-
-	answer, links, err := Answer(ctx, queries, llmClient, channelInfo.Attrs.Name, msg.Attrs.Message.Text, text)
+	answer, links, err := Compute(ctx, queries, llmClient, slackIntegration, channelID, ts, text)
 	if err != nil {
 		return fmt.Errorf("generating answer: %w", err)
 	}
 
-	err = slackIntegration.PostThreadReply(ctx, channelID, slackTS, formatResponse(answer, links)...)
+	err = slackIntegration.PostThreadReply(ctx, channelID, ts, formatResponse(answer, links)...)
 	if err != nil {
 		return fmt.Errorf("posting message: %w", err)
 	}
@@ -55,15 +44,59 @@ func makeEmbeddingQuery(channelName string, question string, botRequest string) 
 		botRequest)
 }
 
+func Compute(
+	ctx context.Context,
+	queries *schema.Queries,
+	llmClient llm.Client,
+	slackIntegration slack_integration.Integration,
+	channelID string,
+	ts string,
+	text string,
+) (string, []string, error) {
+	channelInfo, err := queries.GetChannel(ctx, channelID)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to get channel info: %w", err)
+	}
+	msg, err := queries.GetMessage(ctx, schema.GetMessageParams{
+		ChannelID: channelID,
+		Ts:        ts,
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("getting message: %w", err)
+	}
+	threadMsgs, err := queries.GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+		ChannelID: channelID,
+		ParentTs:  ts,
+		BotID:     slackIntegration.BotUserID(),
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to get thread messages: %w", err)
+	}
+
+	conversation := []string{
+		msg.Attrs.Message.Text,
+	}
+	for _, msg := range threadMsgs {
+		conversation = append(conversation, msg.Attrs.Message.Text)
+	}
+
+	answer, links, err := Answer(ctx, queries, llmClient, channelInfo.Attrs.Name, conversation, text)
+	if err != nil {
+		return "", nil, fmt.Errorf("generating answer: %w", err)
+	}
+
+	return answer, links, nil
+}
+
 func Answer(
 	ctx context.Context,
 	queries *schema.Queries,
 	llmClient llm.Client,
 	channelName string,
-	question string,
+	conversation []string,
 	botRequest string,
 ) (string, []string, error) {
-	combinedText := makeEmbeddingQuery(channelName, question, botRequest)
+	combinedText := makeEmbeddingQuery(channelName, strings.Join(conversation, "\n"), botRequest)
 	embedding, err := llmClient.GenerateEmbedding(ctx, "documentation", combinedText)
 	if err != nil {
 		return "", nil, fmt.Errorf("generating embedding: %w", err)
@@ -83,14 +116,20 @@ func Answer(
 		contents = append(contents, doc.Content)
 	}
 
-	answer, err := llmClient.GenerateDocumentationResponse(ctx, question, contents)
-	if err != nil {
-		return "", nil, fmt.Errorf("generating documentation response: %w", err)
-	}
-
 	links := make([]string, 0, len(docs))
 	for _, doc := range docs {
 		links = append(links, fmt.Sprintf("%s/blob/%s/%s", doc.Url, doc.Revision, doc.Path))
+	}
+
+	query := fmt.Sprintf("In a slack channel named %s, there is a conversation happening. The user was given the following request: %s\n\nThe conversation is as follows: %s",
+		channelName,
+		botRequest,
+		strings.Join(conversation, "\n"),
+	)
+	slog.InfoContext(ctx, "Generating documentation response", "query", query, "links", links)
+	answer, err := llmClient.GenerateDocumentationResponse(ctx, query, contents)
+	if err != nil {
+		return "", nil, fmt.Errorf("generating documentation response: %w", err)
 	}
 
 	return answer, links, nil
