@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/riverqueue/river"
@@ -25,6 +26,10 @@ func New(bot *internal.Bot, modules []modules.Handler) *Worker {
 		bot:     bot,
 		modules: modules,
 	}
+}
+
+func (w *Worker) Timeout(job *river.Job[background.ModulesWorkerArgs]) time.Duration {
+	return 5 * time.Minute
 }
 
 func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
