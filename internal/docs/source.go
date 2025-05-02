@@ -11,6 +11,7 @@ import (
 )
 
 type Source struct {
+	Name   string        `yaml:"name"             validate:"required"`
 	Type   string        `yaml:"type"             validate:"required,oneof=github"`
 	GitHub *gitHubSource `yaml:"github,omitempty" validate:"required_if=Type github"`
 }
@@ -27,7 +28,7 @@ func (s Source) URL() string {
 type Update struct {
 	Revision string
 	Path     string
-	Deleted  bool
+	BlobSHA  string
 }
 
 func (s Source) ChangesSince(ctx context.Context, revision string) (iter.Seq[Update], string, func() error) {

@@ -161,30 +161,18 @@ func chunkContent(path, content string) ([]string, map[string]string, error) {
 }
 
 func processUpdate(ctx context.Context, bot *internal.Bot, llmClient llm.Client, source docs.Source, update docs.Update) error {
-	if update.Deleted {
-		if err := dbschema.New(bot.DB).DeleteDoc(ctx, dbschema.DeleteDocParams{
-			Url:  source.URL(),
-			Path: update.Path,
-		}); err != nil {
-			return fmt.Errorf("deleting document: %w", err)
-		}
-
-		return nil
-	}
-
-	// Check if the document already exists
-	doc, err := dbschema.New(bot.DB).GetDocument(ctx, dbschema.GetDocumentParams{
-		Url:      source.URL(),
-		Path:     update.Path,
-		Revision: update.Revision,
+	_, err := dbschema.New(bot.DB).UpdateDocumentRevisionIfSHAMatches(ctx, dbschema.UpdateDocumentRevisionIfSHAMatchesParams{
+		Url:         source.URL(),
+		Path:        update.Path,
+		BlobSha:     update.BlobSHA,
+		NewRevision: update.Revision,
 	})
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("getting document: %w", err)
-	}
-
-	if doc.Content != "" {
+	if err == nil {
 		slog.Debug("Document already exists", "path", update.Path)
 		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("updating document revision: %w", err)
 	}
 
 	content, err := source.Get(ctx, update.Path, update.Revision)
@@ -247,6 +235,7 @@ func processUpdate(ctx context.Context, bot *internal.Bot, llmClient llm.Client,
 		Url:          source.URL(),
 		Path:         update.Path,
 		Revision:     update.Revision,
+		BlobSha:      update.BlobSHA,
 		Content:      content,
 		Chunks:       chunks,
 		ChunkIndices: chunkIndices,

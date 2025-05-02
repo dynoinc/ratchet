@@ -21,12 +21,14 @@ type ChannelOnboardWorker struct {
 
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
+	devMode          bool
 }
 
-func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *ChannelOnboardWorker {
+func New(bot *internal.Bot, slackIntegration slack_integration.Integration, devMode bool) *ChannelOnboardWorker {
 	return &ChannelOnboardWorker{
 		bot:              bot,
 		slackIntegration: slackIntegration,
+		devMode:          devMode,
 	}
 }
 
@@ -42,7 +44,11 @@ func (w *ChannelOnboardWorker) Work(ctx context.Context, job *river.Job[backgrou
 
 	lastNMsgs := job.Args.LastNMsgs
 	if lastNMsgs == 0 {
-		lastNMsgs = 1000
+		if w.devMode {
+			lastNMsgs = 10
+		} else {
+			lastNMsgs = 1000
+		}
 	}
 
 	messages, err := w.slackIntegration.GetConversationHistory(ctx, job.Args.ChannelID, lastNMsgs)

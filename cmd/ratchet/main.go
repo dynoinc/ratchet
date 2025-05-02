@@ -228,7 +228,7 @@ func main() {
 	)
 
 	// Channel onboarding worker setup
-	channelOnboardWorker := channel_onboard_worker.New(bot, slackIntegration)
+	channelOnboardWorker := channel_onboard_worker.New(bot, slackIntegration, c.DevMode)
 
 	// Backfill thread worker setup
 	backfillThreadWorker := backfill_thread_worker.New(bot, slackIntegration)

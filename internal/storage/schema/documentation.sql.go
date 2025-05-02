@@ -17,11 +17,11 @@ WITH ranked_chunks AS (
     SELECT
         e.url,
         e.path,
-        e.revision,
+        e.blob_sha,
         e.chunk_index,
         e.chunk,
         e.embedding <=> $2 AS distance,
-        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.revision ORDER BY e.embedding <=> $2 ASC) as rn
+        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.blob_sha ORDER BY e.embedding <=> $2 ASC) as rn
     FROM
         documentation_embeddings e
 ),
@@ -29,7 +29,7 @@ closest_doc_chunks AS (
     SELECT
         url,
         path,
-        revision,
+        blob_sha,
         chunk_index,
         chunk,
         distance
@@ -39,7 +39,7 @@ closest_doc_chunks AS (
         rn = 1
 )
 SELECT
-    url, path, revision, chunk_index, chunk, distance
+    url, path, blob_sha, chunk_index, chunk, distance
 FROM
     closest_doc_chunks
 ORDER BY
@@ -55,7 +55,7 @@ type DebugGetClosestDocsParams struct {
 type DebugGetClosestDocsRow struct {
 	Url        string
 	Path       string
-	Revision   string
+	BlobSha    string
 	ChunkIndex int32
 	Chunk      string
 	Distance   interface{}
@@ -73,7 +73,7 @@ func (q *Queries) DebugGetClosestDocs(ctx context.Context, arg DebugGetClosestDo
 		if err := rows.Scan(
 			&i.Url,
 			&i.Path,
-			&i.Revision,
+			&i.BlobSha,
 			&i.ChunkIndex,
 			&i.Chunk,
 			&i.Distance,
@@ -92,7 +92,7 @@ const debugGetDocumentForUpdate = `-- name: DebugGetDocumentForUpdate :many
 WITH closest_chunks AS (
   SELECT e.url,
     e.path,
-    e.revision,
+    e.blob_sha,
     e.chunk_index,
     e.chunk,
     e.embedding,
@@ -102,21 +102,21 @@ WITH closest_chunks AS (
   LIMIT 25)
 SELECT c.url,
       c.path,
-      c.revision,
+      c.blob_sha,
       c.chunk_index,
       c.chunk,
       c.distance,
-      COUNT(*) OVER (PARTITION BY c.url, c.path, c.revision) as chunk_count,
-      AVG(c.distance) OVER (PARTITION BY c.url, c.path, c.revision) as avg_distance,
-      MIN(c.distance) OVER (PARTITION BY c.url, c.path, c.revision) as min_distance
+      COUNT(*) OVER (PARTITION BY c.url, c.path, c.blob_sha) as chunk_count,
+      AVG(c.distance) OVER (PARTITION BY c.url, c.path, c.blob_sha) as avg_distance,
+      MIN(c.distance) OVER (PARTITION BY c.url, c.path, c.blob_sha) as min_distance
 FROM closest_chunks c
-ORDER BY min_distance ASC, c.url, c.path, c.revision, c.chunk_index
+ORDER BY min_distance ASC, c.url, c.path, c.blob_sha, c.chunk_index
 `
 
 type DebugGetDocumentForUpdateRow struct {
 	Url         string
 	Path        string
-	Revision    string
+	BlobSha     string
 	ChunkIndex  int32
 	Chunk       string
 	Distance    interface{}
@@ -137,7 +137,7 @@ func (q *Queries) DebugGetDocumentForUpdate(ctx context.Context, embedding *pgve
 		if err := rows.Scan(
 			&i.Url,
 			&i.Path,
-			&i.Revision,
+			&i.BlobSha,
 			&i.ChunkIndex,
 			&i.Chunk,
 			&i.Distance,
@@ -177,9 +177,9 @@ WITH ranked_chunks AS (
     SELECT
         e.url,
         e.path,
-        e.revision,
+        e.blob_sha,
         e.embedding <=> $2 AS distance,
-        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.revision ORDER BY e.embedding <=> $2 ASC) as rn
+        ROW_NUMBER() OVER (PARTITION BY e.url, e.path, e.blob_sha ORDER BY e.embedding <=> $2 ASC) as rn
     FROM
         documentation_embeddings e
 ),
@@ -187,7 +187,7 @@ closest_doc_chunks AS (
     SELECT
         url,
         path,
-        revision,
+        blob_sha,
         distance
     FROM
         ranked_chunks
@@ -197,12 +197,12 @@ closest_doc_chunks AS (
 SELECT
     cdc.url,
     cdc.path,
-    cdc.revision,
+    d.revision,
     d.content
 FROM
     closest_doc_chunks cdc
 JOIN
-    documentation_docs d ON cdc.url = d.url AND cdc.path = d.path AND cdc.revision = d.revision
+    documentation_docs d ON cdc.url = d.url AND cdc.path = d.path AND cdc.blob_sha = d.blob_sha
 ORDER BY
     cdc.distance ASC
 LIMIT $1
@@ -246,7 +246,7 @@ func (q *Queries) GetClosestDocs(ctx context.Context, arg GetClosestDocsParams) 
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT url, path, revision, content
+SELECT url, path, revision, content, blob_sha
 FROM documentation_docs
 WHERE url = $1
   AND path = $2
@@ -267,6 +267,7 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 		&i.Path,
 		&i.Revision,
 		&i.Content,
+		&i.BlobSha,
 	)
 	return i, err
 }
@@ -274,7 +275,7 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
 WITH closest_chunks AS (SELECT e.url,
                                e.path,
-                               e.revision,
+                               e.blob_sha,
                                e.chunk_index,
                                e.chunk,
                                e.embedding
@@ -283,18 +284,19 @@ WITH closest_chunks AS (SELECT e.url,
                         LIMIT 25),
      doc_counts AS (SELECT c.url,
                            c.path,
-                           c.revision,
+                           c.blob_sha,
                            COUNT(*) as chunk_count
                     FROM closest_chunks c
-                    GROUP BY c.url, c.path, c.revision
+                    GROUP BY c.url, c.path, c.blob_sha
                     ORDER BY chunk_count DESC
                     LIMIT 1)
 SELECT d.url,
        d.path,
        d.revision,
-       d.content
+       d.content,
+       d.blob_sha
 FROM doc_counts dc
-         JOIN documentation_docs d ON dc.url = d.url AND dc.path = d.path AND dc.revision = d.revision
+         JOIN documentation_docs d ON dc.url = d.url AND dc.path = d.path AND dc.blob_sha = d.blob_sha
 `
 
 func (q *Queries) GetDocumentForUpdate(ctx context.Context, embedding *pgvector.Vector) (DocumentationDoc, error) {
@@ -305,6 +307,7 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, embedding *pgvector.
 		&i.Path,
 		&i.Revision,
 		&i.Content,
+		&i.BlobSha,
 	)
 	return i, err
 }
@@ -378,20 +381,20 @@ WITH should_update AS (SELECT (NOT EXISTS (SELECT 1
          DELETE FROM documentation_embeddings
              WHERE documentation_embeddings.url = $4
                  AND documentation_embeddings.path = $5
-                 AND documentation_embeddings.revision != $6
+                 AND documentation_embeddings.blob_sha != $7
                  AND (SELECT needs_update FROM should_update)),
      doc_insert AS (
-         INSERT INTO documentation_docs (url, path, revision, content)
-             VALUES ($4, $5, $6, $7)
+         INSERT INTO documentation_docs (url, path, revision, blob_sha, content)
+             VALUES ($4, $5, $6, $7, $8)
              ON CONFLICT (url, path) DO UPDATE
-                 SET content = EXCLUDED.content, revision = EXCLUDED.revision
+                 SET content = EXCLUDED.content, revision = EXCLUDED.revision, blob_sha = EXCLUDED.blob_sha
                  WHERE (SELECT needs_update FROM should_update)
-             RETURNING url, path, revision)
+             RETURNING url, path, blob_sha)
 INSERT
-INTO documentation_embeddings (url, path, revision, chunk_index, chunk, embedding)
+INTO documentation_embeddings (url, path, blob_sha, chunk_index, chunk, embedding)
 SELECT (SELECT url FROM doc_insert),
        (SELECT path FROM doc_insert),
-       (SELECT revision FROM doc_insert),
+       (SELECT blob_sha FROM doc_insert),
        unnest($1::int[]),
        unnest($2::text[]),
        unnest($3::vector(768)[])
@@ -405,6 +408,7 @@ type InsertDocWithEmbeddingsParams struct {
 	Url          string
 	Path         string
 	Revision     string
+	BlobSha      string
 	Content      string
 }
 
@@ -416,16 +420,55 @@ func (q *Queries) InsertDocWithEmbeddings(ctx context.Context, arg InsertDocWith
 		arg.Url,
 		arg.Path,
 		arg.Revision,
+		arg.BlobSha,
 		arg.Content,
 	)
 	return err
 }
 
-const updateDocumentationSource = `-- name: UpdateDocumentationSource :exec
-UPDATE documentation_status
-SET revision   = $1,
-    refresh_ts = now()
+const updateDocumentRevisionIfSHAMatches = `-- name: UpdateDocumentRevisionIfSHAMatches :one
+UPDATE documentation_docs
+SET revision = $1
 WHERE url = $2
+  AND path = $3
+  AND blob_sha = $4
+RETURNING url, path, revision, content, blob_sha
+`
+
+type UpdateDocumentRevisionIfSHAMatchesParams struct {
+	NewRevision string
+	Url         string
+	Path        string
+	BlobSha     string
+}
+
+func (q *Queries) UpdateDocumentRevisionIfSHAMatches(ctx context.Context, arg UpdateDocumentRevisionIfSHAMatchesParams) (DocumentationDoc, error) {
+	row := q.db.QueryRow(ctx, updateDocumentRevisionIfSHAMatches,
+		arg.NewRevision,
+		arg.Url,
+		arg.Path,
+		arg.BlobSha,
+	)
+	var i DocumentationDoc
+	err := row.Scan(
+		&i.Url,
+		&i.Path,
+		&i.Revision,
+		&i.Content,
+		&i.BlobSha,
+	)
+	return i, err
+}
+
+const updateDocumentationSource = `-- name: UpdateDocumentationSource :exec
+WITH delete_old_docs AS (
+    DELETE FROM documentation_docs
+    WHERE url = $2
+      AND revision != $1
+)
+UPDATE documentation_status
+SET revision   = $1, refresh_ts = now()
+WHERE documentation_status.url = $2
 `
 
 type UpdateDocumentationSourceParams struct {

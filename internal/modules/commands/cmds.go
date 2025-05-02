@@ -134,7 +134,7 @@ func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS 
 	case cmdPostUsageReport:
 		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdLookupDocumentation:
-		return docrag.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS)
+		return docrag.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS, text)
 	case cmdUpdateDocumentation:
 		return docupdate.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, c.bot.DocsConfig, channelID, slackTS, text)
 	case cmdNone: // nothing to do

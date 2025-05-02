@@ -20,12 +20,13 @@ type DocumentationDoc struct {
 	Path     string
 	Revision string
 	Content  string
+	BlobSha  string
 }
 
 type DocumentationEmbedding struct {
 	Url        string
 	Path       string
-	Revision   string
+	BlobSha    string
 	ChunkIndex int32
 	Chunk      string
 	Embedding  *pgvector.Vector

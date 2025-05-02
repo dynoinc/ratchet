@@ -61,124 +61,52 @@ func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter
 	}
 	newRevision := ref.GetObject().GetSHA()
 
-	// If no revision is provided, get the current snapshot
-	if revision == "" {
-		var capturedError error
-		return func(yield func(Update) bool) {
-				// Recursively walk through the directory structure
-				var walkDir func(path string) bool
-				walkDir = func(path string) bool {
-					start := time.Now()
-					_, dirContent, _, err := client.Repositories.GetContents(
-						ctx,
-						gs.Owner,
-						gs.Repo,
-						path,
-						&github.RepositoryContentGetOptions{Ref: newRevision},
-					)
-					slog.Info("GitHub API: get directory contents", "path", path, "count", len(dirContent), "duration", time.Since(start))
-					if err != nil {
-						capturedError = fmt.Errorf("getting contents of %s: %w", path, err)
-						return false
-					}
-
-					for _, content := range dirContent {
-						if content.GetType() == "dir" {
-							if !walkDir(content.GetPath()) {
-								return false
-							}
-						} else if content.GetType() == "file" {
-							slog.Info("GitHub API: file", "path", content.GetPath())
-
-							// Only process .md or .txt files
-							filePath := content.GetPath()
-							ext := strings.ToLower(filepath.Ext(filePath))
-							if ext != ".md" && ext != ".txt" {
-								continue
-							}
-
-							if !yield(Update{
-								Path:     filePath,
-								Revision: newRevision,
-							}) {
-								return false
-							}
-						}
-					}
-					return true
-				}
-
-				// Start the recursive walk from the root path
-				walkDir(gs.Path)
-			}, newRevision, func() error {
-				return capturedError
-			}
-	}
-
-	// If revision is provided, get changes since that revision
 	var capturedError error
 	return func(yield func(Update) bool) {
-			// Get the comparison between revisions
-			opts := &github.ListOptions{PerPage: 100}
-
-			for {
+			// Recursively walk through the directory structure
+			var walkDir func(path string) bool
+			walkDir = func(path string) bool {
 				start := time.Now()
-				comparison, resp, err := client.Repositories.CompareCommits(
+				_, dirContent, _, err := client.Repositories.GetContents(
 					ctx,
 					gs.Owner,
 					gs.Repo,
-					revision,
-					newRevision,
-					opts,
+					path,
+					&github.RepositoryContentGetOptions{Ref: newRevision},
 				)
-				slog.Info("GitHub API: compare commits", "from", revision, "to", newRevision, "page", opts.Page, "duration", time.Since(start))
+				slog.Info("GitHub API: get directory contents", "path", path, "count", len(dirContent), "duration", time.Since(start))
 				if err != nil {
-					capturedError = fmt.Errorf("comparing commits: %w", err)
-					return
+					capturedError = fmt.Errorf("getting contents of %s: %w", path, err)
+					return false
 				}
 
-				// Process each file in this page of the comparison
-				for _, file := range comparison.Files {
-					filePath := file.GetFilename()
-					slog.Info("GitHub API: file", "path", filePath, "status", file.GetStatus())
+				for _, content := range dirContent {
+					if content.GetType() == "dir" {
+						if !walkDir(content.GetPath()) {
+							return false
+						}
+					} else if content.GetType() == "file" {
+						slog.Info("GitHub API: file", "path", content.GetPath(), "blob_sha", content.GetSHA())
 
-					// Skip files not in our path
-					if !strings.HasPrefix(filePath, gs.Path) {
-						continue
-					}
-
-					// Only process .md or .txt files
-					ext := strings.ToLower(filepath.Ext(filePath))
-					if ext != ".md" && ext != ".txt" {
-						continue
-					}
-
-					switch file.GetStatus() {
-					case "added", "modified":
-						if !yield(Update{
-							Path:     filePath,
-							Revision: newRevision,
-						}) {
-							return
+						// Only process .md or .txt files
+						if ext := strings.ToLower(filepath.Ext(content.GetPath())); ext != ".md" && ext != ".txt" {
+							continue
 						}
 
-					case "removed":
 						if !yield(Update{
-							Path:     filePath,
 							Revision: newRevision,
-							Deleted:  true,
+							Path:     content.GetPath(),
+							BlobSHA:  content.GetSHA(),
 						}) {
-							return
+							return false
 						}
 					}
 				}
-
-				// Check if there are more pages
-				if resp.NextPage == 0 {
-					break
-				}
-				opts.Page = resp.NextPage
+				return true
 			}
+
+			// Start the recursive walk from the root path
+			walkDir(gs.Path)
 		}, newRevision, func() error {
 			return capturedError
 		}

@@ -134,6 +134,7 @@ func New(
 	apiMux.HandleFunc("GET /docs/update", handlers.docsUpdate)
 	apiMux.HandleFunc("GET /docs/update/debug", handleJSON(handlers.docsUpdateDebug))
 	apiMux.HandleFunc("POST /docs/update", handleJSON(handlers.postPR))
+	apiMux.HandleFunc("POST /docs/refresh", handleJSON(handlers.postRefresh))
 
 	// Bot
 	apiMux.HandleFunc("GET /bot/search", handlers.search)
@@ -210,7 +211,7 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("channel not found")
 	}
 
-	lastNMsgs := cmp.Or(r.URL.Query().Get("n"), "1000")
+	lastNMsgs := cmp.Or(r.URL.Query().Get("n"), "10")
 	lastNMsgsInt, err := strconv.Atoi(lastNMsgs)
 	if err != nil {
 		return nil, fmt.Errorf("invalid last_n_msgs: %w", err)
@@ -599,26 +600,38 @@ func (h *httpHandlers) docsStatus(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
+	channelName := r.URL.Query().Get("channel_name")
 	question := r.URL.Query().Get("question")
 	if question == "" {
 		channelID := r.URL.Query().Get("channel_id")
-		threadTS := r.URL.Query().Get("thread_ts")
-		if channelID == "" || threadTS == "" {
+		ts := r.URL.Query().Get("ts")
+		if channelID == "" || ts == "" {
 			return nil, fmt.Errorf("channel_id and thread_ts parameters are required")
+		}
+
+		channelInfo, err := schema.New(h.bot.DB).GetChannel(r.Context(), channelID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get channel info: %w", err)
 		}
 
 		msg, err := schema.New(h.bot.DB).GetMessage(r.Context(), schema.GetMessageParams{
 			ChannelID: channelID,
-			Ts:        threadTS,
+			Ts:        ts,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("getting message: %w", err)
 		}
 
+		channelName = channelInfo.Attrs.Name
 		question = msg.Attrs.Message.Text
 	}
 
-	answer, links, err := docrag.Answer(r.Context(), schema.New(h.bot.DB), h.llmClient, question)
+	text := r.URL.Query().Get("text")
+	if text == "" {
+		text = "lookup documentation"
+	}
+
+	answer, links, err := docrag.Answer(r.Context(), schema.New(h.bot.DB), h.llmClient, channelName, question, text)
 	if err != nil {
 		return nil, err
 	}
@@ -630,12 +643,38 @@ func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) docsAnswerDebug(r *http.Request) (any, error) {
+	channelName := r.URL.Query().Get("channel_name")
 	question := r.URL.Query().Get("question")
 	if question == "" {
-		return nil, fmt.Errorf("question parameter is required")
+		channelID := r.URL.Query().Get("channel_id")
+		ts := r.URL.Query().Get("ts")
+		if channelID == "" || ts == "" {
+			return nil, fmt.Errorf("channel_id and thread_ts parameters are required")
+		}
+
+		channelInfo, err := schema.New(h.bot.DB).GetChannel(r.Context(), channelID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get channel info: %w", err)
+		}
+
+		msg, err := schema.New(h.bot.DB).GetMessage(r.Context(), schema.GetMessageParams{
+			ChannelID: channelID,
+			Ts:        ts,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("getting message: %w", err)
+		}
+
+		channelName = channelInfo.Attrs.Name
+		question = msg.Attrs.Message.Text
 	}
 
-	return docrag.Debug(r.Context(), schema.New(h.bot.DB), h.llmClient, question)
+	text := r.URL.Query().Get("text")
+	if text == "" {
+		text = "lookup documentation"
+	}
+
+	return docrag.Debug(r.Context(), schema.New(h.bot.DB), h.llmClient, channelName, question, text)
 }
 
 func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
@@ -704,4 +743,24 @@ func (h *httpHandlers) postPR(r *http.Request) (any, error) {
 	}
 
 	return nil, nil
+}
+
+func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		return nil, fmt.Errorf("name parameter is required")
+	}
+
+	for _, source := range h.docsConfig.Sources {
+		if source.Name == name {
+			_, err := h.bot.RiverClient.Insert(r.Context(), background.DocumentationRefreshArgs{Source: source}, nil)
+			if err != nil {
+				return nil, fmt.Errorf("inserting documentation refresh: %w", err)
+			}
+
+			return nil, nil
+		}
+	}
+
+	return nil, fmt.Errorf("source not found")
 }

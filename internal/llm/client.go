@@ -245,6 +245,20 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	Format each suggestion as:
 	*Title*
 	• Specific improvement details
+
+	Examples:
+
+	Example 1:
+	Messages: [["User A: Why does the payment service keep timing out? Seems like the DB connection pool is full again.", "User B: Yeah, seeing that too. Had to restart the pods earlier."]]
+	Response:
+	*Investigate Payment Service DB Connection Leaks*
+	• Recurring timeouts linked to database connection pool exhaustion suggest a potential connection leak requiring investigation and fixing.
+
+	Example 2:
+	Messages: [["User C: How do I get logs for the auth service? The runbook link is broken.", "User D: Use 'kubectl logs -l app=auth-svc -n prod'", "User C: Thanks! We should update the runbook."]]
+	Response:
+	*Update Auth Service Logging Documentation*
+	• The runbook for auth service logging is outdated or broken; update it with the correct 'kubectl' command.
 	`
 
 	userContent := fmt.Sprintf("Messages:\n%s", messages)
@@ -289,6 +303,7 @@ RULES:
 - Focus on technical details, error patterns, and resolution steps
 - Use bullet points for clarity in the JSON arrays
 - Prioritize commands, error codes, and specific metrics when available
+- Prioritize extracting verbatim commands and their observed outcomes within the 'resolution_steps' array.
 - Return empty arrays if no relevant information exists for a section
 - Ensure lexical search query contains exact technical terms for precise matching
 - Make semantic search query descriptive enough to capture conceptual similarities
@@ -466,6 +481,8 @@ Given a message, respond with EXACTLY ONE of these commands (no explanation, jus
 - update_documentation (for updating documentation)
 - none (for messages that don't match any supported command)
 
+Do not add any conversational text, explanation, or formatting; output *only* the single command name.
+
 Examples:`
 
 	// Add examples from sampleMessages
@@ -496,20 +513,24 @@ func (c *client) GenerateDocumentationResponse(ctx context.Context, question str
 		return "", nil
 	}
 
-	prompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to answer questions about the provided documentation.
+	prompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to answer questions based *strictly* on the provided documentation excerpts.
 
-	Given a question and a list of documentation documents, respond with a concise answer that is helpful and informative.
+	Given a question and a list of relevant documentation excerpts (typically in Markdown format), follow these steps:
 	
-	The documents are provided as a list of relevant document content (typically in Markdown format).
+	1.  **Analyze:** Carefully read the question and all provided documentation excerpts.
+	2.  **Evaluate:** Determine if the excerpts contain sufficient information to *directly* and *confidently* answer the question.
+	3.  **Respond:**
+	    *   **If YES:** Construct a concise answer derived *solely* from the information present in the excerpts. Quote relevant parts directly when possible. Do NOT add any external knowledge or make inferences beyond what is explicitly stated.
+	    *   **If NO:** Respond *only* with the following exact phrase: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
 	
-	IMPORTANT INSTRUCTIONS:
-	1. Only answer if you are highly confident and your response is primarily derived from the provided documentation.
-	2. If you cannot find relevant information in the documents, return "nil".
-	3. Keep your answers concise and focused on the question.
+	**IMPORTANT INSTRUCTIONS:**
+	*   Prioritize accuracy and adherence to the provided documentation above all else.
+	*   If the documentation mentions related topics but doesn't answer the *specific* question asked, use the fallback response.
+	*   Keep your answers concise and focused on the question.
 	
-	Here are some examples:
+	**Examples:**
 	
-	Example 1:
+	Example 1 (Sufficient Information):
 	Question: "How do I configure the database connection?"
 	Documents: [
 		"# Configuration\n\nTo configure the database connection, set the DATABASE_URL environment variable in your .env file...", 
@@ -517,10 +538,17 @@ func (c *client) GenerateDocumentationResponse(ctx context.Context, question str
 	]
 	Response: "To configure the database connection, set the DATABASE_URL environment variable in your .env file. The format should be: postgresql://username:password@hostname:port/database_name"
 	
-	Example 2:
+	Example 2 (Insufficient Information):
 	Question: "What is the maximum file size for uploads?"
 	Documents: ["# API Documentation\n\nThis document describes the REST API endpoints available."]
-	Response: "nil"
+	Response: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
+	
+	Example 3 (Related but Not Specific Information):
+	Question: "How do I reset a user's password via the API?"
+	Documents: ["# User Management API\n\nProvides endpoints for creating, updating, and deleting users. The update endpoint allows changing user attributes like email and roles."]
+	Response: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
+	
+	**Now, answer the following:**
 	
 	Question: %s
 	Documents: %s
@@ -530,13 +558,9 @@ func (c *client) GenerateDocumentationResponse(ctx context.Context, question str
 
 	content := fmt.Sprintf(prompt, question, documents)
 	chatMessages, inputMessages := createLLMMessages(prompt, content)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.2, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation response: %w", err)
-	}
-
-	if respContent == "nil" {
-		return "", nil
 	}
 
 	return respContent, nil
@@ -553,8 +577,10 @@ func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, ms
 	1. Make minimal changes to the original documentation, preserving its structure and style.
 	2. Only update information that is clearly outdated or incorrect based on the messages.
 	3. If new information should be added but doesn't fit the current structure, add it as a FAQ item at the end.
-	4. Follow the existing document style (formatting, tone, terminology).
-	5. Return the complete updated documentation.
+	4. If messages provide additional detail or clarification for existing points, integrate the new information smoothly into the existing text.
+	5. Follow the existing document style (formatting, tone, terminology).
+	6. Do not add any information that is not present in the original documentation or the provided messages.
+	7. Return the complete updated documentation.
 
 	Here are some examples:
 

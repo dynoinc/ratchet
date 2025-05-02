@@ -21,7 +21,12 @@ func Post(
 	slackIntegration slack_integration.Integration,
 	channelID string,
 	slackTS string,
+	text string,
 ) error {
+	channelInfo, err := queries.GetChannel(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("failed to get channel info: %w", err)
+	}
 	msg, err := queries.GetMessage(ctx, schema.GetMessageParams{
 		ChannelID: channelID,
 		Ts:        slackTS,
@@ -30,7 +35,7 @@ func Post(
 		return fmt.Errorf("getting message: %w", err)
 	}
 
-	answer, links, err := Answer(ctx, queries, llmClient, msg.Attrs.Message.Text)
+	answer, links, err := Answer(ctx, queries, llmClient, channelInfo.Attrs.Name, msg.Attrs.Message.Text, text)
 	if err != nil {
 		return fmt.Errorf("generating answer: %w", err)
 	}
@@ -43,8 +48,23 @@ func Post(
 	return nil
 }
 
-func Answer(ctx context.Context, queries *schema.Queries, llmClient llm.Client, question string) (string, []string, error) {
-	embedding, err := llmClient.GenerateEmbedding(ctx, "search", question)
+func makeEmbeddingQuery(channelName string, question string, botRequest string) string {
+	return fmt.Sprintf("In a slack channel named %s, there is a message with the following text: %s\n\nThe user was given the following request: %s",
+		channelName,
+		question,
+		botRequest)
+}
+
+func Answer(
+	ctx context.Context,
+	queries *schema.Queries,
+	llmClient llm.Client,
+	channelName string,
+	question string,
+	botRequest string,
+) (string, []string, error) {
+	combinedText := makeEmbeddingQuery(channelName, question, botRequest)
+	embedding, err := llmClient.GenerateEmbedding(ctx, "documentation", combinedText)
 	if err != nil {
 		return "", nil, fmt.Errorf("generating embedding: %w", err)
 	}
@@ -76,8 +96,16 @@ func Answer(ctx context.Context, queries *schema.Queries, llmClient llm.Client, 
 	return answer, links, nil
 }
 
-func Debug(ctx context.Context, queries *schema.Queries, llmClient llm.Client, question string) ([]schema.DebugGetClosestDocsRow, error) {
-	embedding, err := llmClient.GenerateEmbedding(ctx, "search", question)
+func Debug(
+	ctx context.Context,
+	queries *schema.Queries,
+	llmClient llm.Client,
+	channelName string,
+	question string,
+	botRequest string,
+) ([]schema.DebugGetClosestDocsRow, error) {
+	combinedText := makeEmbeddingQuery(channelName, question, botRequest)
+	embedding, err := llmClient.GenerateEmbedding(ctx, "search", combinedText)
 	if err != nil {
 		return nil, fmt.Errorf("generating embedding: %w", err)
 	}
