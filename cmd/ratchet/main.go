@@ -287,6 +287,10 @@ func main() {
 		return nil
 	})
 	wg.Go(func() error {
+		if c.DevMode {
+			return nil
+		}
+
 		slog.InfoContext(ctx, "Starting Slack integration", "bot_user_id", slackIntegration.BotUserID())
 		return slackIntegration.Run(ctx)
 	})

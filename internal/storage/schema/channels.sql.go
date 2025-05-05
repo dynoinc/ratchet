@@ -27,6 +27,18 @@ func (q *Queries) AddChannel(ctx context.Context, id string) (ChannelsV2, error)
 	return i, err
 }
 
+const countChannels = `-- name: CountChannels :one
+SELECT COUNT(*)
+FROM channels_v2
+`
+
+func (q *Queries) CountChannels(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countChannels)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getAllChannels = `-- name: GetAllChannels :many
 SELECT id,
        attrs

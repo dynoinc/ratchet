@@ -192,3 +192,8 @@ SELECT
     (SELECT COUNT(chunk_index) FROM documentation_embeddings WHERE url = ds.url) AS chunk_count
 FROM documentation_status ds
 ORDER BY ds.url;
+
+-- name: GetDocumentByPathSuffix :many
+SELECT *
+FROM documentation_docs
+WHERE path LIKE '%' || @path_suffix;

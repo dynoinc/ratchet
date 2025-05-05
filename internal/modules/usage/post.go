@@ -22,6 +22,7 @@ type report struct {
 	ChannelUsage map[string]channelUsage
 	ModuleUsage  map[string]moduleUsage
 	LLMUsage     map[string]llmUsageStats
+	ChannelCount int64
 }
 
 type channelUsage struct {
@@ -48,6 +49,11 @@ type llmUsageStats struct {
 func get(ctx context.Context, db *schema.Queries, slackIntegration slack_integration.Integration) (report, error) {
 	startTs := time.Now().AddDate(0, 0, -7)
 	endTs := time.Now()
+
+	channelCount, err := db.CountChannels(ctx)
+	if err != nil {
+		return report{}, fmt.Errorf("getting channel count: %w", err)
+	}
 
 	msgs, err := db.GetMessagesByUser(ctx, schema.GetMessagesByUserParams{
 		StartTs: fmt.Sprintf("%d.000000", startTs.Unix()),
@@ -106,6 +112,7 @@ func get(ctx context.Context, db *schema.Queries, slackIntegration slack_integra
 		ChannelUsage: channelUsage,
 		ModuleUsage:  moduleUsage,
 		LLMUsage:     llmUsage,
+		ChannelCount: channelCount,
 	}, nil
 }
 
@@ -274,8 +281,8 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 		// Summary
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn",
-				fmt.Sprintf("*Summary*: Total Messages: %d, Total 👍: %d, Total 👎: %d, LLM Requests: %d, Total Tokens: %d",
-					totalMessages, totalThumbsUp, totalThumbsDown, totalRequests, totalTokens),
+				fmt.Sprintf("*Summary*: Channels: %d, Total Messages: %d, Total 👍: %d, Total 👎: %d, LLM Requests: %d, Total Tokens: %d",
+					report.ChannelCount, totalMessages, totalThumbsUp, totalThumbsDown, totalRequests, totalTokens),
 				false, false),
 			nil, nil,
 		),

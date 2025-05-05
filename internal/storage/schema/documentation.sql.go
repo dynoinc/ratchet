@@ -272,6 +272,38 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Docum
 	return i, err
 }
 
+const getDocumentByPathSuffix = `-- name: GetDocumentByPathSuffix :many
+SELECT url, path, revision, content, blob_sha
+FROM documentation_docs
+WHERE path LIKE '%' || $1
+`
+
+func (q *Queries) GetDocumentByPathSuffix(ctx context.Context, pathSuffix *string) ([]DocumentationDoc, error) {
+	rows, err := q.db.Query(ctx, getDocumentByPathSuffix, pathSuffix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentationDoc
+	for rows.Next() {
+		var i DocumentationDoc
+		if err := rows.Scan(
+			&i.Url,
+			&i.Path,
+			&i.Revision,
+			&i.Content,
+			&i.BlobSha,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
 WITH closest_chunks AS (SELECT e.url,
                                e.path,

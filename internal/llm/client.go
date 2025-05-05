@@ -571,27 +571,38 @@ func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, ms
 		return "", nil
 	}
 
-	systemPrompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to update the provided documentation based on the provided messages.
+	systemPrompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to update the provided documentation based on the technical details discussed in the provided Slack messages.
 
 	IMPORTANT INSTRUCTIONS:
-	1.  **Preserve & Minimize:** Edit the original documentation minimally. Preserve its existing structure, formatting, tone, and terminology. Avoid unnecessary changes or removing content unless the messages explicitly state it's wrong or deprecated.
-	2.  **Update from Messages:** Modify the documentation *only* based on information clearly present in the provided messages. Use the messages to correct outdated/incorrect information or to integrate additional details and clarifications smoothly into the existing text.
-	3.  **Handle New Topics:** If messages introduce relevant information that doesn't fit the current structure, add it as a new FAQ item (Q&A format) at the end of the document.
-	4.  **Source Constraint:** Do *not* add any information that is not present in the original documentation or the provided messages. Stick strictly to the provided text.
-	5.  **Handle Irrelevance:** If the messages are not relevant to the content of the original documentation (e.g., they discuss a different topic or are just chit-chat), return the original documentation *exactly* as provided, without any changes.
-	6.  **Output:** Return the *complete* updated documentation (or the unchanged original if step 5 applies).
+	1.  **Focus on Technical Accuracy:** Your primary goal is to incorporate relevant technical facts, procedures, configurations, code snippets, or corrections mentioned in the messages into the documentation.
+	2.  **Preserve & Minimize:** Edit the original documentation minimally. Preserve its existing structure, formatting, tone, and terminology. Avoid unnecessary changes or removing content unless the messages explicitly state it's wrong or deprecated.
+	3.  **Integrate First:** Modify the documentation *only* based on information clearly present in the provided messages. Integrate new technical details or corrections smoothly into the most relevant existing sections. Improve clarity and add detail where the messages provide it.
+	4.  **Use FAQs Sparingly:** If a message thread clearly discusses a *specific technical question* and provides a *clear answer* that doesn't logically fit into the existing document structure, *then* add it as a concise Q&A item under an "## FAQ" section at the end. Do *not* add generic FAQs or summarize the conversation; focus only on distinct, technical Q&A pairs derived directly from the messages.
+	5.  **Source Constraint:** Do *not* add any information that is not present in the original documentation or the provided messages. Stick strictly to the provided text.
+	6.  **Handle Irrelevance:** If the messages are not relevant to the technical content of the original documentation (e.g., they discuss a completely different topic or are just chit-chat), return the original documentation *exactly* as provided, without any changes.
+	7.  **Output:** Return the *complete* updated documentation (or the unchanged original if step 6 applies).
 
 	Here are some examples:
 
-	Example 1:
+	Example 1 (Integration):
 	Original Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters: --service, --threshold."
-	Messages: "The /alerts command now supports a new --priority parameter to set alert priority."
-	Updated Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters: --service, --threshold, --priority.\n\n## FAQ\n\n**Q: How do I set the priority of an alert?**\n**A:** Use the --priority parameter with the /alerts command."
+	Messages: "Hey team, remember the /alerts command now supports a new --priority parameter to set alert priority (low, medium, high). Default is medium."
+	Updated Documentation: "# Alerts\n\nTo configure alerts, use the /alerts command with the following parameters:\n* ` + "`" + `--service` + "`" + `: The name of the service.\n* ` + "`" + `--threshold` + "`" + `: The alert threshold.\n* ` + "`" + `--priority` + "`" + `: (Optional) Set the alert priority (low, medium, high). Defaults to medium."
 
-	Example 2:
+	Example 2 (Correction):
 	Original Documentation: "# Installation\n\nInstall the package using: npm install ratchet-bot"
-	Messages: "The npm install command is wrong, it should be npm install @dynoinc/ratchet-bot"
+	Messages: "The npm install command in the docs is wrong, it should be npm install @dynoinc/ratchet-bot"
 	Updated Documentation: "# Installation\n\nInstall the package using: npm install @dynoinc/ratchet-bot"
+
+	Example 3 (Specific FAQ):
+	Original Documentation: "# Database Setup\n\nConnect using the DATABASE_URL environment variable."
+	Messages: "Q: What's the timeout for database connections?\nA: It's configurable via the DB_TIMEOUT_MS env var, defaults to 5000ms."
+	Updated Documentation: "# Database Setup\n\nConnect using the DATABASE_URL environment variable.\n\n## FAQ\n\n**Q: How is the database connection timeout configured?**\n**A:** Use the ` + "`" + `DB_TIMEOUT_MS` + "`" + ` environment variable. It defaults to 5000 milliseconds."
+
+	Example 4 (Irrelevant):
+	Original Documentation: "# API Keys\n\nGenerate API keys in the settings panel."
+	Messages: "Anyone seen my stapler?"
+	Updated Documentation: "# API Keys\n\nGenerate API keys in the settings panel."
 	`
 
 	userContent := fmt.Sprintf(`Here is the original documentation and the relevant messages. Please update the documentation according to the instructions provided in the system prompt. Provide only the complete updated documentation in your response.

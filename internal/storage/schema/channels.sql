@@ -34,3 +34,7 @@ SELECT id,
        attrs
 FROM channels_v2
 WHERE id = @id;
+
+-- name: CountChannels :one
+SELECT COUNT(*)
+FROM channels_v2;

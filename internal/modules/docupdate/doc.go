@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/pgvector/pgvector-go"
 	"github.com/slack-go/slack"
@@ -88,24 +89,39 @@ func Compute(
 	ts string,
 	text string,
 ) (schema.DocumentationDoc, string, error) {
+	var docToUpdate schema.DocumentationDoc
+	for _, word := range strings.Split(text, " ") {
+		if strings.HasSuffix(word, ".md") || strings.HasSuffix(word, ".txt") {
+			docs, err := queries.GetDocumentByPathSuffix(ctx, &word)
+			if err == nil && len(docs) == 1 {
+				docToUpdate = docs[0]
+				break
+			}
+		}
+	}
+
 	embedding, threadMsgsText, err := computeEmbedding(ctx, queries, llm, channelID, ts, text)
 	if err != nil {
 		return schema.DocumentationDoc{}, "", fmt.Errorf("failed to compute embedding: %w", err)
 	}
 
-	doc, err := queries.GetDocumentForUpdate(ctx, &embedding)
-	if err != nil {
-		return schema.DocumentationDoc{}, "", fmt.Errorf("failed to get document for update: %w", err)
+	if docToUpdate == (schema.DocumentationDoc{}) {
+		doc, err := queries.GetDocumentForUpdate(ctx, &embedding)
+		if err != nil {
+			return schema.DocumentationDoc{}, "", fmt.Errorf("failed to get document for update: %w", err)
+		}
+
+		docToUpdate = doc
 	}
 
 	// Send doc and faq to LLM with all the slack messages and ask it to return either updated doc or faq
-	slog.Info("Generating documentation update", "doc", doc.Path, "text", text)
-	updatedDoc, err := llm.GenerateDocumentationUpdate(ctx, doc.Content, threadMsgsText)
+	slog.Info("Generating documentation update", "doc", docToUpdate.Path, "text", text)
+	updatedDoc, err := llm.GenerateDocumentationUpdate(ctx, docToUpdate.Content, threadMsgsText)
 	if err != nil {
 		return schema.DocumentationDoc{}, "", fmt.Errorf("failed to generate documentation update: %w", err)
 	}
 
-	return doc, updatedDoc, nil
+	return docToUpdate, updatedDoc, nil
 }
 
 func Post(
