@@ -477,6 +477,8 @@ func (c *client) ClassifyCommand(ctx context.Context, text string, sampleMessage
 Given a message, respond with EXACTLY ONE of these commands (no explanation, just the command name):
 - weekly_report (for generating incident/alert reports or summaries for a channel)
 - usage_report (for showing bot usage statistics and feedback metrics)
+- enable_auto_doc_reply (for enabling auto doc reply)
+- disable_auto_doc_reply (for disabling auto doc reply)
 - lookup_documentation (for looking up documentation)
 - update_documentation (for updating documentation)
 - none (for messages that don't match any supported command)
@@ -515,46 +517,47 @@ func (c *client) GenerateDocumentationResponse(ctx context.Context, question str
 
 	prompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to answer questions based *strictly* on the provided documentation excerpts.
 
-	Given a question and a list of relevant documentation excerpts (typically in Markdown format), follow these steps:
-	
-	1.  **Analyze:** Carefully read the question and all provided documentation excerpts.
-	2.  **Evaluate:** Determine if the excerpts contain sufficient information to *directly* and *confidently* answer the question.
-	3.  **Respond:**
-	    *   **If YES:** Construct a concise answer derived *solely* from the information present in the excerpts. Quote relevant parts directly when possible. Do NOT add any external knowledge or make inferences beyond what is explicitly stated.
-	    *   **If NO:** Respond *only* with the following exact phrase: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
-	
-	**IMPORTANT INSTRUCTIONS:**
-	*   Prioritize accuracy and adherence to the provided documentation above all else.
-	*   If the documentation mentions related topics but doesn't answer the *specific* question asked, use the fallback response.
-	*   Keep your answers concise and focused on the question.
-	
-	**Examples:**
-	
-	Example 1 (Sufficient Information):
-	Question: "How do I configure the database connection?"
-	Documents: [
-		"# Configuration\n\nTo configure the database connection, set the DATABASE_URL environment variable in your .env file...", 
-		"# Database Setup\n\nThe connection string format should be: postgresql://username:password@hostname:port/database_name"
-	]
-	Response: "To configure the database connection, set the DATABASE_URL environment variable in your .env file. The format should be: postgresql://username:password@hostname:port/database_name"
-	
-	Example 2 (Insufficient Information):
-	Question: "What is the maximum file size for uploads?"
-	Documents: ["# API Documentation\n\nThis document describes the REST API endpoints available."]
-	Response: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
-	
-	Example 3 (Related but Not Specific Information):
-	Question: "How do I reset a user's password via the API?"
-	Documents: ["# User Management API\n\nProvides endpoints for creating, updating, and deleting users. The update endpoint allows changing user attributes like email and roles."]
-	Response: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
-	
-	**Now, answer the following:**
-	
-	Question: %s
-	Documents: %s
-	
-	Response:
-	`
+Given a question and a list of relevant documentation excerpts (typically in Markdown format), follow these steps:
+
+1.  **Analyze:** Carefully read the question and all provided documentation excerpts.
+2.  **Evaluate:** Determine if the excerpts contain sufficient information to *directly* and *confidently* answer the question.
+3.  **Respond:**
+    *   **If YES:** Construct a concise answer derived *solely* from the information present in the excerpts. Quote relevant parts directly when possible, but do NOT simply paste the entire documentation verbatim. Synthesize and present only the relevant information that answers the question. Do NOT add any external knowledge or make inferences beyond what is explicitly stated.
+    *   **If NO:** Respond *only* with the following exact phrase: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
+
+**IMPORTANT INSTRUCTIONS:**
+*   Prioritize accuracy and adherence to the provided documentation above all else.
+*   If the documentation mentions related topics but doesn't answer the *specific* question asked, use the fallback response.
+*   Keep your answers concise and focused on the question.
+*   Never repeat the entire documentation verbatim - extract and synthesize only the relevant parts.
+
+**Examples:**
+
+Example 1 (Sufficient Information):
+Question: "How do I configure the database connection?"
+Documents: [
+	"# Configuration\n\nTo configure the database connection, set the DATABASE_URL environment variable in your .env file...", 
+	"# Database Setup\n\nThe connection string format should be: postgresql://username:password@hostname:port/database_name"
+]
+Response: "To configure the database connection, set the DATABASE_URL environment variable in your .env file. The format should be: postgresql://username:password@hostname:port/database_name"
+
+Example 2 (Insufficient Information):
+Question: "What is the maximum file size for uploads?"
+Documents: ["# API Documentation\n\nThis document describes the REST API endpoints available."]
+Response: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
+
+Example 3 (Related but Not Specific Information):
+Question: "How do I reset a user's password via the API?"
+Documents: ["# User Management API\n\nProvides endpoints for creating, updating, and deleting users. The update endpoint allows changing user attributes like email and roles."]
+Response: "I couldn't find information about this in our documentation. If someone answers your question, please consider updating our docs by using the command '@ratchet update docs for <topic>'."
+
+**Now, answer the following:**
+
+Question: %s
+Documents: %s
+
+Response:
+`
 
 	content := fmt.Sprintf(prompt, question, documents)
 	chatMessages, inputMessages := createLLMMessages(prompt, content)

@@ -42,6 +42,16 @@ func TestFindCommand(t *testing.T) {
 		{"what are the usage numbers", cmdPostUsageReport},
 		{"display bot usage data", cmdPostUsageReport},
 
+		// Enable auto doc reply requests
+		{"enable auto doc reply", cmdEnableAutoDocReply},
+		{"enable doc reply", cmdEnableAutoDocReply},
+		{"enable doc responses", cmdEnableAutoDocReply},
+
+		// Disable auto doc reply requests
+		{"disable auto doc reply", cmdDisableAutoDocReply},
+		{"disable doc reply", cmdDisableAutoDocReply},
+		{"disable doc responses", cmdDisableAutoDocReply},
+
 		// Documentation lookup requests
 		{"lookup documentation", cmdLookupDocumentation},
 		{"what does documentation say about this?", cmdLookupDocumentation},

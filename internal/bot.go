@@ -48,13 +48,30 @@ func (b *Bot) Init(riverClient *river.Client[pgx.Tx], docsConfig *docs.Config) e
 }
 
 func (b *Bot) UpdateChannel(ctx context.Context, tx pgx.Tx, params schema.UpdateChannelAttrsParams) error {
-	qtx := schema.New(b.DB).WithTx(tx)
+	qtx := schema.New(b.DB)
+	if tx != nil {
+		qtx = qtx.WithTx(tx)
+	}
 
 	if err := qtx.UpdateChannelAttrs(ctx, params); err != nil {
 		return fmt.Errorf("updating channel %s: %w", params.ID, err)
 	}
 
 	return nil
+}
+
+func (b *Bot) EnableAutoDocReply(ctx context.Context, channelID string) error {
+	return b.UpdateChannel(ctx, nil, schema.UpdateChannelAttrsParams{
+		ID:    channelID,
+		Attrs: dto.ChannelAttrs{DocResponsesEnabled: true},
+	})
+}
+
+func (b *Bot) DisableAutoDocReply(ctx context.Context, channelID string) error {
+	return b.UpdateChannel(ctx, nil, schema.UpdateChannelAttrsParams{
+		ID:    channelID,
+		Attrs: dto.ChannelAttrs{DocResponsesEnabled: false},
+	})
 }
 
 func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams, source messageSource) error {

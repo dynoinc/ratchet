@@ -37,6 +37,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/classifier"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
+	"github.com/dynoinc/ratchet/internal/modules/docrag"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -224,6 +225,7 @@ func main() {
 			channelMonitor,
 			runbook.New(bot, slackIntegration, llmClient),
 			commands.New(bot, slackIntegration, llmClient),
+			docrag.New(bot, slackIntegration, llmClient),
 		},
 	)
 

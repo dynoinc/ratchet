@@ -34,13 +34,19 @@ func (h *Handler) Name() string {
 	return "runbook"
 }
 
-func (h *Handler) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	if msg.IncidentAction.Action != dto.ActionOpenIncident {
+func (h *Handler) OnMessage(ctx context.Context, channelID string, slackTS string, _ dto.MessageAttrs) error {
+	// We need to reload the message because previous module will have set the IncidentAction.
+	msg, err := h.bot.GetMessage(ctx, channelID, slackTS)
+	if err != nil {
+		return fmt.Errorf("getting message: %w", err)
+	}
+
+	if msg.Attrs.IncidentAction.Action != dto.ActionOpenIncident {
 		return nil
 	}
 
 	qtx := schema.New(h.bot.DB)
-	runbook, err := Get(ctx, qtx, h.llmClient, msg.IncidentAction.Service, msg.IncidentAction.Alert, h.slackIntegration.BotUserID())
+	runbook, err := Get(ctx, qtx, h.llmClient, msg.Attrs.IncidentAction.Service, msg.Attrs.IncidentAction.Alert, h.slackIntegration.BotUserID())
 	if err != nil {
 		return err
 	}
@@ -54,7 +60,7 @@ func (h *Handler) OnMessage(ctx context.Context, channelID string, slackTS strin
 		return fmt.Errorf("getting updates: %w", err)
 	}
 
-	blocks := Format(msg.IncidentAction.Service, msg.IncidentAction.Alert, runbook, updates)
+	blocks := Format(msg.Attrs.IncidentAction.Service, msg.Attrs.IncidentAction.Alert, runbook, updates)
 	return h.slackIntegration.PostThreadReply(ctx, channelID, slackTS, blocks...)
 }
 

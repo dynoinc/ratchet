@@ -23,6 +23,8 @@ const (
 	cmdNone                cmd = "none"
 	cmdPostWeeklyReport    cmd = "weekly_report"
 	cmdPostUsageReport     cmd = "usage_report"
+	cmdEnableAutoDocReply  cmd = "enable_auto_doc_reply"
+	cmdDisableAutoDocReply cmd = "disable_auto_doc_reply"
 	cmdLookupDocumentation cmd = "lookup_documentation"
 	cmdUpdateDocumentation cmd = "update_documentation"
 )
@@ -44,6 +46,16 @@ var (
 			"show ratchet bot usage statistics",
 			"post usage report",
 			"how many people are using the bot?",
+		},
+		string(cmdEnableAutoDocReply): {
+			"enable auto doc reply",
+			"reply to questions with documentation automatically",
+			"lookup documentation by default",
+		},
+		string(cmdDisableAutoDocReply): {
+			"disable auto doc reply",
+			"stop replying to questions automatically",
+			"stop looking up documentation by default",
 		},
 		string(cmdLookupDocumentation): {
 			"lookup documentation",
@@ -98,6 +110,10 @@ func (c *Commands) findCommand(ctx context.Context, text string) (cmd, error) {
 		return cmdPostWeeklyReport, nil
 	case "usage_report":
 		return cmdPostUsageReport, nil
+	case "enable_auto_doc_reply":
+		return cmdEnableAutoDocReply, nil
+	case "disable_auto_doc_reply":
+		return cmdDisableAutoDocReply, nil
 	case "lookup_documentation":
 		return cmdLookupDocumentation, nil
 	case "update_documentation":
@@ -133,6 +149,10 @@ func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS 
 		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
 	case cmdPostUsageReport:
 		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
+	case cmdEnableAutoDocReply:
+		return c.bot.EnableAutoDocReply(ctx, channelID)
+	case cmdDisableAutoDocReply:
+		return c.bot.DisableAutoDocReply(ctx, channelID)
 	case cmdLookupDocumentation:
 		return docrag.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS, text)
 	case cmdUpdateDocumentation:
