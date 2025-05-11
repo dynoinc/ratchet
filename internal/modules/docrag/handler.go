@@ -3,6 +3,7 @@ package docrag
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
@@ -31,6 +32,11 @@ func (h *handler) Name() string {
 
 func (h *handler) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	if msg.Message.BotID != "" || msg.Message.BotUsername != "" {
+		return nil
+	}
+
+	botID := h.slackIntegration.BotUserID()
+	if strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) {
 		return nil
 	}
 
