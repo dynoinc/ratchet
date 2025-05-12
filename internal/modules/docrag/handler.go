@@ -31,7 +31,7 @@ func (h *handler) Name() string {
 }
 
 func (h *handler) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	if msg.Message.BotID != "" || msg.Message.BotUsername != "" {
+	if msg.Message.BotID != "" || msg.Message.BotUsername != "" || msg.Message.SubType != "" {
 		return nil
 	}
 
