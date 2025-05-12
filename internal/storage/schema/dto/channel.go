@@ -11,5 +11,5 @@ type ChannelAttrs struct {
 	OnboardingStatus onboardingStatus `json:"onboarding_status,omitzero"`
 	Name             string           `json:"name,omitzero"`
 
-	DocResponsesEnabled bool `json:"doc_responses_enabled,omitzero"`
+	DocResponsesEnabled bool `json:"doc_responses_enabled"`
 }
