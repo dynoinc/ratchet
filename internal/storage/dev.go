@@ -37,17 +37,27 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
 
-	// Pull PostgreSQL image if not available
-	reader, err := cli.ImagePull(ctx, postgresImage, image.PullOptions{})
+	// Check if PostgreSQL image already exists
+	_, err = cli.ImageInspect(ctx, postgresImage)
 	if err != nil {
-		return fmt.Errorf("pulling Docker image: %w", err)
-	}
-	defer reader.Close()
+		if !errdefs.IsNotFound(err) {
+			return fmt.Errorf("checking for Docker image: %w", err)
+		}
 
-	// Wait for image pull to complete and display progress
-	termFd := os.Stdout.Fd()
-	if err := jsonmessage.DisplayJSONMessagesStream(reader, os.Stdout, termFd, true, nil); err != nil {
-		return fmt.Errorf("displaying pull progress: %w", err)
+		// Pull PostgreSQL image if not available
+		reader, err := cli.ImagePull(ctx, postgresImage, image.PullOptions{})
+		if err != nil {
+			return fmt.Errorf("pulling Docker image: %w", err)
+		}
+		defer reader.Close()
+
+		// Wait for image pull to complete and display progress
+		termFd := os.Stdout.Fd()
+		if err := jsonmessage.DisplayJSONMessagesStream(reader, os.Stdout, termFd, true, nil); err != nil {
+			return fmt.Errorf("displaying pull progress: %w", err)
+		}
+	} else {
+		slog.Info("PostgreSQL image already exists, skipping pull", "image", postgresImage)
 	}
 
 	// Define container configurations
