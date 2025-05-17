@@ -30,7 +30,7 @@ func New(bot *internal.Bot, slackIntegration slack_integration.Integration) *Bac
 }
 
 func (w *BackfillThreadWorker) NextRetry(job *river.Job[background.BackfillThreadWorkerArgs]) time.Time {
-	// Most of the time failure is from slack API rate limiting, so backoff aggresively.
+	// Most of the time failure is from slack API rate limiting, so back off aggressively.
 	return time.Now().Add(30 * time.Second)
 }
 
