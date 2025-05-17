@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/docker/docker/client"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/require"
@@ -13,7 +14,20 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
+func requireDocker(t *testing.T) {
+	t.Helper()
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skipf("docker not available: %v", err)
+	}
+	if _, err := cli.Ping(t.Context()); err != nil {
+		t.Skipf("docker not available: %v", err)
+	}
+}
+
 func setupTestDB(t *testing.T) *pgxpool.Pool {
+	requireDocker(t)
+	
 	ctx := t.Context()
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
