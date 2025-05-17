@@ -27,6 +27,7 @@ func requireDocker(t *testing.T) {
 
 func setupTestDB(t *testing.T) *pgxpool.Pool {
 	requireDocker(t)
+	
 	ctx := t.Context()
 	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
