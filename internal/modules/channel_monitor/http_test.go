@@ -143,3 +143,30 @@ func TestGetTestResults_ConcurrencyLimit(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("message %d", i+1), result.Message.Text, "messages should be in order")
 	}
 }
+
+func TestGetTestResults_LLMErrors(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	messages := []dto.SlackMessage{
+		{Text: "message 1"},
+	}
+
+	entry := &entry{
+		PromptTemplate: template.Must(template.New("test").Parse("prompt for: {{.Message.Text}}")),
+	}
+
+	mockLLM := mocks.NewMockClient(ctrl)
+	llmErr := fmt.Errorf("llm failure")
+
+	mockLLM.EXPECT().
+		RunJSONModePrompt(gomock.Any(), "prompt for: message 1", gomock.Any()).
+		Return("", "", llmErr)
+
+	results := getTestResults(context.Background(), messages, entry, mockLLM)
+
+	assert.Equal(t, 1, len(results), "should have one result")
+	assert.Equal(t, llmErr.Error(), results[0].Error, "should capture llm error")
+	assert.Empty(t, results[0].ValidatedOutput, "validated output should be empty")
+	assert.Empty(t, results[0].InvalidOutput, "invalid output should be empty")
+}
