@@ -346,11 +346,6 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 	alertName := r.PathValue("alert")
 
 	channelID := r.URL.Query().Get("channel_id")
-	interval := cmp.Or(r.URL.Query().Get("interval"), "1h")
-	intervalDuration, err := time.ParseDuration(interval)
-	if err != nil {
-		return nil, err
-	}
 
 	qtx := schema.New(h.bot.DB)
 	runbookMessage, err := runbook.Get(
@@ -369,20 +364,7 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("no runbook found")
 	}
 
-	updates, err := recent_activity.Get(
-		r.Context(),
-		qtx,
-		h.llmClient,
-		runbookMessage.LexicalSearchQuery,
-		runbookMessage.SemanticSearchQuery,
-		intervalDuration,
-		h.slackIntegration.BotUserID(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("getting updates: %w", err)
-	}
-
-	blocks := runbook.Format(serviceName, alertName, runbookMessage, updates)
+	blocks := runbook.Format(serviceName, alertName, runbookMessage)
 	if err := h.slackIntegration.PostMessage(r.Context(), channelID, blocks...); err != nil {
 		return nil, err
 	}

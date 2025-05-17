@@ -53,7 +53,7 @@ modules are:
 | commands                                                      | Provides a natural language interface to the bot.                                                                                                      |
 | docrag                                                        | Performs Retrieval-Augmented Generation using internal documentation to answer questions or provide context.                                             |
 | docupdate                                                     | Suggests updates to documentation based on channel activity or code changes.                                                                           |
-| recent_activity                                               | When an alert is triggered, the bot posts a message with the recent activity relevant to the alert.                                                    |
+| recent_activity                                               | Provides recent Slack activity relevant to alerts. Currently not shown in runbook posts. |
 | report                                                        | Provides a weekly report for a channel with suggestions of what to improve to reduce future support toil.                                              |
 | runbook                                                       | When an alert is triggered, the bot posts a message with the runbook for the alert.                                                                    |
 | usage                                                         | Provides a usage report for the bot with statistics of thumbs up/down reactions.                                                                       |
