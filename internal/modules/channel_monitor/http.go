@@ -249,7 +249,7 @@ func renderPage(w http.ResponseWriter, prefix string) {
 				<input type="number" name="message_count" id="count" value="3">
 			</div>
 			<div>
-				<label for="messages">Additional Messages to Test (seperate with --- line):</label><br>
+				<label for="messages">Additional Messages to Test (separate with --- line):</label><br>
 				<textarea name="test_messages" id="messages"></textarea>
 			</div>
 			<button type="submit" class="submit">Test</button>
