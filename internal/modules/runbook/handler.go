@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/slack-go/slack"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
-	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
@@ -55,17 +53,12 @@ func (h *Handler) OnMessage(ctx context.Context, channelID string, slackTS strin
 		return nil
 	}
 
-	updates, err := recent_activity.Get(ctx, qtx, h.llmClient, runbook.LexicalSearchQuery, runbook.SemanticSearchQuery, time.Hour, h.slackIntegration.BotUserID())
-	if err != nil {
-		return fmt.Errorf("getting updates: %w", err)
-	}
-
-	blocks := Format(msg.Attrs.IncidentAction.Service, msg.Attrs.IncidentAction.Alert, runbook, updates)
+	blocks := Format(msg.Attrs.IncidentAction.Service, msg.Attrs.IncidentAction.Alert, runbook)
 	return h.slackIntegration.PostThreadReply(ctx, channelID, slackTS, blocks...)
 }
 
 // Format creates the Slack message blocks for a runbook response
-func Format(service, alert string, runbook *llm.RunbookResponse, updates []recent_activity.Activity) []slack.Block {
+func Format(service, alert string, runbook *llm.RunbookResponse) []slack.Block {
 	blocks := []slack.Block{
 		slack.NewHeaderBlock(
 			slack.NewTextBlockObject(slack.PlainTextType, fmt.Sprintf("Runbook: %s/%s", service, alert), true, false),
@@ -124,26 +117,6 @@ func Format(service, alert string, runbook *llm.RunbookResponse, updates []recen
 			),
 			slack.NewDividerBlock(),
 		)
-	}
-
-	if len(updates) > 0 {
-		blocks = append(blocks,
-			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "*Recent Slack Activity Relevant To Alert:*", false, false),
-				nil, nil,
-			),
-		)
-
-		for _, update := range updates {
-			messageLink := fmt.Sprintf("• https://slack.com/archives/%s/p%s",
-				update.ChannelID, strings.Replace(update.Ts, ".", "", 1))
-
-			blocks = append(blocks, slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, messageLink, false, false),
-				nil, nil,
-			))
-		}
-		blocks = append(blocks, slack.NewDividerBlock())
 	}
 
 	// Add standardized signature block
