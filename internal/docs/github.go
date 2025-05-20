@@ -18,6 +18,7 @@ type gitHubSource struct {
 	AppID          int64  `yaml:"app_id"        validate:"required,gt=0"`
 	InstallationID int64  `yaml:"installation_id"  validate:"required,gt=0"`
 	PrivateKeyPath string `yaml:"private_key_path" validate:"required"`
+	Token          string `yaml:"token"`
 
 	GitHubURL string `yaml:"github_url"       validate:"required,url"`
 	Owner     string `yaml:"owner"            validate:"required"`
@@ -29,10 +30,18 @@ func (gs *gitHubSource) URL() string {
 	return fmt.Sprintf("%s/%s/%s", gs.GitHubURL, gs.Owner, gs.Repo)
 }
 
+func (gs *gitHubSource) githubClient() (*github.Client, error) {
+	if gs.Token != "" {
+		return github_integration.ForToken(gs.Token)
+	}
+
+	return github_integration.ForApp(gs.AppID, gs.InstallationID, gs.PrivateKeyPath)
+}
+
 func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter.Seq[Update], string, func() error) {
 	// Get GitHub client
 	start := time.Now()
-	client, err := github_integration.For(gs.AppID, gs.InstallationID, gs.PrivateKeyPath)
+	client, err := gs.githubClient()
 	slog.Debug("GitHub client initialization", "duration", time.Since(start))
 	if err != nil {
 		return nil, revision, func() error {
@@ -113,7 +122,7 @@ func (gs *gitHubSource) changesSince(ctx context.Context, revision string) (iter
 }
 
 func (gs *gitHubSource) get(ctx context.Context, path, revision string) (string, error) {
-	client, err := github_integration.For(gs.AppID, gs.InstallationID, gs.PrivateKeyPath)
+	client, err := gs.githubClient()
 	if err != nil {
 		return "", fmt.Errorf("creating GitHub client: %w", err)
 	}
@@ -133,7 +142,7 @@ func (gs *gitHubSource) get(ctx context.Context, path, revision string) (string,
 }
 
 func (gs *gitHubSource) Suggest(ctx context.Context, path, revision, content string) (string, error) {
-	client, err := github_integration.For(gs.AppID, gs.InstallationID, gs.PrivateKeyPath)
+	client, err := gs.githubClient()
 	if err != nil {
 		return "", fmt.Errorf("creating GitHub client: %w", err)
 	}
