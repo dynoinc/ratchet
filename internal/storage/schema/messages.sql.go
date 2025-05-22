@@ -13,10 +13,11 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
-const addMessage = `-- name: AddMessage :exec
+const addMessage = `-- name: AddMessage :one
 INSERT INTO messages_v3 (channel_id, ts, attrs)
 VALUES ($1, $2, $3)
 ON CONFLICT (channel_id, ts) DO NOTHING
+RETURNING (xmax = 0) as inserted
 `
 
 type AddMessageParams struct {
@@ -25,15 +26,18 @@ type AddMessageParams struct {
 	Attrs     dto.MessageAttrs
 }
 
-func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
-	_, err := q.db.Exec(ctx, addMessage, arg.ChannelID, arg.Ts, arg.Attrs)
-	return err
+func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) (bool, error) {
+	row := q.db.QueryRow(ctx, addMessage, arg.ChannelID, arg.Ts, arg.Attrs)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const addThreadMessage = `-- name: AddThreadMessage :exec
+const addThreadMessage = `-- name: AddThreadMessage :one
 INSERT INTO messages_v3 (channel_id, parent_ts, ts, attrs)
 VALUES ($1, $2 :: text, $3, $4)
 ON CONFLICT (channel_id, ts) DO NOTHING
+RETURNING (xmax = 0) as inserted
 `
 
 type AddThreadMessageParams struct {
@@ -43,14 +47,16 @@ type AddThreadMessageParams struct {
 	Attrs     dto.MessageAttrs
 }
 
-func (q *Queries) AddThreadMessage(ctx context.Context, arg AddThreadMessageParams) error {
-	_, err := q.db.Exec(ctx, addThreadMessage,
+func (q *Queries) AddThreadMessage(ctx context.Context, arg AddThreadMessageParams) (bool, error) {
+	row := q.db.QueryRow(ctx, addThreadMessage,
 		arg.ChannelID,
 		arg.ParentTs,
 		arg.Ts,
 		arg.Attrs,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
 const debugGetLatestServiceUpdates = `-- name: DebugGetLatestServiceUpdates :many

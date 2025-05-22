@@ -30,6 +30,7 @@ require (
 	go.opentelemetry.io/otel/exporters/prometheus v0.57.0
 	go.opentelemetry.io/otel/sdk/metric v1.35.0
 	go.uber.org/mock v0.5.1
+	golang.org/x/oauth2 v0.29.0
 	golang.org/x/sync v0.13.0
 	riverqueue.com/riverui v0.9.0
 )
@@ -87,7 +88,6 @@ require (
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/oauth2 v0.29.0 // indirect
 	golang.org/x/telemetry v0.0.0-20250417124945-06ef541f3fa3 // indirect
 	golang.org/x/tools v0.32.0 // indirect
 	golang.org/x/vuln v1.1.4 // indirect

@@ -46,12 +46,13 @@ func TestUpdateReaction(t *testing.T) {
 	_, err := schema.New(db).AddChannel(ctx, "C0706000000")
 	require.NoError(t, err)
 
-	err = schema.New(db).AddMessage(ctx, schema.AddMessageParams{
+	inserted, err := schema.New(db).AddMessage(ctx, schema.AddMessageParams{
 		ChannelID: "C0706000000",
 		Ts:        "1714358400.000000",
 		Attrs:     dto.MessageAttrs{},
 	})
 	require.NoError(t, err)
+	require.True(t, inserted)
 
 	err = schema.New(db).UpdateReaction(ctx, schema.UpdateReactionParams{
 		ChannelID: "C0706000000",

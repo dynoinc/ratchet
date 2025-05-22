@@ -110,8 +110,13 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 
 	var jobs []river.InsertManyParams
 	for _, param := range params {
-		if err := qtx.AddMessage(ctx, param); err != nil {
+		inserted, err := qtx.AddMessage(ctx, param)
+		if err != nil {
 			return fmt.Errorf("adding message (ts=%s) to channel %s: %w", param.Ts, param.ChannelID, err)
+		}
+
+		if !inserted {
+			continue
 		}
 
 		var insertOpts *river.InsertOpts
@@ -144,13 +149,18 @@ func (b *Bot) AddThreadMessages(ctx context.Context, tx pgx.Tx, params []schema.
 
 	var jobs []river.InsertManyParams
 	for _, param := range params {
-		if err := qtx.AddThreadMessage(ctx, param); err != nil {
+		inserted, err := qtx.AddThreadMessage(ctx, param)
+		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.ForeignKeyViolation {
 				continue
 			}
 
 			return fmt.Errorf("adding thread message to channel %s (ts=%s): %w", param.ChannelID, param.Ts, err)
+		}
+
+		if !inserted {
+			continue
 		}
 
 		jobs = append(jobs, river.InsertManyParams{
