@@ -41,9 +41,6 @@ type llmUsageStats struct {
 	TotalRequests     int
 	TotalPromptTokens int
 	TotalOutputTokens int
-	TotalTokens       int
-	AveragePromptSize float64
-	AverageOutputSize float64
 }
 
 func get(ctx context.Context, db *schema.Queries, slackIntegration slack_integration.Integration) (report, error) {
@@ -150,19 +147,9 @@ func getLLMUsage(ctx context.Context, db *schema.Queries, startTs, endTs time.Ti
 		if record.Output.Usage != nil {
 			stats.TotalPromptTokens += record.Output.Usage.PromptTokens
 			stats.TotalOutputTokens += record.Output.Usage.CompletionTokens
-			stats.TotalTokens += record.Output.Usage.TotalTokens
 		}
 
 		llmUsage[model] = stats
-	}
-
-	// Calculate averages
-	for model, stats := range llmUsage {
-		if stats.TotalRequests > 0 {
-			stats.AveragePromptSize = float64(stats.TotalPromptTokens) / float64(stats.TotalRequests)
-			stats.AverageOutputSize = float64(stats.TotalOutputTokens) / float64(stats.TotalRequests)
-			llmUsage[model] = stats
-		}
 	}
 
 	return llmUsage, nil
@@ -233,29 +220,22 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 
 	// Prepare LLM usage statistics
 	type llmStats struct {
-		model         string
-		requests      int
-		promptTokens  int
-		outputTokens  int
-		totalTokens   int
-		avgPromptSize float64
-		avgOutputSize float64
+		model        string
+		requests     int
+		promptTokens int
+		outputTokens int
 	}
 
 	var llmModels []llmStats
-	var totalRequests, totalTokens int
+	var totalRequests int
 	for model, usage := range report.LLMUsage {
 		totalRequests += usage.TotalRequests
-		totalTokens += usage.TotalTokens
 
 		llmModels = append(llmModels, llmStats{
-			model:         model,
-			requests:      usage.TotalRequests,
-			promptTokens:  usage.TotalPromptTokens,
-			outputTokens:  usage.TotalOutputTokens,
-			totalTokens:   usage.TotalTokens,
-			avgPromptSize: usage.AveragePromptSize,
-			avgOutputSize: usage.AverageOutputSize,
+			model:        model,
+			requests:     usage.TotalRequests,
+			promptTokens: usage.TotalPromptTokens,
+			outputTokens: usage.TotalOutputTokens,
 		})
 	}
 
@@ -281,8 +261,8 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 		// Summary
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn",
-				fmt.Sprintf("*Summary*: Channels: %d, Total Messages: %d, Total 👍: %d, Total 👎: %d, LLM Requests: %d, Total Tokens: %d",
-					report.ChannelCount, totalMessages, totalThumbsUp, totalThumbsDown, totalRequests, totalTokens),
+				fmt.Sprintf("*Summary*: Channels: %d, Total Messages: %d, Total 👍: %d, Total 👎: %d, LLM Requests: %d",
+					report.ChannelCount, totalMessages, totalThumbsUp, totalThumbsDown, totalRequests),
 				false, false),
 			nil, nil,
 		),
@@ -302,7 +282,7 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 		// LLM Usage Table
 		var llmTableBuilder strings.Builder
 		llmTable := tablewriter.NewWriter(&llmTableBuilder)
-		llmTable.SetHeader([]string{"Model", "Requests", "Prompt Tokens", "Output Tokens", "Total Tokens", "Avg Prompt", "Avg Output"})
+		llmTable.SetHeader([]string{"Model", "Requests", "Prompt Tokens", "Output Tokens"})
 		llmTable.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
 		llmTable.SetCenterSeparator("|")
 		llmTable.SetAlignment(tablewriter.ALIGN_LEFT)
@@ -313,9 +293,6 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 				fmt.Sprintf("%d", model.requests),
 				fmt.Sprintf("%d", model.promptTokens),
 				fmt.Sprintf("%d", model.outputTokens),
-				fmt.Sprintf("%d", model.totalTokens),
-				fmt.Sprintf("%.1f", model.avgPromptSize),
-				fmt.Sprintf("%.1f", model.avgOutputSize),
 			})
 		}
 		llmTable.Render()

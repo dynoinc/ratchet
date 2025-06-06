@@ -1,3 +1,5 @@
+default: test
+
 gen:
         go mod tidy
         go generate ./...
