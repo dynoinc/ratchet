@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kelseyhightower/envconfig"
@@ -24,10 +26,27 @@ import (
 )
 
 type Config struct {
-	APIKey         string `envconfig:"API_KEY"`
-	URL            string `default:"http://localhost:11434/v1/"`
-	Model          string `default:"qwen2.5:7b"`
-	EmbeddingModel string `split_words:"true" default:"nomic-embed-text"`
+	APIKey              string `envconfig:"API_KEY"`
+	URL                 string `default:"http://localhost:11434/v1/"`
+	Model               string `default:"qwen2.5:7b"`
+	EmbeddingModel      string `split_words:"true" default:"nomic-embed-text"`
+	DeploymentOpsBinary string `envconfig:"RATCHET_DEPLOYMENT_OPS_BINARY"`
+}
+
+type ToolOptions struct {
+	Tools      []openai.ChatCompletionToolParam
+	BinaryPath string
+}
+
+type PythonToolSchema struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	InputSchema map[string]interface{} `json:"inputSchema"`
+}
+
+type ToolCallInput struct {
+	Name      string                 `json:"name"`
+	Arguments map[string]interface{} `json:"arguments"`
 }
 
 func DefaultConfig() Config {
@@ -49,6 +68,7 @@ type Client interface {
 	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
 	ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error)
+	ProccessDeploymentOps(ctx context.Context, text string) (string, error)
 }
 
 type client struct {
@@ -113,6 +133,129 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 	return nil
 }
 
+func (c *client) formatPythonRawTools(pythonTools []PythonToolSchema) []openai.ChatCompletionToolParam {
+	if c == nil {
+		return nil
+	}
+	var goTools []openai.ChatCompletionToolParam
+
+	for _, pythonTool := range pythonTools {
+		goTool := openai.ChatCompletionToolParam{
+			Function: openai.FunctionDefinitionParam{
+				Name:        pythonTool.Name,
+				Description: openai.String(pythonTool.Description),
+				Parameters:  openai.FunctionParameters(pythonTool.InputSchema),
+			},
+		}
+		goTools = append(goTools, goTool)
+	}
+	return goTools
+}
+
+func (c *client) executePythonTools(ctx context.Context, binaryPath string, inputs []ToolCallInput) ([]string, error) {
+	if c == nil {
+		return nil, nil
+	}
+	// Log tools used
+	toolNames := make([]string, len(inputs))
+	for i, input := range inputs {
+		toolNames[i] = input.Name
+	}
+	slog.DebugContext(ctx, "executing python tools", "tool_names", toolNames)
+
+	// Encode as JSON and run via std in/out
+	inputsJSON, err := json.Marshal(inputs)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling input: %w", err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cmd := exec.CommandContext(ctx, binaryPath)
+	cmd.Stdin = bytes.NewReader(inputsJSON)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("running python tools: %w", err)
+	}
+
+	// Convert results into a slice of strings
+	var rawResultsJSON []json.RawMessage
+
+	if err := json.Unmarshal(stdout.Bytes(), &rawResultsJSON); err != nil {
+		return nil, fmt.Errorf("parsing tool results: %w", err)
+	}
+
+	var results []string
+	for _, raw := range rawResultsJSON {
+		results = append(results, string(raw))
+	}
+	return results, nil
+}
+
+func (c *client) getToolsFromPython(ctx context.Context, binaryPath string) ([]openai.ChatCompletionToolParam, error) {
+	if c == nil {
+		return nil, nil
+	}
+	// Execute the python tool called "list_all_tools" to get all tools in list of string format
+	input := []ToolCallInput{{
+		Name:      "list_all_tools",
+		Arguments: map[string]interface{}{},
+	}}
+
+	results, err := c.executePythonTools(ctx, binaryPath, input)
+	if err != nil {
+		return nil, fmt.Errorf("getting tools from Python: %w", err)
+	}
+	if len(results) == 0 {
+		return []openai.ChatCompletionToolParam{}, nil
+	}
+
+	var pythonTools []PythonToolSchema
+	if err := json.Unmarshal([]byte(results[0]), &pythonTools); err != nil {
+		return nil, fmt.Errorf("parsing Python tools response: %w", err)
+	}
+	return c.formatPythonRawTools(pythonTools), nil
+}
+
+func (c *client) handleToolCalls(
+	ctx context.Context,
+	binaryPath string,
+	toolCalls []openai.ChatCompletionMessageToolCall) (map[string]string, error) {
+	if c == nil {
+		return nil, nil
+	}
+	input := make([]ToolCallInput, len(toolCalls))
+
+	for i, toolCall := range toolCalls {
+		var arguments map[string]interface{}
+
+		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &arguments); err != nil {
+			return nil, fmt.Errorf("parsing arguments for tool call %s: %w", toolCall.Function.Name, err)
+		}
+
+		input[i] = ToolCallInput{
+			Name:      toolCall.Function.Name,
+			Arguments: arguments,
+		}
+	}
+	// Get results to each tool call in the form of (call id, output)
+	results, err := c.executePythonTools(ctx, binaryPath, input)
+
+	if err != nil {
+		return nil, fmt.Errorf("executing Python tools: %w", err)
+	}
+
+	resultsByCallID := make(map[string]string)
+
+	for i, result := range results {
+		toolCallID := toolCalls[i].ID
+		resultsByCallID[toolCallID] = result
+	}
+	return resultsByCallID, nil
+}
+
 // persistLLMUsage directly writes LLM usage data to the database
 // This is a best-effort operation and failures are logged but don't affect the main flow
 func (c *client) persistLLMUsage(ctx context.Context, input dto.LLMInput, output dto.LLMOutput, model string) {
@@ -142,16 +285,26 @@ func (c *client) runChatCompletion(
 	inputMessages []dto.LLMMessage,
 	messages []openai.ChatCompletionMessageParamUnion,
 	temperature float64,
+	maxRounds int, // maximum number of queries to llm (e.g. 1 if no tools)
+	toolOptions *ToolOptions, // nil means no tools
 	jsonMode bool,
 ) (string, error) {
 	if c == nil {
 		return "", nil
+	}
+	var tools []openai.ChatCompletionToolParam
+	var binaryPath string
+
+	if toolOptions != nil {
+		tools = toolOptions.Tools
+		binaryPath = toolOptions.BinaryPath
 	}
 
 	params := openai.ChatCompletionNewParams{
 		Model:       c.cfg.Model,
 		Messages:    messages,
 		Temperature: param.NewOpt(temperature),
+		Tools:       tools,
 	}
 
 	if jsonMode {
@@ -159,31 +312,59 @@ func (c *client) runChatCompletion(
 			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
 		}
 	}
+	var totalUsage dto.LLMUsageStats
+	var finalContent string
+	var round int
 
-	resp, err := c.client.Chat.Completions.New(ctx, params)
-	if err != nil {
-		return "", err
+	for round = 0; round < maxRounds; round++ {
+		resp, err := c.client.Chat.Completions.New(ctx, params)
+		if err != nil {
+			return "", fmt.Errorf("generating response: %w", err)
+		}
+
+		message := resp.Choices[0].Message
+
+		// Accumulate usage after each step to log afterwards
+		totalUsage.PromptTokens += int(resp.Usage.PromptTokens)
+		totalUsage.CompletionTokens += int(resp.Usage.CompletionTokens)
+		totalUsage.TotalTokens += int(resp.Usage.TotalTokens)
+
+		if len(message.ToolCalls) == 0 {
+			finalContent = message.Content
+			break
+		}
+
+		// Handle tool calls
+		if toolOptions == nil {
+			return "", fmt.Errorf("handling tool calls: no tool information passed in")
+		}
+
+		resultsByCallID, err := c.handleToolCalls(ctx, binaryPath, message.ToolCalls)
+		if err != nil {
+			return "", fmt.Errorf("performing tool call: %w", err)
+		}
+
+		params.Messages = append(params.Messages, message.ToParam())
+
+		for callID, result := range resultsByCallID {
+			params.Messages = append(params.Messages, openai.ToolMessage(result, callID))
+		}
 	}
-
-	content := resp.Choices[0].Message.Content
-
-	// Persist LLM usage
+	if round >= maxRounds {
+		finalContent = fmt.Sprintf("Unable to provide an answer because reached maximum number of rounds (%d).", maxRounds)
+	}
+	// Persist LLM usage (only keep track of final result and not intermediate steps)
 	c.persistLLMUsage(ctx,
 		dto.LLMInput{
 			Messages: inputMessages,
 		},
 		dto.LLMOutput{
-			Content: content,
-			Usage: &dto.LLMUsageStats{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			},
+			Content: finalContent,
+			Usage:   &totalUsage,
 		},
 		c.cfg.Model,
 	)
-
-	return content, nil
+	return finalContent, nil
 }
 
 // createLLMMessages creates a slice of message params from system and user content
@@ -264,7 +445,7 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	userContent := fmt.Sprintf("Messages:\n%s", messages)
 	chatMessages, inputMessages := createLLMMessages(prompt, userContent)
 
-	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, nil, false)
 	if err != nil {
 		return "", fmt.Errorf("generating suggestions: %w", err)
 	}
@@ -386,7 +567,7 @@ Example 4:
 	}
 
 	chatMessages, inputMessages := createLLMMessages(prompt, content)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, nil, true)
 	if err != nil {
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
@@ -452,7 +633,7 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	}
 
 	chatMessages, inputMessages := createLLMMessages(prompt, "")
-	respMsg, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
+	respMsg, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, nil, true)
 	if err != nil {
 		return "", "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
@@ -481,6 +662,7 @@ Given a message, respond with EXACTLY ONE of these commands (no explanation, jus
 - disable_auto_doc_reply (for disabling auto doc reply)
 - lookup_documentation (for looking up documentation)
 - update_documentation (for updating documentation)
+- deployment_ops (relating to the deployment lifecycle including deployment queries, adjusting emergency capacity (ecap), rolling back, etc)
 - none (for messages that don't match any supported command)
 
 Do not add any conversational text, explanation, or formatting; output *only* the single command name.
@@ -502,9 +684,44 @@ Response:
 `
 
 	chatMessages, inputMessages := createLLMMessages(prompt, text)
-	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, false)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, 1, nil, false)
 	if err != nil {
 		return "", fmt.Errorf("classifying command: %w", err)
+	}
+
+	return content, nil
+}
+
+func (c *client) ProccessDeploymentOps(ctx context.Context, user_content string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	sys_prompt := `You are a dev-ops expert for a Slack bot named Ratchet that helps reduce operational toil. Your task is to succesfully use the tools provided to produce an answer to the given query. 
+
+Tool calling guidelines:
+- Before calling any tool, you must first **extract, list, and verify all argument values** (e.g., project name, service, team) from the user's query.
+  - For example, if a user references a project or service, you must first list all available projects/services and confirm a match before passing any value to a tool.
+  
+Instructions for handling deployment queries:
+- If the user asks about recent deployments and does not specify which ones, return the 3 most recent deployments by default.
+- Always include the configSha of each deployment in the response, unless the user specifically requests that it be omitted.
+
+If an answer can not be determined or information is insufficient, please say so clearly.`
+
+	// Prepare tools for deployment ops
+	tools, err := c.getToolsFromPython(ctx, c.cfg.DeploymentOpsBinary)
+	if err != nil {
+		return "", fmt.Errorf("loading deployment ops tools: %w", err)
+	}
+	toolOptions := &ToolOptions{
+		Tools:      tools,
+		BinaryPath: c.cfg.DeploymentOpsBinary,
+	}
+
+	chatMessages, inputMessages := createLLMMessages(sys_prompt, user_content)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, 10, toolOptions, false)
+	if err != nil {
+		return "", fmt.Errorf("processing deployment ops: %w", err)
 	}
 
 	return content, nil
@@ -561,7 +778,7 @@ Response:
 
 	content := fmt.Sprintf(prompt, question, documents)
 	chatMessages, inputMessages := createLLMMessages(prompt, content)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.2, false)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.2, 1, nil, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation response: %w", err)
 	}
@@ -621,7 +838,7 @@ func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, ms
 ---`, doc, msgs)
 
 	chatMessages, inputMessages := createLLMMessages(systemPrompt, userContent)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, nil, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation update: %w", err)
 	}

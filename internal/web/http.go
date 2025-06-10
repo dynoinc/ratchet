@@ -20,6 +20,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/slack-go/slack/slackevents"
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -141,6 +142,7 @@ func New(
 	apiMux.HandleFunc("POST /bot/usage", handleJSON(handlers.postUsage))
 	apiMux.HandleFunc("GET /bot/llm-usage", handleJSON(handlers.getLLMUsage))
 	apiMux.HandleFunc("GET /bot/llm-usage/by-model", handleJSON(handlers.getLLMUsageByModel))
+	apiMux.HandleFunc("POST /bot/send-message", handleJSON(handlers.sendMessage))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -570,6 +572,35 @@ func (h *httpHandlers) getLLMUsageByModel(r *http.Request) (any, error) {
 	}
 
 	return usageData, nil
+}
+
+func (h *httpHandlers) sendMessage(r *http.Request) (any, error) {
+	// Parse the request body to get the message details
+	var req struct {
+		ChannelID string `json:"channel_id"`
+		Text      string `json:"text"`
+		User      string `json:"user,omitzero"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, fmt.Errorf("parsing request body: %w", err)
+	}
+
+	// Create a mock Slack message event
+	messageEvent := &slackevents.MessageEvent{
+		Type:      "message",
+		Channel:   req.ChannelID,
+		User:      req.User,
+		Text:      req.Text,
+		TimeStamp: fmt.Sprintf("%d.000000", time.Now().Unix()),
+	}
+
+	// Trigger the bot's message notification flow
+	if err := h.bot.NotifyMessage(r.Context(), messageEvent); err != nil {
+		return nil, fmt.Errorf("notifying message: %w", err)
+	}
+
+	return map[string]string{"status": "message processed"}, nil
 }
 
 func (h *httpHandlers) docsStatus(r *http.Request) (any, error) {

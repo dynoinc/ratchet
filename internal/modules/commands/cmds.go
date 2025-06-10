@@ -8,6 +8,7 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
+	"github.com/dynoinc/ratchet/internal/modules/deployment_ops"
 	"github.com/dynoinc/ratchet/internal/modules/docrag"
 	"github.com/dynoinc/ratchet/internal/modules/docupdate"
 	"github.com/dynoinc/ratchet/internal/modules/report"
@@ -27,6 +28,7 @@ const (
 	cmdDisableAutoDocReply cmd = "disable_auto_doc_reply"
 	cmdLookupDocumentation cmd = "lookup_documentation"
 	cmdUpdateDocumentation cmd = "update_documentation"
+	cmdDeploymentOps       cmd = "deployment_ops"
 )
 
 var (
@@ -67,6 +69,11 @@ var (
 			"update the docs",
 			"open a PR or a pull request",
 			"fix the docs",
+		},
+		string(cmdDeploymentOps): {
+			"list recent deployments for project async_plat",
+			"add ecap to deployment async_plat/frontend-catch-canary",
+			"roll back for deployment async_plat/frontend-catch-canary",
 		},
 	}
 )
@@ -118,6 +125,8 @@ func (c *Commands) findCommand(ctx context.Context, text string) (cmd, error) {
 		return cmdLookupDocumentation, nil
 	case "update_documentation":
 		return cmdUpdateDocumentation, nil
+	case "deployment_ops":
+		return cmdDeploymentOps, nil
 	default:
 		slog.DebugContext(ctx, "unknown command", "text", text, "command", result)
 		return cmdNone, nil
@@ -157,6 +166,8 @@ func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS 
 		return docrag.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS, text)
 	case cmdUpdateDocumentation:
 		return docupdate.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, c.bot.DocsConfig, channelID, slackTS, text)
+	case cmdDeploymentOps:
+		return deployment_ops.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, text)
 	case cmdNone: // nothing to do
 	}
 
