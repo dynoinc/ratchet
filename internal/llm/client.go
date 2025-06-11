@@ -563,7 +563,7 @@ Tool calling guidelines:
   - It's okay to be flexible (e.g. match testprojectt with test_project)1
 
 Instructions for handling deployment queries:
-- Always include the configSha of each deployment in the response, unless the user specifically requests that it be omitted.
+- Always include the packageId of each deployment in the response, unless the user specifically requests that it be omitted.
 
 If an answer can not be determined or information is insufficient, please say so clearly.`
 
