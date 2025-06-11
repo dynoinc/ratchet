@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/slack-go/slack"
 
 	"github.com/dynoinc/ratchet/internal/llm"
@@ -192,27 +193,25 @@ func format(
 	if len(incidentCounts) > 0 {
 		var alertsTable strings.Builder
 		alertsTable.WriteString("```\n") // Start code block
-		table := tablewriter.NewWriter(&alertsTable)
-		table.SetHeader([]string{"SERVICE", "ALERT", "COUNT", "AVG DURATION"}) // Shortened headers
-		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-		table.SetCenterSeparator("|")
-		table.SetColumnSeparator("|")
-		table.SetRowSeparator("-")
+		table := tablewriter.NewTable(&alertsTable,
+			tablewriter.WithConfig(tablewriter.Config{
+				Header: tw.CellConfig{
+					Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+				},
+				Row: tw.CellConfig{
+					Alignment: tw.CellAlignment{
+						PerColumn: []tw.Align{
+							tw.AlignLeft,  // SERVICE
+							tw.AlignLeft,  // ALERT
+							tw.AlignRight, // COUNT
+							tw.AlignRight, // AVG DURATION
+						},
+					},
+				},
+			}),
+		)
 
-		// Disable auto formatting to have more control
-		table.SetAutoWrapText(false)
-		table.SetAutoFormatHeaders(true)
-		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-		table.SetAlignment(tablewriter.ALIGN_LEFT)
-
-		// Set specific column widths to prevent wrapping
-		table.SetColWidth(10) // Minimum width for all columns
-		table.SetColumnAlignment([]int{
-			tablewriter.ALIGN_LEFT,  // SERVICE
-			tablewriter.ALIGN_LEFT,  // ALERT
-			tablewriter.ALIGN_RIGHT, // COUNT
-			tablewriter.ALIGN_RIGHT, // AVG DURATION
-		})
+		table.Header("SERVICE", "ALERT", "COUNT", "AVG DURATION")
 
 		alerts := make([]alertEntry, 0, len(incidentCounts))
 		for alert, count := range incidentCounts {
@@ -277,20 +276,24 @@ func format(
 		frequentAlertsTable.WriteString("*Frequently Firing Alerts:*\n")
 		frequentAlertsTable.WriteString("The following alerts fired more than 5 times this week and may need attention:\n\n```\n")
 
-		table := tablewriter.NewWriter(&frequentAlertsTable)
-		table.SetHeader([]string{"SERVICE", "ALERT", "COUNT"})
-		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-		table.SetCenterSeparator("|")
-		table.SetColumnSeparator("|")
-		table.SetRowSeparator("-")
-		table.SetAutoWrapText(false)
-		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-		table.SetAlignment(tablewriter.ALIGN_LEFT)
-		table.SetColumnAlignment([]int{
-			tablewriter.ALIGN_LEFT,  // SERVICE
-			tablewriter.ALIGN_LEFT,  // ALERT
-			tablewriter.ALIGN_RIGHT, // COUNT
-		})
+		table := tablewriter.NewTable(&frequentAlertsTable,
+			tablewriter.WithConfig(tablewriter.Config{
+				Header: tw.CellConfig{
+					Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+				},
+				Row: tw.CellConfig{
+					Alignment: tw.CellAlignment{
+						PerColumn: []tw.Align{
+							tw.AlignLeft,  // SERVICE
+							tw.AlignLeft,  // ALERT
+							tw.AlignRight, // COUNT
+						},
+					},
+				},
+			}),
+		)
+
+		table.Header("SERVICE", "ALERT", "COUNT")
 
 		for _, entry := range frequentAlerts {
 			table.Append([]string{
@@ -317,20 +320,24 @@ func format(
 		longAlertsTable.WriteString("*Alerts with Long Resolution Times:*\n")
 		longAlertsTable.WriteString("The following alerts consistently take more than 3 days to resolve and may need review:\n\n```\n")
 
-		table := tablewriter.NewWriter(&longAlertsTable)
-		table.SetHeader([]string{"SERVICE", "ALERT", "AVG DURATION"})
-		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-		table.SetCenterSeparator("|")
-		table.SetColumnSeparator("|")
-		table.SetRowSeparator("-")
-		table.SetAutoWrapText(false)
-		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-		table.SetAlignment(tablewriter.ALIGN_LEFT)
-		table.SetColumnAlignment([]int{
-			tablewriter.ALIGN_LEFT,  // SERVICE
-			tablewriter.ALIGN_LEFT,  // ALERT
-			tablewriter.ALIGN_RIGHT, // AVG DURATION
-		})
+		table := tablewriter.NewTable(&longAlertsTable,
+			tablewriter.WithConfig(tablewriter.Config{
+				Header: tw.CellConfig{
+					Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+				},
+				Row: tw.CellConfig{
+					Alignment: tw.CellAlignment{
+						PerColumn: []tw.Align{
+							tw.AlignLeft,  // SERVICE
+							tw.AlignLeft,  // ALERT
+							tw.AlignRight, // AVG DURATION
+						},
+					},
+				},
+			}),
+		)
+
+		table.Header("SERVICE", "ALERT", "AVG DURATION")
 
 		for _, entry := range longRunningAlerts {
 			table.Append([]string{
@@ -357,20 +364,24 @@ func format(
 		untriagedAlertsTable.WriteString("*Alerts with No Triage Activity:*\n")
 		untriagedAlertsTable.WriteString("The following alerts had no team interaction and may be unnecessary:\n\n```\n")
 
-		table := tablewriter.NewWriter(&untriagedAlertsTable)
-		table.SetHeader([]string{"SERVICE", "ALERT", "COUNT"})
-		table.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-		table.SetCenterSeparator("|")
-		table.SetColumnSeparator("|")
-		table.SetRowSeparator("-")
-		table.SetAutoWrapText(false)
-		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-		table.SetAlignment(tablewriter.ALIGN_LEFT)
-		table.SetColumnAlignment([]int{
-			tablewriter.ALIGN_LEFT,  // SERVICE
-			tablewriter.ALIGN_LEFT,  // ALERT
-			tablewriter.ALIGN_RIGHT, // COUNT
-		})
+		table := tablewriter.NewTable(&untriagedAlertsTable,
+			tablewriter.WithConfig(tablewriter.Config{
+				Header: tw.CellConfig{
+					Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+				},
+				Row: tw.CellConfig{
+					Alignment: tw.CellAlignment{
+						PerColumn: []tw.Align{
+							tw.AlignLeft,  // SERVICE
+							tw.AlignLeft,  // ALERT
+							tw.AlignRight, // COUNT
+						},
+					},
+				},
+			}),
+		)
+
+		table.Header("SERVICE", "ALERT", "COUNT")
 
 		for _, entry := range untriagedAlerts {
 			table.Append([]string{

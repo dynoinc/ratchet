@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,7 +40,7 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	// Check if PostgreSQL image already exists
 	_, err = cli.ImageInspect(ctx, postgresImage)
 	if err != nil {
-		if !errdefs.IsNotFound(err) {
+		if !cerrdefs.IsNotFound(err) {
 			return fmt.Errorf("checking for Docker image: %w", err)
 		}
 
@@ -96,7 +96,7 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 	var containerID string
 	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 	if err != nil {
-		if !errdefs.IsConflict(err) {
+		if !cerrdefs.IsConflict(err) {
 			return fmt.Errorf("creating container: %w", err)
 		}
 
