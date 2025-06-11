@@ -71,9 +71,9 @@ var (
 			"fix the docs",
 		},
 		string(cmdDeploymentOps): {
-			"list recent deployments for project async_plat",
-			"add ecap to deployment async_plat/frontend-catch-canary",
-			"roll back for deployment async_plat/frontend-catch-canary",
+			"list recent deployments for project some_project",
+			"add ecap to deployment some_project/some_deployment",
+			"roll back for deployment some_project/some_deployment",
 		},
 	}
 )
