@@ -24,11 +24,11 @@ import (
 )
 
 type Config struct {
-	APIKey         string `envconfig:"API_KEY"`
-	URL            string `default:"http://localhost:11434/v1/"`
-	Model          string `default:"qwen2.5:7b"`
-	EmbeddingModel string `split_words:"true" default:"nomic-embed-text"`
-	ToolsBinary    string `envconfig:"RATCHET_TOOLS_BINARY"`
+	APIKey          string `envconfig:"API_KEY"`
+	URL             string `default:"http://localhost:11434/v1/"`
+	Model           string `default:"qwen2.5:7b"`
+	EmbeddingModel  string `split_words:"true" default:"nomic-embed-text"`
+	ToolsConfigFile string `split_words:"true"`
 }
 
 func DefaultConfig() Config {
@@ -54,9 +54,10 @@ type Client interface {
 }
 
 type client struct {
-	client openai.Client
-	cfg    Config
-	db     *pgxpool.Pool
+	client    openai.Client
+	cfg       Config
+	db        *pgxpool.Pool
+	toolFiles *ToolFiles
 }
 
 func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
@@ -76,10 +77,15 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 		return nil, err
 	}
 
+	tools, err := NewToolsInit(cfg.ToolsConfigFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading tools: %w", err)
+	}
 	return &client{
-		client: openaiClient,
-		cfg:    cfg,
-		db:     db,
+		client:    openaiClient,
+		cfg:       cfg,
+		db:        db,
+		toolFiles: tools,
 	}, nil
 }
 
@@ -151,11 +157,9 @@ func (c *client) runChatCompletion(
 		return "", nil
 	}
 
-	// Prepare tools
-	binaryPath := c.cfg.ToolsBinary
-	tools, err := c.getAllTools(ctx, binaryPath)
+	tools, toolToBinMap, err := c.getToolsForAllFiles(ctx)
 	if err != nil {
-		return "", fmt.Errorf("loading tools: %w", err)
+		return "", fmt.Errorf("getting tools: %w", err)
 	}
 
 	params := openai.ChatCompletionNewParams{
@@ -193,7 +197,7 @@ func (c *client) runChatCompletion(
 		}
 
 		// Handle tool calls
-		resultsByCallID, err := c.handleToolCalls(ctx, binaryPath, message.ToolCalls)
+		resultsByCallID, err := c.handleToolCalls(ctx, toolToBinMap, message.ToolCalls)
 		if err != nil {
 			return "", fmt.Errorf("performing tool call: %w", err)
 		}
