@@ -54,10 +54,10 @@ type Client interface {
 }
 
 type client struct {
-	client    openai.Client
-	cfg       Config
-	db        *pgxpool.Pool
-	toolFiles *ToolFiles
+	client      openai.Client
+	cfg         Config
+	db          *pgxpool.Pool
+	toolManager ToolManager
 }
 
 func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
@@ -77,15 +77,15 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 		return nil, err
 	}
 
-	tools, err := NewToolsInit(cfg.ToolsConfigFile)
+	tm, err := NewToolManager(ctx, cfg.ToolsConfigFile)
 	if err != nil {
 		return nil, fmt.Errorf("loading tools: %w", err)
 	}
 	return &client{
-		client:    openaiClient,
-		cfg:       cfg,
-		db:        db,
-		toolFiles: tools,
+		client:      openaiClient,
+		cfg:         cfg,
+		db:          db,
+		toolManager: tm,
 	}, nil
 }
 
@@ -157,10 +157,7 @@ func (c *client) runChatCompletion(
 		return "", nil
 	}
 
-	tools, toolToBinMap, err := c.getToolsForAllFiles(ctx)
-	if err != nil {
-		return "", fmt.Errorf("getting tools: %w", err)
-	}
+	tools, toolToBinMap := c.toolManager.GetToolsInfo()
 
 	params := openai.ChatCompletionNewParams{
 		Model:       c.cfg.Model,
@@ -197,7 +194,7 @@ func (c *client) runChatCompletion(
 		}
 
 		// Handle tool calls
-		resultsByCallID, err := c.handleToolCalls(ctx, toolToBinMap, message.ToolCalls)
+		resultsByCallID, err := c.toolManager.HandleToolCalls(ctx, toolToBinMap, message.ToolCalls)
 		if err != nil {
 			return "", fmt.Errorf("performing tool call: %w", err)
 		}

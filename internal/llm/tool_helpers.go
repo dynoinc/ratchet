@@ -13,6 +13,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type ToolManager interface {
+	GetToolsInfo() ([]openai.ChatCompletionToolParam, map[string]string)
+	HandleToolCalls(ctx context.Context, toolToBinMap map[string]string, toolCalls []openai.ChatCompletionMessageToolCall) (map[string]string, error)
+}
+
+type toolManager struct {
+	tools        []openai.ChatCompletionToolParam
+	toolToBinMap map[string]string
+}
+
 type ToolFiles struct {
 	ToolToBinary map[string]string `yaml:"tools"`
 }
@@ -33,55 +43,76 @@ type ToolCallInput struct {
 	Arguments map[string]interface{} `json:"arguments"`
 }
 
-func NewToolsInit(configFile string) (*ToolFiles, error) {
+func NewToolManager(ctx context.Context, configFile string) (ToolManager, error) {
+	// Load tool configuration
+	var toolToBinary map[string]string
 	if configFile == "" {
-		return &ToolFiles{}, nil
-	}
-
-	b, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("reading tools config file: %w", err)
-	}
-
-	var config ToolFiles
-	if err := yaml.Unmarshal(b, &config); err != nil {
-		return nil, fmt.Errorf("parsing tools config file: %w", err)
-	}
-
-	return &config, nil
-}
-
-func (c *client) formatToolDefinitions(toolDefinitions []ToolDefinition) []openai.ChatCompletionToolParam {
-	if c == nil {
-		return nil
-	}
-	var goTools []openai.ChatCompletionToolParam
-
-	for _, toolDefinition := range toolDefinitions {
-		goTool := openai.ChatCompletionToolParam{
-			Function: openai.FunctionDefinitionParam{
-				Name:        toolDefinition.Name,
-				Description: openai.String(toolDefinition.Description),
-				Parameters:  openai.FunctionParameters(toolDefinition.InputSchema),
-			},
+		toolToBinary = make(map[string]string)
+	} else {
+		b, err := os.ReadFile(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading tools config file: %w", err)
 		}
-		goTools = append(goTools, goTool)
+
+		var config ToolFiles
+		if err := yaml.Unmarshal(b, &config); err != nil {
+			return nil, fmt.Errorf("parsing tools config file: %w", err)
+		}
+		toolToBinary = config.ToolToBinary
 	}
-	return goTools
+
+	// Pre-load all tools at startup
+	allTools := []openai.ChatCompletionToolParam{}
+	toolToBinMap := make(map[string]string)
+
+	for _, bin := range toolToBinary {
+		toolsForFile, err := getToolsForSingleFile(ctx, bin)
+		if err != nil {
+			return nil, fmt.Errorf("getting tools for %s: %w", bin, err)
+		}
+
+		for _, tool := range toolsForFile {
+			if _, ok := toolToBinMap[tool.Function.Name]; ok {
+				return nil, fmt.Errorf("duplicate tool name '%s' found in binary '%s'", tool.Function.Name, bin)
+			}
+			toolToBinMap[tool.Function.Name] = bin
+		}
+		allTools = append(allTools, toolsForFile...)
+	}
+
+	return &toolManager{
+		tools:        allTools,
+		toolToBinMap: toolToBinMap,
+	}, nil
 }
 
-func (c *client) executeTools(ctx context.Context, binaryPath string, inputs []ToolCallInput) ([]string, error) {
-	if c == nil {
-		return nil, nil
+func getToolsForSingleFile(ctx context.Context, binaryPath string) ([]openai.ChatCompletionToolParam, error) {
+	input := []ToolCallInput{{
+		Name:      "list_all_tools",
+		Arguments: map[string]interface{}{},
+	}}
+	results, err := executeTools(ctx, binaryPath, input)
+	if err != nil {
+		return nil, fmt.Errorf("getting tools: %w", err)
 	}
-	// Log tools used
+	if len(results) == 0 {
+		return []openai.ChatCompletionToolParam{}, nil
+	}
+
+	var toolDefinitions []ToolDefinition
+	if err := json.Unmarshal([]byte(results[0]), &toolDefinitions); err != nil {
+		return nil, fmt.Errorf("parsing raw tool definitions response: %w", err)
+	}
+	return formatToolDefinitions(toolDefinitions), nil
+}
+
+func executeTools(ctx context.Context, binaryPath string, inputs []ToolCallInput) ([]string, error) {
 	toolNames := make([]string, len(inputs))
 	for i, input := range inputs {
 		toolNames[i] = input.Name
 	}
 	slog.DebugContext(ctx, "executing tools", "tool_names", toolNames)
 
-	// Encode as JSON and run via std in/out
 	inputsJSON, err := json.Marshal(inputs)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling input: %w", err)
@@ -98,9 +129,7 @@ func (c *client) executeTools(ctx context.Context, binaryPath string, inputs []T
 		return nil, fmt.Errorf("running tools: %w", err)
 	}
 
-	// Convert results into a slice of strings
 	var rawResultsJSON []json.RawMessage
-
 	if err := json.Unmarshal(stdout.Bytes(), &rawResultsJSON); err != nil {
 		return nil, fmt.Errorf("parsing tool results: %w", err)
 	}
@@ -112,59 +141,34 @@ func (c *client) executeTools(ctx context.Context, binaryPath string, inputs []T
 	return results, nil
 }
 
-func (c *client) getToolsForSingleFile(ctx context.Context, binaryPath string) ([]openai.ChatCompletionToolParam, error) {
-	if c == nil {
+func formatToolDefinitions(toolDefinitions []ToolDefinition) []openai.ChatCompletionToolParam {
+	var goTools []openai.ChatCompletionToolParam
+
+	for _, toolDefinition := range toolDefinitions {
+		goTool := openai.ChatCompletionToolParam{
+			Function: openai.FunctionDefinitionParam{
+				Name:        toolDefinition.Name,
+				Description: openai.String(toolDefinition.Description),
+				Parameters:  openai.FunctionParameters(toolDefinition.InputSchema),
+			},
+		}
+		goTools = append(goTools, goTool)
+	}
+	return goTools
+}
+
+func (tm *toolManager) GetToolsInfo() ([]openai.ChatCompletionToolParam, map[string]string) {
+	if tm == nil {
 		return nil, nil
 	}
-	// Execute the tool called "list_all_tools" to get all tools in list of string format
-	input := []ToolCallInput{{
-		Name:      "list_all_tools",
-		Arguments: map[string]interface{}{},
-	}}
-	results, err := c.executeTools(ctx, binaryPath, input)
-	if err != nil {
-		return nil, fmt.Errorf("getting tools: %w", err)
-	}
-	if len(results) == 0 {
-		return []openai.ChatCompletionToolParam{}, nil
-	}
-
-	var toolDefinitions []ToolDefinition
-	if err := json.Unmarshal([]byte(results[0]), &toolDefinitions); err != nil {
-		return nil, fmt.Errorf("parsing raw tool definitions response: %w", err)
-	}
-	return c.formatToolDefinitions(toolDefinitions), nil
+	return tm.tools, tm.toolToBinMap
 }
 
-func (c *client) getToolsForAllFiles(ctx context.Context) ([]openai.ChatCompletionToolParam, map[string]string, error) {
-	if c == nil {
-		return nil, nil, nil
-	}
-	allTools := []openai.ChatCompletionToolParam{}
-	toolToBinMap := make(map[string]string)
-
-	for _, bin := range c.toolFiles.ToolToBinary {
-		toolsForFile, err := c.getToolsForSingleFile(ctx, bin)
-		if err != nil {
-			return nil, nil, fmt.Errorf("getting tools for %s: %w", bin, err)
-		}
-
-		for _, tool := range toolsForFile {
-			if _, ok := toolToBinMap[tool.Function.Name]; ok {
-				return nil, nil, fmt.Errorf("duplicate tool name '%s' found in binary '%s'", tool.Function.Name, bin)
-			}
-			toolToBinMap[tool.Function.Name] = bin
-		}
-		allTools = append(allTools, toolsForFile...)
-	}
-	return allTools, toolToBinMap, nil
-}
-
-func (c *client) handleToolCalls(
+func (tm *toolManager) HandleToolCalls(
 	ctx context.Context,
 	toolToBinMap map[string]string,
 	toolCalls []openai.ChatCompletionMessageToolCall) (map[string]string, error) {
-	if c == nil {
+	if tm == nil {
 		return nil, nil
 	}
 
@@ -181,7 +185,7 @@ func (c *client) handleToolCalls(
 			Name:      toolCall.Function.Name,
 			Arguments: arguments,
 		}}
-		result, err := c.executeTools(ctx, toolToBinMap[toolCall.Function.Name], input)
+		result, err := executeTools(ctx, toolToBinMap[toolCall.Function.Name], input)
 
 		if err != nil {
 			return nil, fmt.Errorf("executing tools: %w", err)
