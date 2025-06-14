@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/slack-go/slack/slackevents"
@@ -438,12 +439,29 @@ func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{"Link", "Text", "Text Tokens", "Query Tokens", "Lexical Score", "Lexical Rank", "Semantic Score", "Semantic Rank", "RRF Score"})
-	table.SetBorder(true)
-	table.SetRowLine(true)
-	table.SetAutoWrapText(false)
-	table.SetColWidth(120)
+	table := tablewriter.NewTable(w,
+		tablewriter.WithConfig(tablewriter.Config{
+			Header: tw.CellConfig{
+				Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+			},
+			Row: tw.CellConfig{
+				Alignment: tw.CellAlignment{
+					PerColumn: []tw.Align{
+						tw.AlignLeft,  // Link
+						tw.AlignLeft,  // Text
+						tw.AlignLeft,  // Text Tokens
+						tw.AlignLeft,  // Query Tokens
+						tw.AlignRight, // Lexical Score
+						tw.AlignRight, // Lexical Rank
+						tw.AlignRight, // Semantic Score
+						tw.AlignRight, // Semantic Rank
+						tw.AlignRight, // RRF Score
+					},
+				},
+			},
+		}),
+	)
+	table.Header("Link", "Text", "Text Tokens", "Query Tokens", "Lexical Score", "Lexical Rank", "Semantic Score", "Semantic Rank", "RRF Score")
 
 	limit := nInt
 	if limit > len(updates) {

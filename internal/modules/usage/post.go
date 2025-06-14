@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/slack-go/slack"
 
 	"github.com/dynoinc/ratchet/internal/llm"
@@ -166,15 +167,6 @@ func Post(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIn
 }
 
 func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Block {
-	// Calculate totals
-	var totalMessages, totalThumbsUp, totalThumbsDown int
-	for _, usage := range report.ChannelUsage {
-		totalMessages += usage.TotalMessages
-		totalThumbsUp += usage.TotalThumbsUp
-		totalThumbsDown += usage.TotalThumbsDown
-	}
-
-	// Sort channels by message count
 	type channelStats struct {
 		id         string
 		messages   int
@@ -183,7 +175,12 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 	}
 
 	var channels []channelStats
+	var totalMessages, totalThumbsUp, totalThumbsDown int
 	for id, usage := range report.ChannelUsage {
+		totalMessages += usage.TotalMessages
+		totalThumbsUp += usage.TotalThumbsUp
+		totalThumbsDown += usage.TotalThumbsDown
+
 		channels = append(channels, channelStats{
 			id:         id,
 			messages:   usage.TotalMessages,
@@ -196,7 +193,6 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 		return channels[i].messages > channels[j].messages
 	})
 
-	// Sort modules by message count
 	type moduleStats struct {
 		name       string
 		messages   int
@@ -281,11 +277,17 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 
 		// LLM Usage Table
 		var llmTableBuilder strings.Builder
-		llmTable := tablewriter.NewWriter(&llmTableBuilder)
-		llmTable.SetHeader([]string{"Model", "Requests", "Prompt Tokens", "Output Tokens"})
-		llmTable.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-		llmTable.SetCenterSeparator("|")
-		llmTable.SetAlignment(tablewriter.ALIGN_LEFT)
+		llmTable := tablewriter.NewTable(&llmTableBuilder,
+			tablewriter.WithConfig(tablewriter.Config{
+				Header: tw.CellConfig{
+					Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+				},
+				Row: tw.CellConfig{
+					Alignment: tw.CellAlignment{Global: tw.AlignLeft},
+				},
+			}),
+		)
+		llmTable.Header("Model", "Requests", "Prompt Tokens", "Output Tokens")
 
 		for _, model := range llmModels {
 			llmTable.Append([]string{
@@ -318,11 +320,17 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 
 	// Module Breakdown Table
 	var moduleTableBuilder strings.Builder
-	moduleTable := tablewriter.NewWriter(&moduleTableBuilder)
-	moduleTable.SetHeader([]string{"Module", "Messages", "👍", "👎"})
-	moduleTable.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-	moduleTable.SetCenterSeparator("|")
-	moduleTable.SetAlignment(tablewriter.ALIGN_LEFT)
+	moduleTable := tablewriter.NewTable(&moduleTableBuilder,
+		tablewriter.WithConfig(tablewriter.Config{
+			Header: tw.CellConfig{
+				Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+			},
+			Row: tw.CellConfig{
+				Alignment: tw.CellAlignment{Global: tw.AlignLeft},
+			},
+		}),
+	)
+	moduleTable.Header("Module", "Messages", "👍", "👎")
 
 	for _, mod := range modules {
 		moduleTable.Append([]string{
@@ -370,11 +378,17 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 	}
 
 	var channelTableBuilder strings.Builder
-	channelTable := tablewriter.NewWriter(&channelTableBuilder)
-	channelTable.SetHeader([]string{"Channel", "Messages", "👍", "👎"})
-	channelTable.SetBorders(tablewriter.Border{Left: true, Top: true, Right: true, Bottom: true})
-	channelTable.SetCenterSeparator("|")
-	channelTable.SetAlignment(tablewriter.ALIGN_LEFT)
+	channelTable := tablewriter.NewTable(&channelTableBuilder,
+		tablewriter.WithConfig(tablewriter.Config{
+			Header: tw.CellConfig{
+				Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+			},
+			Row: tw.CellConfig{
+				Alignment: tw.CellAlignment{Global: tw.AlignLeft},
+			},
+		}),
+	)
+	channelTable.Header("Channel", "Messages", "👍", "👎")
 
 	for i, ch := range channels {
 		if i >= 5 {
