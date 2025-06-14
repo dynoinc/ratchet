@@ -146,6 +146,21 @@ func (mr *MockClientMockRecorder) GenerateRunbook(ctx, service, alert, msgs any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateRunbook", reflect.TypeOf((*MockClient)(nil).GenerateRunbook), ctx, service, alert, msgs)
 }
 
+// ProccessDeploymentOps mocks base method.
+func (m *MockClient) ProccessDeploymentOps(ctx context.Context, text string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProccessDeploymentOps", ctx, text)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ProccessDeploymentOps indicates an expected call of ProccessDeploymentOps.
+func (mr *MockClientMockRecorder) ProccessDeploymentOps(ctx, text any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProccessDeploymentOps", reflect.TypeOf((*MockClient)(nil).ProccessDeploymentOps), ctx, text)
+}
+
 // RunJSONModePrompt mocks base method.
 func (m *MockClient) RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error) {
 	m.ctrl.T.Helper()
