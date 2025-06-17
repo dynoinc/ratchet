@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	llm "github.com/dynoinc/ratchet/internal/llm"
+	openai "github.com/openai/openai-go"
 	jsonschema "github.com/qri-io/jsonschema"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -55,6 +56,20 @@ func (m *MockClient) ClassifyCommand(ctx context.Context, text string, sampleMes
 func (mr *MockClientMockRecorder) ClassifyCommand(ctx, text, sampleMessages any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyCommand", reflect.TypeOf((*MockClient)(nil).ClassifyCommand), ctx, text, sampleMessages)
+}
+
+// Client mocks base method.
+func (m *MockClient) Client() openai.Client {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Client")
+	ret0, _ := ret[0].(openai.Client)
+	return ret0
+}
+
+// Client indicates an expected call of Client.
+func (mr *MockClientMockRecorder) Client() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Client", reflect.TypeOf((*MockClient)(nil).Client))
 }
 
 // Config mocks base method.

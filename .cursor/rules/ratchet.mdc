@@ -1,0 +1,18 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## Code generation guidelines
+- Avoid adding unnecessary comments. Keep the code consice. Only add comments if logic is not obviously clear from the code.
+- Think hard about the changes.
+- If applicable, always add a small unit-test for the new functionality. Make sure the new unit-tests passes and is fast (use mocks wherever possible).
+
+## Formatting and Linting
+
+Run `just` to format, lint and test code. 
+
+## Commit Style
+
+Use the [Conventional Commits](https://www.conventionalcommits.org/) style for
+commit messages, for example `feat: add new feature` or `fix: correct issue`.

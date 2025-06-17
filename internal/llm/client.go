@@ -1,14 +1,17 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kelseyhightower/envconfig"
@@ -40,6 +43,7 @@ func DefaultConfig() Config {
 }
 
 type Client interface {
+	Client() openai.Client
 	Config() Config
 
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
@@ -57,12 +61,178 @@ type client struct {
 	db     *pgxpool.Pool
 }
 
+func persistLLMUsageMiddleware(db *pgxpool.Pool) option.Middleware {
+	if db == nil {
+		return option.Middleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+			return next(req)
+		})
+	}
+
+	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		var input dto.LLMInput
+		var model string
+
+		// Extract input data from request
+		if req.Body != nil && req.Method == "POST" {
+			// Read the request body
+			reqBody, err := io.ReadAll(req.Body)
+			if err == nil {
+				// Restore the body for the actual request
+				req.Body = io.NopCloser(bytes.NewBuffer(reqBody))
+
+				// Parse the request to extract model and input
+				model, input = extractInputFromRequest(req.URL.Path, reqBody)
+			}
+		}
+
+		// Make the actual request
+		resp, err := next(req)
+		if err != nil {
+			return resp, err
+		}
+
+		// Extract output data from response
+		var output dto.LLMOutput
+		if resp != nil && resp.Body != nil {
+			// Read the response body
+			respBody, readErr := io.ReadAll(resp.Body)
+			if readErr == nil {
+				// Restore the body for the caller
+				resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
+
+				// Parse the response to extract output
+				output = extractOutputFromResponse(resp.StatusCode, respBody)
+			}
+		}
+
+		// Persist the usage data
+		params := schema.AddLLMUsageParams{
+			Input:  input,
+			Output: output,
+			Model:  model,
+		}
+
+		if _, persistErr := schema.New(db).AddLLMUsage(req.Context(), params); persistErr != nil {
+			slog.WarnContext(req.Context(), "failed to persist LLM usage", "error", persistErr)
+		}
+
+		return resp, err
+	}
+}
+
+func extractInputFromRequest(path string, body []byte) (string, dto.LLMInput) {
+	var input dto.LLMInput
+	var model string
+
+	// Parse different OpenAI API endpoints
+	if strings.Contains(path, "/chat/completions") {
+		var chatParams openai.ChatCompletionNewParams
+		if err := json.Unmarshal(body, &chatParams); err == nil {
+			model = chatParams.Model
+
+			// Convert messages
+			input.Messages = make([]dto.LLMMessage, len(chatParams.Messages))
+			for i, msg := range chatParams.Messages {
+				// Handle different message types
+				if msg.OfSystem != nil && msg.OfSystem.Content.OfString.Valid() {
+					input.Messages[i] = dto.LLMMessage{
+						Role:    "system",
+						Content: msg.OfSystem.Content.OfString.Value,
+					}
+				} else if msg.OfUser != nil && msg.OfUser.Content.OfString.Valid() {
+					input.Messages[i] = dto.LLMMessage{
+						Role:    "user",
+						Content: msg.OfUser.Content.OfString.Value,
+					}
+				} else if msg.OfAssistant != nil && msg.OfAssistant.Content.OfString.Valid() {
+					input.Messages[i] = dto.LLMMessage{
+						Role:    "assistant",
+						Content: msg.OfAssistant.Content.OfString.Value,
+					}
+				}
+			}
+
+			// Add parameters
+			input.Parameters = make(map[string]interface{})
+			if chatParams.Temperature.Valid() {
+				input.Parameters["temperature"] = chatParams.Temperature.Value
+			}
+			if chatParams.MaxTokens.Valid() {
+				input.Parameters["max_tokens"] = chatParams.MaxTokens.Value
+			}
+		}
+	} else if strings.Contains(path, "/embeddings") {
+		var embeddingParams openai.EmbeddingNewParams
+		if err := json.Unmarshal(body, &embeddingParams); err == nil {
+			model = embeddingParams.Model
+
+			// Handle different input types
+			if embeddingParams.Input.OfString.Valid() {
+				input.Text = embeddingParams.Input.OfString.Value
+			} else if len(embeddingParams.Input.OfArrayOfStrings) > 0 {
+				// For array inputs, join them
+				input.Text = strings.Join(embeddingParams.Input.OfArrayOfStrings, " ")
+			}
+		}
+	}
+
+	return model, input
+}
+
+func extractOutputFromResponse(statusCode int, body []byte) dto.LLMOutput {
+	var output dto.LLMOutput
+
+	if statusCode != 200 {
+		output.Error = string(body)
+		return output
+	}
+
+	// Try to parse as ChatCompletion response first
+	var chatResp openai.ChatCompletion
+	if err := json.Unmarshal(body, &chatResp); err == nil {
+		if len(chatResp.Choices) > 0 {
+			output.Content = chatResp.Choices[0].Message.Content
+		}
+
+		output.Usage = &dto.LLMUsageStats{
+			PromptTokens:     int(chatResp.Usage.PromptTokens),
+			CompletionTokens: int(chatResp.Usage.CompletionTokens),
+			TotalTokens:      int(chatResp.Usage.TotalTokens),
+		}
+
+		return output
+	}
+
+	// Try to parse as Embedding response
+	var embeddingResp openai.CreateEmbeddingResponse
+	if err := json.Unmarshal(body, &embeddingResp); err == nil && len(embeddingResp.Data) > 0 {
+		output.Embedding = make([]float32, len(embeddingResp.Data[0].Embedding))
+		for i, v := range embeddingResp.Data[0].Embedding {
+			output.Embedding[i] = float32(v)
+		}
+
+		output.Usage = &dto.LLMUsageStats{
+			PromptTokens: int(embeddingResp.Usage.PromptTokens),
+			TotalTokens:  int(embeddingResp.Usage.TotalTokens),
+		}
+
+		return output
+	}
+
+	output.Error = "Unknown response format: " + string(body)
+	return output
+}
+
 func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 	if cfg.URL != "http://localhost:11434/v1/" && cfg.APIKey == "" {
 		return nil, nil
 	}
 
-	openaiClient := openai.NewClient(option.WithBaseURL(cfg.URL), option.WithAPIKey(cfg.APIKey))
+	openaiClient := openai.NewClient(
+		option.WithBaseURL(cfg.URL),
+		option.WithAPIKey(cfg.APIKey),
+		option.WithMiddleware(persistLLMUsageMiddleware(db)),
+	)
 
 	// Check and download the main model if needed
 	if err := checkAndDownloadModel(ctx, openaiClient, cfg.Model, cfg.URL); err != nil {
@@ -113,23 +283,8 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 	return nil
 }
 
-// persistLLMUsage directly writes LLM usage data to the database
-// This is a best-effort operation and failures are logged but don't affect the main flow
-func (c *client) persistLLMUsage(ctx context.Context, input dto.LLMInput, output dto.LLMOutput, model string) {
-	if c.db == nil {
-		slog.DebugContext(ctx, "database connection not initialized, skipping LLM usage persistence")
-		return
-	}
-
-	params := schema.AddLLMUsageParams{
-		Input:  input,
-		Output: output,
-		Model:  model,
-	}
-
-	if _, err := schema.New(c.db).AddLLMUsage(ctx, params); err != nil {
-		slog.WarnContext(ctx, "failed to persist LLM usage", "error", err)
-	}
+func (c *client) Client() openai.Client {
+	return c.client
 }
 
 func (c *client) Config() Config {
@@ -139,7 +294,6 @@ func (c *client) Config() Config {
 // runChatCompletion is a helper function to run chat completions with common logic
 func (c *client) runChatCompletion(
 	ctx context.Context,
-	inputMessages []dto.LLMMessage,
 	messages []openai.ChatCompletionMessageParamUnion,
 	temperature float64,
 	jsonMode bool,
@@ -166,28 +320,11 @@ func (c *client) runChatCompletion(
 	}
 
 	content := resp.Choices[0].Message.Content
-
-	// Persist LLM usage
-	c.persistLLMUsage(ctx,
-		dto.LLMInput{
-			Messages: inputMessages,
-		},
-		dto.LLMOutput{
-			Content: content,
-			Usage: &dto.LLMUsageStats{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			},
-		},
-		c.cfg.Model,
-	)
-
 	return content, nil
 }
 
 // createLLMMessages creates a slice of message params from system and user content
-func createLLMMessages(systemContent string, userContent string) ([]openai.ChatCompletionMessageParamUnion, []dto.LLMMessage) {
+func createLLMMessages(systemContent string, userContent string) []openai.ChatCompletionMessageParamUnion {
 	messages := []openai.ChatCompletionMessageParamUnion{
 		{
 			OfSystem: &openai.ChatCompletionSystemMessageParam{
@@ -198,10 +335,6 @@ func createLLMMessages(systemContent string, userContent string) ([]openai.ChatC
 		},
 	}
 
-	inputMessages := []dto.LLMMessage{
-		{Role: "system", Content: systemContent},
-	}
-
 	if userContent != "" {
 		messages = append(messages, openai.ChatCompletionMessageParamUnion{
 			OfUser: &openai.ChatCompletionUserMessageParam{
@@ -210,10 +343,9 @@ func createLLMMessages(systemContent string, userContent string) ([]openai.ChatC
 				},
 			},
 		})
-		inputMessages = append(inputMessages, dto.LLMMessage{Role: "user", Content: userContent})
 	}
 
-	return messages, inputMessages
+	return messages
 }
 
 func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
@@ -262,9 +394,9 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	`
 
 	userContent := fmt.Sprintf("Messages:\n%s", messages)
-	chatMessages, inputMessages := createLLMMessages(prompt, userContent)
+	chatMessages := createLLMMessages(prompt, userContent)
 
-	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	content, err := c.runChatCompletion(ctx, chatMessages, 0.7, false)
 	if err != nil {
 		return "", fmt.Errorf("generating suggestions: %w", err)
 	}
@@ -385,8 +517,8 @@ Example 4:
 		content += msg + "\n"
 	}
 
-	chatMessages, inputMessages := createLLMMessages(prompt, content)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
+	chatMessages := createLLMMessages(prompt, content)
+	respContent, err := c.runChatCompletion(ctx, chatMessages, 0.7, true)
 	if err != nil {
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
@@ -421,21 +553,6 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 		return nil, fmt.Errorf("generating embedding: %w", err)
 	}
 
-	// Persist LLM usage (best effort)
-	c.persistLLMUsage(ctx,
-		dto.LLMInput{
-			Text: inputText,
-		},
-		dto.LLMOutput{
-			Embedding: make([]float32, len(resp.Data[0].Embedding)),
-			Usage: &dto.LLMUsageStats{
-				PromptTokens: int(resp.Usage.PromptTokens),
-				TotalTokens:  int(resp.Usage.TotalTokens),
-			},
-		},
-		c.cfg.EmbeddingModel,
-	)
-
 	r := make([]float32, len(resp.Data[0].Embedding))
 	for i, v := range resp.Data[0].Embedding {
 		r[i] = float32(v)
@@ -451,8 +568,8 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 		return "", "", nil
 	}
 
-	chatMessages, inputMessages := createLLMMessages(prompt, "")
-	respMsg, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
+	chatMessages := createLLMMessages(prompt, "")
+	respMsg, err := c.runChatCompletion(ctx, chatMessages, 0.7, true)
 	if err != nil {
 		return "", "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
@@ -501,8 +618,8 @@ User: %s
 Response:
 `
 
-	chatMessages, inputMessages := createLLMMessages(prompt, text)
-	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, false)
+	chatMessages := createLLMMessages(prompt, text)
+	content, err := c.runChatCompletion(ctx, chatMessages, 0.0, false)
 	if err != nil {
 		return "", fmt.Errorf("classifying command: %w", err)
 	}
@@ -560,8 +677,8 @@ Response:
 `
 
 	content := fmt.Sprintf(prompt, question, documents)
-	chatMessages, inputMessages := createLLMMessages(prompt, content)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.2, false)
+	chatMessages := createLLMMessages(prompt, content)
+	respContent, err := c.runChatCompletion(ctx, chatMessages, 0.2, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation response: %w", err)
 	}
@@ -620,8 +737,8 @@ func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, ms
 %s
 ---`, doc, msgs)
 
-	chatMessages, inputMessages := createLLMMessages(systemPrompt, userContent)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	chatMessages := createLLMMessages(systemPrompt, userContent)
+	respContent, err := c.runChatCompletion(ctx, chatMessages, 0.7, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation update: %w", err)
 	}
