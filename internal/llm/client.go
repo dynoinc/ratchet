@@ -24,10 +24,11 @@ import (
 )
 
 type Config struct {
-	APIKey         string `envconfig:"API_KEY"`
-	URL            string `default:"http://localhost:11434/v1/"`
-	Model          string `default:"qwen2.5:7b"`
-	EmbeddingModel string `split_words:"true" default:"nomic-embed-text"`
+	APIKey          string `envconfig:"API_KEY"`
+	URL             string `default:"http://localhost:11434/v1/"`
+	Model           string `default:"qwen2.5:7b"`
+	EmbeddingModel  string `split_words:"true" default:"nomic-embed-text"`
+	ToolsConfigFile string `split_words:"true"`
 }
 
 func DefaultConfig() Config {
@@ -49,12 +50,14 @@ type Client interface {
 	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
 	ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error)
+	ProccessDeploymentOps(ctx context.Context, text string) (string, error)
 }
 
 type client struct {
-	client openai.Client
-	cfg    Config
-	db     *pgxpool.Pool
+	client      openai.Client
+	cfg         Config
+	db          *pgxpool.Pool
+	toolManager ToolManager
 }
 
 func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
@@ -74,10 +77,15 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 		return nil, err
 	}
 
+	tm, err := NewToolManager(ctx, cfg.ToolsConfigFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading tools: %w", err)
+	}
 	return &client{
-		client: openaiClient,
-		cfg:    cfg,
-		db:     db,
+		client:      openaiClient,
+		cfg:         cfg,
+		db:          db,
+		toolManager: tm,
 	}, nil
 }
 
@@ -142,16 +150,20 @@ func (c *client) runChatCompletion(
 	inputMessages []dto.LLMMessage,
 	messages []openai.ChatCompletionMessageParamUnion,
 	temperature float64,
+	maxRounds int, // maximum number of queries to llm (e.g. 1 if no tools)
 	jsonMode bool,
 ) (string, error) {
 	if c == nil {
 		return "", nil
 	}
 
+	tools, toolToBinMap := c.toolManager.GetToolsInfo()
+
 	params := openai.ChatCompletionNewParams{
 		Model:       c.cfg.Model,
 		Messages:    messages,
 		Temperature: param.NewOpt(temperature),
+		Tools:       tools,
 	}
 
 	if jsonMode {
@@ -159,31 +171,55 @@ func (c *client) runChatCompletion(
 			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
 		}
 	}
+	var totalUsage dto.LLMUsageStats
+	var finalContent string
+	var round int
 
-	resp, err := c.client.Chat.Completions.New(ctx, params)
-	if err != nil {
-		return "", err
+	for round = 0; round < maxRounds; round++ {
+		resp, err := c.client.Chat.Completions.New(ctx, params)
+		if err != nil {
+			return "", fmt.Errorf("generating response: %w", err)
+		}
+
+		message := resp.Choices[0].Message
+
+		// Accumulate usage after each step to log afterwards
+		totalUsage.PromptTokens += int(resp.Usage.PromptTokens)
+		totalUsage.CompletionTokens += int(resp.Usage.CompletionTokens)
+		totalUsage.TotalTokens += int(resp.Usage.TotalTokens)
+
+		if len(message.ToolCalls) == 0 {
+			finalContent = message.Content
+			break
+		}
+
+		// Handle tool calls
+		resultsByCallID, err := c.toolManager.HandleToolCalls(ctx, toolToBinMap, message.ToolCalls)
+		if err != nil {
+			return "", fmt.Errorf("performing tool call: %w", err)
+		}
+
+		params.Messages = append(params.Messages, message.ToParam())
+
+		for callID, result := range resultsByCallID {
+			params.Messages = append(params.Messages, openai.ToolMessage(result, callID))
+		}
 	}
-
-	content := resp.Choices[0].Message.Content
-
-	// Persist LLM usage
+	if round >= maxRounds {
+		finalContent = fmt.Sprintf("Unable to provide an answer because reached maximum number of rounds (%d).", maxRounds)
+	}
+	// Persist LLM usage (only keep track of final result and not intermediate steps)
 	c.persistLLMUsage(ctx,
 		dto.LLMInput{
 			Messages: inputMessages,
 		},
 		dto.LLMOutput{
-			Content: content,
-			Usage: &dto.LLMUsageStats{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			},
+			Content: finalContent,
+			Usage:   &totalUsage,
 		},
 		c.cfg.Model,
 	)
-
-	return content, nil
+	return finalContent, nil
 }
 
 // createLLMMessages creates a slice of message params from system and user content
@@ -264,7 +300,7 @@ func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]st
 	userContent := fmt.Sprintf("Messages:\n%s", messages)
 	chatMessages, inputMessages := createLLMMessages(prompt, userContent)
 
-	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, false)
 	if err != nil {
 		return "", fmt.Errorf("generating suggestions: %w", err)
 	}
@@ -386,7 +422,7 @@ Example 4:
 	}
 
 	chatMessages, inputMessages := createLLMMessages(prompt, content)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, true)
 	if err != nil {
 		return nil, fmt.Errorf("creating runbook: %w", err)
 	}
@@ -452,7 +488,7 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	}
 
 	chatMessages, inputMessages := createLLMMessages(prompt, "")
-	respMsg, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, true)
+	respMsg, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, true)
 	if err != nil {
 		return "", "", fmt.Errorf("running JSON mode prompt: %w", err)
 	}
@@ -481,8 +517,10 @@ Given a message, respond with EXACTLY ONE of these commands (no explanation, jus
 - disable_auto_doc_reply (for disabling auto doc reply)
 - lookup_documentation (for looking up documentation)
 - update_documentation (for updating documentation)
+- deployment_ops (relating to the deployment lifecycle including deployment queries, adjusting emergency capacity (ecap), rolling back, etc)
 - none (for messages that don't match any supported command)
 
+Do not use any tools or attempt to answer the user's query.
 Do not add any conversational text, explanation, or formatting; output *only* the single command name.
 
 Examples:`
@@ -502,9 +540,34 @@ Response:
 `
 
 	chatMessages, inputMessages := createLLMMessages(prompt, text)
-	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, false)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, 1, false)
 	if err != nil {
 		return "", fmt.Errorf("classifying command: %w", err)
+	}
+
+	return content, nil
+}
+
+func (c *client) ProccessDeploymentOps(ctx context.Context, user_content string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	sys_prompt := `You are a dev-ops expert for a Slack bot named Ratchet that helps reduce operational toil. Your task is to succesfully use the tools provided to produce an answer to the given query. 
+
+Tool calling guidelines:
+- Before calling any tool, you must first **extract, list, and verify all argument values** (e.g., project name, service, team) from the user's query. For example, if the user queries about some project, list all projects.
+  - For example, if a user references a specific project or service, you must first list all available projects or services (depending on what the user asked for) and confirm a match before passing any value to a tool.
+  - It's okay to be flexible (e.g. match testprojectt with test_project)1
+
+Instructions for handling deployment queries:
+- Always include the packageId of each deployment in the response, unless the user specifically requests that it be omitted.
+
+If an answer can not be determined or information is insufficient, please say so clearly.`
+
+	chatMessages, inputMessages := createLLMMessages(sys_prompt, user_content)
+	content, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.0, 10, false)
+	if err != nil {
+		return "", fmt.Errorf("processing deployment ops: %w", err)
 	}
 
 	return content, nil
@@ -561,7 +624,7 @@ Response:
 
 	content := fmt.Sprintf(prompt, question, documents)
 	chatMessages, inputMessages := createLLMMessages(prompt, content)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.2, false)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.2, 1, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation response: %w", err)
 	}
@@ -621,7 +684,7 @@ func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, ms
 ---`, doc, msgs)
 
 	chatMessages, inputMessages := createLLMMessages(systemPrompt, userContent)
-	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, false)
+	respContent, err := c.runChatCompletion(ctx, inputMessages, chatMessages, 0.7, 1, false)
 	if err != nil {
 		return "", fmt.Errorf("generating documentation update: %w", err)
 	}
