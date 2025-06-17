@@ -72,20 +72,6 @@ func (mr *MockClientMockRecorder) Client() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Client", reflect.TypeOf((*MockClient)(nil).Client))
 }
 
-// Config mocks base method.
-func (m *MockClient) Config() llm.Config {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Config")
-	ret0, _ := ret[0].(llm.Config)
-	return ret0
-}
-
-// Config indicates an expected call of Config.
-func (mr *MockClientMockRecorder) Config() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Config", reflect.TypeOf((*MockClient)(nil).Config))
-}
-
 // GenerateChannelSuggestions mocks base method.
 func (m *MockClient) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
 	m.ctrl.T.Helper()

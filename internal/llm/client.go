@@ -44,7 +44,6 @@ func DefaultConfig() Config {
 
 type Client interface {
 	Client() openai.Client
-	Config() Config
 
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
