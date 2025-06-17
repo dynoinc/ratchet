@@ -74,6 +74,20 @@ func (b *Bot) DisableAutoDocReply(ctx context.Context, channelID string) error {
 	})
 }
 
+func (b *Bot) EnableAgentMode(ctx context.Context, channelID string) error {
+	return b.UpdateChannel(ctx, nil, schema.UpdateChannelAttrsParams{
+		ID:    channelID,
+		Attrs: dto.ChannelAttrs{AgentModeEnabled: true},
+	})
+}
+
+func (b *Bot) DisableAgentMode(ctx context.Context, channelID string) error {
+	return b.UpdateChannel(ctx, nil, schema.UpdateChannelAttrsParams{
+		ID:    channelID,
+		Attrs: dto.ChannelAttrs{AgentModeEnabled: false},
+	})
+}
+
 func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams, source messageSource) error {
 	qtx := schema.New(b.DB).WithTx(tx)
 
@@ -255,6 +269,15 @@ func (b *Bot) NotifyReactionRemoved(ctx context.Context, ev *slackevents.Reactio
 
 func (b *Bot) NotifyReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {
 	return b.updateReaction(ctx, ev.Item, ev.Reaction, 1)
+}
+
+func (b *Bot) GetChannel(ctx context.Context, channelID string) (schema.ChannelsV2, error) {
+	channel, err := schema.New(b.DB).GetChannel(ctx, channelID)
+	if err != nil {
+		return schema.ChannelsV2{}, fmt.Errorf("getting channel %s: %w", channelID, err)
+	}
+
+	return channel, nil
 }
 
 func (b *Bot) GetMessage(

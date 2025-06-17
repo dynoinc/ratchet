@@ -3,6 +3,7 @@ package modules_worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -17,14 +18,16 @@ import (
 type Worker struct {
 	river.WorkerDefaults[background.ModulesWorkerArgs]
 
-	bot     *internal.Bot
-	modules []modules.Handler
+	bot          *internal.Bot
+	agentModules []modules.Handler
+	modules      []modules.Handler
 }
 
-func New(bot *internal.Bot, modules []modules.Handler) *Worker {
+func New(bot *internal.Bot, agentModules []modules.Handler, modules []modules.Handler) *Worker {
 	return &Worker{
-		bot:     bot,
-		modules: modules,
+		bot:          bot,
+		agentModules: agentModules,
+		modules:      modules,
 	}
 }
 
@@ -33,14 +36,24 @@ func (w *Worker) Timeout(job *river.Job[background.ModulesWorkerArgs]) time.Dura
 }
 
 func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
-	if job.Args.ParentTS == "" {
-		return w.handleMessage(ctx, job)
+	channel, err := w.bot.GetChannel(ctx, job.Args.ChannelID)
+	if err != nil {
+		return fmt.Errorf("getting channel %s: %w", job.Args.ChannelID, err)
 	}
 
-	return w.handleThreadMessage(ctx, job)
+	modules := w.modules
+	if channel.Attrs.AgentModeEnabled {
+		modules = w.agentModules
+	}
+
+	if job.Args.ParentTS == "" {
+		return w.handleMessage(ctx, job, modules)
+	}
+
+	return w.handleThreadMessage(ctx, job, modules)
 }
 
-func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
+func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs], moduleHandlers []modules.Handler) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		if errors.Is(err, internal.ErrMessageNotFound) {
@@ -51,7 +64,7 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 		return err
 	}
 
-	for _, module := range w.modules {
+	for _, module := range moduleHandlers {
 		threadHandler, ok := module.(modules.ThreadHandler)
 		if !ok {
 			continue
@@ -79,7 +92,7 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 	return nil
 }
 
-func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
+func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs], moduleHandlers []modules.Handler) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		if errors.Is(err, internal.ErrMessageNotFound) {
@@ -90,7 +103,7 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 		return err
 	}
 
-	for _, module := range w.modules {
+	for _, module := range moduleHandlers {
 		if job.Args.IsBackfill {
 			if enabled, ok := module.(modules.OnBackfillMessage); !ok || !enabled.EnabledForBackfill() {
 				continue

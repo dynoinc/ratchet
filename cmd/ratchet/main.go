@@ -34,6 +34,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
+	"github.com/dynoinc/ratchet/internal/modules/agent"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/classifier"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
@@ -220,6 +221,9 @@ func main() {
 
 	modulesWorker := modules_worker.New(
 		bot,
+		[]modules.Handler{
+			agent.New(bot),
+		},
 		[]modules.Handler{
 			classifier,
 			channelMonitor,

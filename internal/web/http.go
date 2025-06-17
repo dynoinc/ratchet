@@ -119,6 +119,7 @@ func New(
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
+	apiMux.HandleFunc("POST /channels/{channel_name}/agent-mode", handleJSON(handlers.agentMode))
 
 	// Services
 	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
@@ -224,6 +225,27 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 		LastNMsgs: lastNMsgsInt,
 	}, nil); err != nil {
 		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (h *httpHandlers) agentMode(r *http.Request) (any, error) {
+	channelName := r.PathValue("channel_name")
+	channel, err := schema.New(h.bot.DB).GetChannelByName(r.Context(), channelName)
+	if err != nil {
+		return nil, err
+	}
+
+	enable := r.URL.Query().Get("enable")
+	if enable == "true" {
+		if err := h.bot.EnableAgentMode(r.Context(), channel.ID); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := h.bot.DisableAgentMode(r.Context(), channel.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	return nil, nil
