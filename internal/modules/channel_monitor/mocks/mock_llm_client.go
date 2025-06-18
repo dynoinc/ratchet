@@ -58,6 +58,22 @@ func (mr *MockClientMockRecorder) ClassifyCommand(ctx, text, sampleMessages any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyCommand", reflect.TypeOf((*MockClient)(nil).ClassifyCommand), ctx, text, sampleMessages)
 }
 
+// ClassifyMessage mocks base method.
+func (m *MockClient) ClassifyMessage(ctx context.Context, text string, classes map[string]string) (string, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClassifyMessage", ctx, text, classes)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ClassifyMessage indicates an expected call of ClassifyMessage.
+func (mr *MockClientMockRecorder) ClassifyMessage(ctx, text, classes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyMessage", reflect.TypeOf((*MockClient)(nil).ClassifyMessage), ctx, text, classes)
+}
+
 // Client mocks base method.
 func (m *MockClient) Client() openai.Client {
 	m.ctrl.T.Helper()

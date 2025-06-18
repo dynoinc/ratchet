@@ -40,7 +40,7 @@ func New(bot *internal.Bot, llmClient llm.Client) river.Worker[background.Docume
 }
 
 func (d *documentRefreshWorker) Timeout(job *river.Job[background.DocumentationRefreshArgs]) time.Duration {
-	return -1
+	return 15 * time.Minute
 }
 
 func (d *documentRefreshWorker) Work(ctx context.Context, job *river.Job[background.DocumentationRefreshArgs]) error {

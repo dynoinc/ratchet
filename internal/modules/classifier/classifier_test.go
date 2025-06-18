@@ -52,7 +52,7 @@ func TestClassifierWorker(t *testing.T) {
 	for testCase, expected := range outputs {
 		t.Run(testCase, func(t *testing.T) {
 			t.Setenv("INCIDENT_BINARY_ACTION", testCase)
-			got, err := runIncidentBinary(executable, "username", "text")
+			got, err := RunIncidentBinary(executable, "username", "text")
 			require.NoError(t, err)
 			require.Equal(t, expected, got)
 		})

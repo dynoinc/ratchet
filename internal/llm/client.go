@@ -52,6 +52,9 @@ type Client interface {
 	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
 	ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error)
+
+	// Agent mode
+	ClassifyMessage(ctx context.Context, text string, classes map[string]string) (string, string, error)
 }
 
 type client struct {
@@ -286,10 +289,6 @@ func (c *client) Client() openai.Client {
 	return c.client
 }
 
-func (c *client) Config() Config {
-	return c.cfg
-}
-
 // runChatCompletion is a helper function to run chat completions with common logic
 func (c *client) runChatCompletion(
 	ctx context.Context,
@@ -348,10 +347,6 @@ func createLLMMessages(systemContent string, userContent string) []openai.ChatCo
 }
 
 func (c *client) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
-	if c == nil {
-		return "", nil
-	}
-
 	prompt := `You are a technical analyst reviewing Slack support channel messages. Your task is to identify specific, actionable improvements to reduce operational toil based on the provided conversation threads.
 
 	Analyze the messages for:
@@ -414,10 +409,6 @@ type RunbookResponse struct {
 }
 
 func (c *client) GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error) {
-	if c == nil {
-		return nil, nil
-	}
-
 	prompt := `Create a structured runbook based on the provided service, alert, and incident messages. Return a JSON object with these exact fields:
 
 {
@@ -533,10 +524,6 @@ Example 4:
 }
 
 func (c *client) GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error) {
-	if c == nil {
-		return nil, nil
-	}
-
 	inputText := fmt.Sprintf("%s: %s", task, text)
 	params := openai.EmbeddingNewParams{
 		Model: c.cfg.EmbeddingModel,
@@ -563,10 +550,6 @@ func (c *client) GenerateEmbedding(ctx context.Context, task string, text string
 // RunJSONModePrompt runs a JSON mode prompt and validates the response against the provided JSON schema.
 // It returns the response and the raw response message (returned if the response is not valid).
 func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchema *jsonschema.Schema) (string, string, error) {
-	if c == nil {
-		return "", "", nil
-	}
-
 	chatMessages := createLLMMessages(prompt, "")
 	respMsg, err := c.runChatCompletion(ctx, chatMessages, 0.7, true)
 	if err != nil {
@@ -584,10 +567,6 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 }
 
 func (c *client) ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error) {
-	if c == nil {
-		return "", nil
-	}
-
 	prompt := `You are a command classifier for a Slack bot named Ratchet that helps reduce operational toil. Your task is to identify the most appropriate command from user input.
 
 Given a message, respond with EXACTLY ONE of these commands (no explanation, just the command name):
@@ -626,11 +605,89 @@ Response:
 	return content, nil
 }
 
-func (c *client) GenerateDocumentationResponse(ctx context.Context, question string, documents []string) (string, error) {
-	if c == nil {
-		return "", nil
+func (c *client) ClassifyMessage(ctx context.Context, text string, classes map[string]string) (string, string, error) {
+	prompt := `You are an expert at classifying Slack messages in team help and operations channels. Your task is to analyze messages and categorize them accurately.
+
+CLASSIFICATION PROCESS:
+1. Read the message carefully and identify the main intent
+2. Consider the context (team/ops channel communication)
+3. Look for key indicators like question words, action requests, urgency markers
+4. Match against the provided classes based on the primary purpose
+
+AVAILABLE CLASSES:`
+
+	for class, description := range classes {
+		prompt += fmt.Sprintf("\n- %s: %s", class, description)
 	}
 
+	prompt += `
+
+CLASSIFICATION EXAMPLES:
+
+Help Request Examples:
+- "How do I restart the payment service?"
+- "Getting 500 errors on the API, anyone know what's wrong?"
+- "Can someone help me debug this database connection issue?"
+
+Production Change Examples:
+- "Need to deploy the hotfix to production ASAP"
+- "Can we update the config for the auth service?"
+- "Planning to scale up the workers, any objections?"
+
+Code Review Examples:
+- "PR ready for review: https://github.com/org/repo/pull/123"
+- "Can someone take a look at my changes?"
+- "Need eyes on this refactor before merging"
+
+Incident Report Examples:
+- "ALERT: Payment service is down"
+- "Users reporting login failures across all regions"
+- "Database CPU is at 95%, investigating"
+
+Status Update Examples:
+- "Deployment completed successfully"
+- "Fixed the issue, monitoring for any further problems"
+- "Services are back to normal"
+
+Other Examples:
+- "Thanks for the help!"
+- "Good morning team"
+- "Meeting in 5 minutes"
+
+INSTRUCTIONS:
+- Analyze the message's PRIMARY intent and purpose
+- Choose the MOST SPECIFIC class that fits
+- If multiple classes could apply, pick the one that represents the main action needed
+- Use "other" only for messages that clearly don't fit any provided class
+- Provide a concise reason explaining your classification choice
+
+Message to classify: "%s"
+
+Return a JSON object with "class" and "reason" fields:`
+
+	chatMessages := createLLMMessages(prompt, text)
+	respContent, err := c.runChatCompletion(ctx, chatMessages, 0.1, true)
+	if err != nil {
+		return "", "", fmt.Errorf("classifying message: %w", err)
+	}
+
+	var resp struct {
+		Class  string `json:"class"`
+		Reason string `json:"reason"`
+	}
+
+	if err := json.Unmarshal([]byte(respContent), &resp); err != nil {
+		return "", "", fmt.Errorf("unmarshaling response: %w", err)
+	}
+
+	if resp.Class == "" {
+		return "", "", fmt.Errorf("no class found in response: %s", respContent)
+	}
+
+	return resp.Class, resp.Reason, nil
+}
+
+func (c *client) GenerateDocumentationResponse(ctx context.Context, question string, documents []string) (string, error) {
 	prompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to answer questions based *strictly* on the provided documentation excerpts.
 
 Given a question and a list of relevant documentation excerpts (typically in Markdown format), follow these steps:
@@ -686,10 +743,6 @@ Response:
 }
 
 func (c *client) GenerateDocumentationUpdate(ctx context.Context, doc string, msgs string) (string, error) {
-	if c == nil {
-		return "", nil
-	}
-
 	systemPrompt := `You are a technical writer for a Slack bot named Ratchet that helps reduce operational toil. Your task is to update the provided documentation based on the technical details discussed in the provided Slack messages.
 
 	IMPORTANT INSTRUCTIONS:

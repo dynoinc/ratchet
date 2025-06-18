@@ -16,23 +16,26 @@ type sentryMiddleware struct {
 }
 
 func (m *sentryMiddleware) Work(ctx context.Context, job *rivertype.JobRow, doInner func(ctx context.Context) error) error {
-	var err error
-	sentry.WithScope(func(scope *sentry.Scope) {
-		scope.AddBreadcrumb(&sentry.Breadcrumb{
-			Category: "job",
-			Message:  job.Kind,
-			Level:    sentry.LevelInfo,
-		}, 100)
+	hub := sentry.GetHubFromContext(ctx)
+	if hub == nil {
+		hub = sentry.CurrentHub().Clone()
+	}
 
-		defer sentry.RecoverWithContext(ctx)
+	tx := sentry.StartTransaction(ctx, "worker.job", sentry.WithTransactionName(job.Kind))
+	defer tx.Finish()
 
-		if innerErr := doInner(ctx); innerErr != nil {
-			sentry.CaptureException(innerErr)
-			err = innerErr
-		}
-	})
+	ctx = sentry.SetHubOnContext(tx.Context(), hub)
+	defer sentry.RecoverWithContext(ctx)
 
-	return err
+	if err := doInner(ctx); err != nil {
+		sentry.CaptureException(err)
+		tx.Status = sentry.SpanStatusInternalError
+		return err
+	} else {
+		tx.Status = sentry.SpanStatusOK
+	}
+
+	return nil
 }
 
 func New(db *pgxpool.Pool, workers *river.Workers, periodicJobs []*river.PeriodicJob) (*river.Client[pgx.Tx], error) {

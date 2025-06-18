@@ -48,7 +48,7 @@ func (w *classifier) EnabledForBackfill() bool {
 }
 
 func (w *classifier) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	action, err := runIncidentBinary(w.incidentBinary, msg.Message.BotUsername, msg.Message.Text)
+	action, err := RunIncidentBinary(w.incidentBinary, msg.Message.BotUsername, msg.Message.Text)
 	if err != nil {
 		return fmt.Errorf("classifying incident with binary: %w", err)
 	}
@@ -82,7 +82,7 @@ type binaryInput struct {
 	Text     string `json:"text"`
 }
 
-func runIncidentBinary(binaryPath string, username, text string) (dto.IncidentAction, error) {
+func RunIncidentBinary(binaryPath string, username, text string) (dto.IncidentAction, error) {
 	input := binaryInput{
 		Username: username,
 		Text:     text,

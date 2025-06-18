@@ -13,5 +13,5 @@ type MessageAttrs struct {
 	Reactions map[string]int `json:"reactions,omitzero"`
 
 	// Other information stored by modules
-	IncidentAction IncidentAction `json:"incident_action,omitzero"` // from classifier
+	IncidentAction IncidentAction `json:"incident_action,omitzero"` // from classifier binary
 }

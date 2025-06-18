@@ -34,7 +34,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules"
-	"github.com/dynoinc/ratchet/internal/modules/agent"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/classifier"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
@@ -137,8 +136,17 @@ func main() {
 
 	// Sentry setup
 	if c.SentryDSN != "" {
+		env, tracesSampleRate := "development", 1.0
+		if !c.DevMode {
+			env = "production"
+			tracesSampleRate = 0.01
+		}
+
 		if err := sentry.Init(sentry.ClientOptions{
-			Dsn: c.SentryDSN,
+			Dsn:              c.SentryDSN,
+			Environment:      env,
+			TracesSampleRate: tracesSampleRate,
+			EnableTracing:    true,
 		}); err != nil {
 			slog.ErrorContext(ctx, "setting up Sentry", "error", err)
 			os.Exit(1)
@@ -222,9 +230,6 @@ func main() {
 	modulesWorker := modules_worker.New(
 		bot,
 		[]modules.Handler{
-			agent.New(bot),
-		},
-		[]modules.Handler{
 			classifier,
 			channelMonitor,
 			runbook.New(bot, slackIntegration, llmClient),
@@ -244,10 +249,10 @@ func main() {
 
 	// Background job setup
 	workers := river.NewWorkers()
-	river.AddWorker(workers, channelOnboardWorker)
-	river.AddWorker(workers, backfillThreadWorker)
-	river.AddWorker(workers, documentationRefreshWorker)
-	river.AddWorker(workers, modulesWorker)
+	river.AddWorker[background.ChannelOnboardWorkerArgs](workers, channelOnboardWorker)
+	river.AddWorker[background.BackfillThreadWorkerArgs](workers, backfillThreadWorker)
+	river.AddWorker[background.DocumentationRefreshArgs](workers, documentationRefreshWorker)
+	river.AddWorker[background.ModulesWorkerArgs](workers, modulesWorker)
 
 	// Start River client
 	riverClient, err := background.New(db, workers, periodicJobs)

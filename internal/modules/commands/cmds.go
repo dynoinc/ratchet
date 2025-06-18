@@ -125,17 +125,23 @@ func (c *Commands) findCommand(ctx context.Context, text string) (cmd, error) {
 }
 
 func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	return c.handleMessage(ctx, channelID, slackTS, msg)
+	channel, err := c.bot.GetChannel(ctx, channelID)
+	if err != nil {
+		return err
+	}
+
+	force := channel.Attrs.AgentModeEnabled
+	return c.handleMessage(ctx, channelID, slackTS, msg, force)
 }
 
 func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackTS string, parentTS string, msg dto.MessageAttrs) error {
-	return c.handleMessage(ctx, channelID, parentTS, msg)
+	return c.handleMessage(ctx, channelID, parentTS, msg, false)
 }
 
-func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
 	botID := c.slackIntegration.BotUserID()
 	text, found := strings.CutPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
-	if !found {
+	if !found && !force {
 		return nil
 	}
 

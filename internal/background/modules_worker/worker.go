@@ -3,7 +3,6 @@ package modules_worker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -18,16 +17,14 @@ import (
 type Worker struct {
 	river.WorkerDefaults[background.ModulesWorkerArgs]
 
-	bot          *internal.Bot
-	agentModules []modules.Handler
-	modules      []modules.Handler
+	bot     *internal.Bot
+	modules []modules.Handler
 }
 
-func New(bot *internal.Bot, agentModules []modules.Handler, modules []modules.Handler) *Worker {
+func New(bot *internal.Bot, modules []modules.Handler) *Worker {
 	return &Worker{
-		bot:          bot,
-		agentModules: agentModules,
-		modules:      modules,
+		bot:     bot,
+		modules: modules,
 	}
 }
 
@@ -36,24 +33,14 @@ func (w *Worker) Timeout(job *river.Job[background.ModulesWorkerArgs]) time.Dura
 }
 
 func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
-	channel, err := w.bot.GetChannel(ctx, job.Args.ChannelID)
-	if err != nil {
-		return fmt.Errorf("getting channel %s: %w", job.Args.ChannelID, err)
-	}
-
-	modules := w.modules
-	if channel.Attrs.AgentModeEnabled {
-		modules = w.agentModules
-	}
-
 	if job.Args.ParentTS == "" {
-		return w.handleMessage(ctx, job, modules)
+		return w.handleMessage(ctx, job)
 	}
 
-	return w.handleThreadMessage(ctx, job, modules)
+	return w.handleThreadMessage(ctx, job)
 }
 
-func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs], moduleHandlers []modules.Handler) error {
+func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		if errors.Is(err, internal.ErrMessageNotFound) {
@@ -64,7 +51,7 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 		return err
 	}
 
-	for _, module := range moduleHandlers {
+	for _, module := range w.modules {
 		threadHandler, ok := module.(modules.ThreadHandler)
 		if !ok {
 			continue
@@ -92,7 +79,7 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 	return nil
 }
 
-func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs], moduleHandlers []modules.Handler) error {
+func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
 	msg, err := w.bot.GetMessage(ctx, job.Args.ChannelID, job.Args.SlackTS)
 	if err != nil {
 		if errors.Is(err, internal.ErrMessageNotFound) {
@@ -103,7 +90,7 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 		return err
 	}
 
-	for _, module := range moduleHandlers {
+	for _, module := range w.modules {
 		if job.Args.IsBackfill {
 			if enabled, ok := module.(modules.OnBackfillMessage); !ok || !enabled.EnabledForBackfill() {
 				continue
