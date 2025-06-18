@@ -52,8 +52,6 @@ type Client interface {
 	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
 	ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error)
-
-	// Agent mode
 	ClassifyMessage(ctx context.Context, text string, classes map[string]string) (string, string, error)
 }
 

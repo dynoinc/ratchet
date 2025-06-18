@@ -65,6 +65,9 @@ type config struct {
 	// Documentation configuration path
 	Documentation string
 
+	// Commands configuration
+	Commands commands.Config
+
 	// HTTP configuration
 	HTTPAddr string `split_words:"true" default:"127.0.0.1:5001"`
 
@@ -227,13 +230,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	cmds, err := commands.New(c.Commands, bot, slackIntegration, llmClient)
+	if err != nil {
+		slog.ErrorContext(ctx, "setting up commands", "error", err)
+		os.Exit(1)
+	}
+
 	modulesWorker := modules_worker.New(
 		bot,
 		[]modules.Handler{
 			classifier,
 			channelMonitor,
 			runbook.New(bot, slackIntegration, llmClient),
-			commands.New(bot, slackIntegration, llmClient),
+			cmds,
 			docrag.New(bot, slackIntegration, llmClient),
 		},
 	)

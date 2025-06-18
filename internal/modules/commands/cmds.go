@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"strings"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -16,6 +17,10 @@ import (
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
+
+type Config struct {
+	MCPServerURLs []string `envconfig:"MCP_SERVER_URLS"`
+}
 
 type cmd string
 
@@ -72,21 +77,30 @@ var (
 )
 
 type Commands struct {
+	config           Config
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
 }
 
 func New(
+	config Config,
 	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
-) *Commands {
+) (*Commands, error) {
+	for _, url := range config.MCPServerURLs {
+		if _, err := exec.LookPath(url); err != nil {
+			return nil, fmt.Errorf("looking up MCP server: %w", err)
+		}
+	}
+
 	return &Commands{
+		config:           config,
 		bot:              bot,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
-	}
+	}, nil
 }
 
 func (c *Commands) Name() string {

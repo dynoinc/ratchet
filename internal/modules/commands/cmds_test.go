@@ -23,7 +23,8 @@ func TestFindCommand(t *testing.T) {
 		t.Skip("LLM client not available")
 	}
 
-	commands := New(nil, nil, llmClient)
+	commands, err := New(Config{}, nil, nil, llmClient)
+	require.NoError(t, err)
 
 	tests := []struct {
 		message string
