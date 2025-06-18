@@ -116,6 +116,7 @@ func New(
 
 	// Channels
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
+	apiMux.HandleFunc("GET /channels/{channel_name}", handleJSON(handlers.getChannel))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
@@ -166,6 +167,16 @@ func (h *httpHandlers) listChannels(r *http.Request) (any, error) {
 	})
 
 	return channels, nil
+}
+
+func (h *httpHandlers) getChannel(r *http.Request) (any, error) {
+	channelName := r.PathValue("channel_name")
+	channel, err := schema.New(h.bot.DB).GetChannelByName(r.Context(), channelName)
+	if err != nil {
+		return nil, err
+	}
+
+	return channel, nil
 }
 
 func (h *httpHandlers) listMessages(r *http.Request) (any, error) {
