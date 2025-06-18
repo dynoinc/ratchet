@@ -88,15 +88,15 @@ func (b *Bot) DisableAgentMode(ctx context.Context, channelID string) error {
 	})
 }
 
-func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams, source messageSource) error {
+func (b *Bot) EnsureChannel(ctx context.Context, tx pgx.Tx, channelID string) (bool, error) {
 	qtx := schema.New(b.DB).WithTx(tx)
 
-	channelID := params[0].ChannelID
 	channel, err := qtx.AddChannel(ctx, channelID)
 	if err != nil {
-		return fmt.Errorf("adding channel %s: %w", channelID, err)
+		return false, fmt.Errorf("adding channel %s: %w", channelID, err)
 	}
 
+	onboarding := false
 	if channel.Attrs == (dto.ChannelAttrs{}) {
 		if err := qtx.UpdateChannelAttrs(ctx, schema.UpdateChannelAttrsParams{
 			ID: channelID,
@@ -104,17 +104,29 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 				OnboardingStatus: dto.OnboardingStatusStarted,
 			},
 		}); err != nil {
-			return fmt.Errorf("updating channel %s: %w", channelID, err)
+			return false, fmt.Errorf("updating channel %s: %w", channelID, err)
 		}
 
 		if _, err := b.RiverClient.InsertTx(ctx, tx, background.ChannelOnboardWorkerArgs{
 			ChannelID: channelID,
 		}, nil); err != nil {
-			return fmt.Errorf("scheduling channel onboarding for channel %s: %w", channelID, err)
+			return false, fmt.Errorf("scheduling channel onboarding for channel %s: %w", channelID, err)
 		}
+
+		onboarding = true
 	}
 
-	// Delete old messages
+	return onboarding, nil
+}
+
+func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMessageParams, source messageSource) error {
+	qtx := schema.New(b.DB).WithTx(tx)
+
+	channelID := params[0].ChannelID
+	if _, err := b.EnsureChannel(ctx, tx, channelID); err != nil {
+		return fmt.Errorf("ensuring channel %s: %w", channelID, err)
+	}
+
 	if err := qtx.DeleteOldMessages(ctx, schema.DeleteOldMessagesParams{
 		ChannelID: channelID,
 		OlderThan: pgtype.Interval{Days: 2 * 365, Valid: true},
@@ -151,8 +163,10 @@ func (b *Bot) AddMessage(ctx context.Context, tx pgx.Tx, params []schema.AddMess
 		})
 	}
 
-	if _, err := b.RiverClient.InsertManyTx(ctx, tx, jobs); err != nil {
-		return fmt.Errorf("scheduling message classification for channel %s: %w", channelID, err)
+	if len(jobs) > 0 {
+		if _, err := b.RiverClient.InsertManyTx(ctx, tx, jobs); err != nil {
+			return fmt.Errorf("scheduling message classification for channel %s: %w", channelID, err)
+		}
 	}
 
 	return nil

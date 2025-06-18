@@ -1,14 +1,20 @@
 -- name: AddMessage :one
-INSERT INTO messages_v3 (channel_id, ts, attrs)
-VALUES (@channel_id, @ts, @attrs)
-ON CONFLICT (channel_id, ts) DO NOTHING
-RETURNING (xmax = 0) as inserted;
+WITH ins AS (
+    INSERT INTO messages_v3 (channel_id, ts, attrs)
+    VALUES (@channel_id, @ts, @attrs)
+    ON CONFLICT (channel_id, ts) DO NOTHING
+    RETURNING 1
+)
+SELECT EXISTS (SELECT 1 FROM ins) AS inserted;
 
 -- name: AddThreadMessage :one
-INSERT INTO messages_v3 (channel_id, parent_ts, ts, attrs)
-VALUES (@channel_id, @parent_ts :: text, @ts, @attrs)
-ON CONFLICT (channel_id, ts) DO NOTHING
-RETURNING (xmax = 0) as inserted;
+WITH ins AS (
+    INSERT INTO messages_v3 (channel_id, parent_ts, ts, attrs)
+    VALUES (@channel_id, @parent_ts :: text, @ts, @attrs)
+    ON CONFLICT (channel_id, ts) DO NOTHING
+    RETURNING 1
+)
+SELECT EXISTS (SELECT 1 FROM ins) AS inserted;
 
 -- name: UpdateReaction :exec
 WITH reaction_count AS (SELECT COALESCE((attrs -> 'reactions' ->> (@reaction::text))::int, 0) + @count::int AS new_count

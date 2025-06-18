@@ -14,10 +14,13 @@ import (
 )
 
 const addMessage = `-- name: AddMessage :one
-INSERT INTO messages_v3 (channel_id, ts, attrs)
-VALUES ($1, $2, $3)
-ON CONFLICT (channel_id, ts) DO NOTHING
-RETURNING (xmax = 0) as inserted
+WITH ins AS (
+    INSERT INTO messages_v3 (channel_id, ts, attrs)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (channel_id, ts) DO NOTHING
+    RETURNING 1
+)
+SELECT EXISTS (SELECT 1 FROM ins) AS inserted
 `
 
 type AddMessageParams struct {
@@ -34,10 +37,13 @@ func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) (bool, e
 }
 
 const addThreadMessage = `-- name: AddThreadMessage :one
-INSERT INTO messages_v3 (channel_id, parent_ts, ts, attrs)
-VALUES ($1, $2 :: text, $3, $4)
-ON CONFLICT (channel_id, ts) DO NOTHING
-RETURNING (xmax = 0) as inserted
+WITH ins AS (
+    INSERT INTO messages_v3 (channel_id, parent_ts, ts, attrs)
+    VALUES ($1, $2 :: text, $3, $4)
+    ON CONFLICT (channel_id, ts) DO NOTHING
+    RETURNING 1
+)
+SELECT EXISTS (SELECT 1 FROM ins) AS inserted
 `
 
 type AddThreadMessageParams struct {

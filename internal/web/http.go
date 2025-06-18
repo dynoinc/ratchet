@@ -219,15 +219,27 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("invalid last_n_msgs: %w", err)
 	}
 
-	// submit job to river to onboard channel
-	if _, err := h.bot.RiverClient.Insert(r.Context(), background.ChannelOnboardWorkerArgs{
-		ChannelID: channelID,
-		LastNMsgs: lastNMsgsInt,
-	}, nil); err != nil {
+	tx, err := h.bot.DB.Begin(r.Context())
+	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback(r.Context())
 
-	return nil, nil
+	onboarding, err := h.bot.EnsureChannel(r.Context(), tx, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("ensuring channel: %w", err)
+	}
+
+	if !onboarding {
+		if _, err := h.bot.RiverClient.InsertTx(r.Context(), tx, background.ChannelOnboardWorkerArgs{
+			ChannelID: channelID,
+			LastNMsgs: lastNMsgsInt,
+		}, nil); err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, tx.Commit(r.Context())
 }
 
 func (h *httpHandlers) agentMode(r *http.Request) (any, error) {
