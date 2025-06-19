@@ -37,8 +37,8 @@ jobs:
       - name: Generate and Format Code
         run: |
           go generate ./...
-          go tool goimports -local=github.com/dynoinc/ratchet -w .
           go tool sqlc generate -f ./internal/storage/sqlc.yml
+          go tool goimports -local=github.com/dynoinc/ratchet -w .
           git diff --exit-code
 
       - name: Go Tidy
