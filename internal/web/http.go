@@ -127,7 +127,7 @@ func New(
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
 	// Commands
-	apiMux.HandleFunc("GET /commands/execute", handleJSON(handlers.executeCommand))
+	apiMux.HandleFunc("GET /commands/execute", handlers.executeCommand)
 
 	// Documentation
 	apiMux.HandleFunc("GET /docs/status", handleJSON(handlers.docsStatus))
@@ -435,22 +435,26 @@ func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
 	return nil, fmt.Errorf("source not found")
 }
 
-func (h *httpHandlers) executeCommand(r *http.Request) (any, error) {
+func (h *httpHandlers) executeCommand(w http.ResponseWriter, r *http.Request) {
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("ts")
 	if channelID == "" || threadTS == "" {
-		return nil, fmt.Errorf("channel_id and ts parameters are required")
+		http.Error(w, "channel_id and ts parameters are required", http.StatusBadRequest)
+		return
 	}
 
 	msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
 	if err != nil {
-		return nil, fmt.Errorf("getting message: %w", err)
+		http.Error(w, fmt.Sprintf("getting message: %v", err), http.StatusInternalServerError)
+		return
 	}
 
 	response, err := h.commands.Generate(r.Context(), channelID, threadTS, msg.Attrs, true /* force */)
 	if err != nil {
-		return nil, fmt.Errorf("generating command: %w", err)
+		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	return response, nil
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(response))
 }

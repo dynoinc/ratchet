@@ -43,7 +43,7 @@ func New(
 	var mcpClients []*client.Client
 
 	// Inbuilt tools
-	inbuilt, err := tools.Client(ctx, schema.New(bot.DB), llmClient)
+	inbuilt, err := tools.Client(ctx, schema.New(bot.DB), llmClient, slackIntegration)
 	if err != nil {
 		return nil, fmt.Errorf("creating inbuilt tools client: %w", err)
 	}
@@ -79,6 +79,10 @@ func (c *Commands) Name() string {
 }
 
 func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+	if msg.Message.BotID != "" || msg.Message.BotUsername != "" || msg.Message.SubType != "" {
+		return nil
+	}
+
 	channel, err := c.bot.GetChannel(ctx, channelID)
 	if err != nil {
 		return err
@@ -111,10 +115,15 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 		}
 
 		for _, t := range tools.Tools {
+			required := t.InputSchema.Required
+			if required == nil {
+				required = []string{}
+			}
+
 			inputSchemaMap := map[string]any{
 				"type":       t.InputSchema.Type,
 				"properties": t.InputSchema.Properties,
-				"required":   t.InputSchema.Required,
+				"required":   required,
 			}
 
 			openAITools = append(openAITools, openai.ChatCompletionToolParam{
