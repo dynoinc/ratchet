@@ -21,8 +21,8 @@ RUN apt-get update && \
         --only-upgrade libpam0g=1.5.3-5ubuntu5.4 \
         --only-upgrade libpam-runtime=1.5.3-5ubuntu5.4 \
         --only-upgrade libpam-modules-bin=1.5.3-5ubuntu5.4 \
-        --only-upgrade libpam-modules=1.5.3-5ubuntu5.4 \
-        ca-certificates && \
+        --only-upgrade libpam-modules=1.5.3-5ubuntu5.4 && \
+    apt-get install -y --no-install-recommends ca-certificates && \
     update-ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
