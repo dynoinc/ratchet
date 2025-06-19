@@ -11,15 +11,18 @@ jobs:
       contents: read
       packages: read
 
-  bump_version:
+  bump_scan_push:
     runs-on: ubuntu-latest
     needs: build
     if: success()
+    name: Bump Version, Build, Scan, and Push
     permissions:
       contents: write
+      packages: write
+      security-events: write
     outputs:
       VERSION: ${{ steps.generate_version.outputs.VERSION }}
-      COMMIT_HASH: ${{ steps.commit-and-push.outputs.commit_hash }}
+      COMMIT_HASH: ${{ steps.commit_and_push.outputs.COMMIT_HASH }}
 
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +57,53 @@ jobs:
           NEW_VERSION="$major.$minor.$((patch + 1))"
           echo "VERSION=v$NEW_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (early)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: |
+            ratchet:latest
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.generate_version.outputs.VERSION }}
+
+      - name: Scan Docker Image with Trivy
+        id: trivy_scan
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: ratchet:latest
+          format: "sarif"
+          output: trivy-results.sarif
+          exit-code: "1"
+          ignore-unfixed: true
+        continue-on-error: true
+
+      - name: Upload SARIF Report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Fail if vulnerabilities found
+        if: steps.trivy_scan.outcome == 'failure'
+        run: |
+          echo "❌ Security vulnerabilities found in the image!"
+          echo "Version bump will not be committed and image will not be pushed."
+          exit 1
+
       - name: Commit version update
-        id: commit-and-push
+        id: commit_and_push
         if: env.NEW_COMMITS == 'true'
         run: |
           git config --local user.email "action@github.com"
@@ -64,63 +112,34 @@ jobs:
           git push --tags
           echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-  push:
-    runs-on: ubuntu-latest
-    needs: bump_version
-    if: needs.bump_version.outputs.VERSION != '' && success()
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.bump_version.outputs.COMMIT_HASH }}
-          fetch-depth: 1
-          fetch-tags: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ needs.bump_version.outputs.VERSION }}
+      - name: Push Docker image (reusing already built image)
+        run: |
+          echo "Pushing already built Docker images..."
+          docker push ghcr.io/${{ github.repository }}:latest
+          docker push ghcr.io/${{ github.repository }}:${{ steps.generate_version.outputs.VERSION }}
 
   create_release:
     runs-on: ubuntu-latest
-    needs: bump_version
-    if: needs.bump_version.outputs.VERSION != '' && success()
+    needs: bump_scan_push
+    if: needs.bump_scan_push.outputs.VERSION != '' && success()
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.bump_version.outputs.COMMIT_HASH }}
+          ref: ${{ needs.bump_scan_push.outputs.COMMIT_HASH }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.bump_version.outputs.VERSION }}
-          name: Release ${{ needs.bump_version.outputs.VERSION }}
+          tag_name: ${{ needs.bump_scan_push.outputs.VERSION }}
+          name: Release ${{ needs.bump_scan_push.outputs.VERSION }}
           generate_release_notes: true
 
   purge_old_versions:
     runs-on: ubuntu-latest
-    needs: push
+    needs: bump_scan_push
     if: success()
     permissions:
       packages: write
