@@ -96,11 +96,15 @@ func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackT
 	return c.Respond(ctx, channelID, parentTS, msg, false)
 }
 
-func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg string, force bool) (string, error) {
+func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) (string, error) {
 	botID := c.slackIntegration.BotUserID()
-	text, found := strings.CutPrefix(msg, fmt.Sprintf("<@%s> ", botID))
-	if !found && !force {
+	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) && !force {
 		return "", nil
+	}
+
+	topMsg, err := c.bot.GetMessage(ctx, channelID, slackTS)
+	if err != nil {
+		return "", fmt.Errorf("getting top message: %w", err)
 	}
 
 	// Get thread messages for context
@@ -145,15 +149,33 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 
 	// Build conversation history from thread messages
 	var conversationHistory []openai.ChatCompletionMessageParamUnion
-	conversationHistory = append(conversationHistory, openai.SystemMessage(`You are a helpful assistant that manages Slack channels and provides various utilities.
+
+	// Build system message with context
+	systemPrompt := fmt.Sprintf(`You are a helpful assistant that manages Slack channels and provides various utilities.
+
+CURRENT CONTEXT:
+- Channel ID: %s
+- Use this channel_id when tools require it`, channelID)
+
+	// Add alert firing context if topMsg is an alert firing
+	if topMsg.Attrs.IncidentAction.Action == dto.ActionOpenIncident {
+		systemPrompt += fmt.Sprintf(`
+- Alert Context: Service "%s" - Alert "%s" (Priority: %s)`,
+			topMsg.Attrs.IncidentAction.Service,
+			topMsg.Attrs.IncidentAction.Alert,
+			topMsg.Attrs.IncidentAction.Priority)
+	}
+
+	systemPrompt += `
 
 IMPORTANT INSTRUCTIONS:
-1. **ALWAYS use the available tools** when they can help answer the user's request or perform actions
-2. **DO NOT** try to answer questions about data, reports, documentation, or channel information without using the appropriate tools first
-3. Use multiple tools in parallel when possible to gather comprehensive information
+1. **PRIMARY FOCUS**: Always prioritize and focus on the latest user request. Use conversation history primarily for context and understanding, not as the main topic.
+2. **ALWAYS use the available tools** when they can help answer the user's request or perform actions
+3. **DO NOT** try to answer questions about data, reports, documentation, or channel information without using the appropriate tools first
 4. If unsure which tools to use, try relevant ones to explore what data is available
 5. **ONLY offer capabilities that are available through your tools** - do not suggest checking external systems like GitHub status, deployment status, or other services unless you have specific tools for them
 6. If a user asks about something you cannot do with available tools, politely explain what you can help with instead
+7. **RESPOND TO THE CURRENT REQUEST**: Even if the conversation history contains previous topics or requests, always address the most recent user message first
 
 RESPONSE FORMAT:
 You are writing for a Slack section block. Use Slack's mrkdwn format:
@@ -166,25 +188,24 @@ You are writing for a Slack section block. Use Slack's mrkdwn format:
 Do NOT use: headings (#), tables, or HTML.
 Keep responses under 3000 characters.
 
-Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`))
+Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`
 
-	// Add thread history as context
+	conversationHistory = append(conversationHistory, openai.SystemMessage(systemPrompt))
+
+	// Add top message to conversation history
+	topMsgText := strings.TrimPrefix(topMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", botID))
+	conversationHistory = append(conversationHistory, openai.UserMessage(topMsgText))
+
+	// Add thread history
 	for _, threadMsg := range threadMessages {
 		if threadMsg.Attrs.Message.User == c.slackIntegration.BotUserID() {
 			// Assistant message
-			slog.DebugContext(ctx, "assistant message", "message", threadMsg.Attrs.Message.Text)
 			conversationHistory = append(conversationHistory, openai.AssistantMessage(threadMsg.Attrs.Message.Text))
 		} else {
 			// User message
-			text := strings.TrimPrefix(threadMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", c.slackIntegration.BotUserID()))
-			slog.DebugContext(ctx, "user message", "message", text)
-			conversationHistory = append(conversationHistory, openai.UserMessage(text))
+			threadMsgText := strings.TrimPrefix(threadMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", c.slackIntegration.BotUserID()))
+			conversationHistory = append(conversationHistory, openai.UserMessage(threadMsgText))
 		}
-	}
-
-	if len(threadMessages) == 0 {
-		// No data available for the thread, just act on the current message.
-		conversationHistory = append(conversationHistory, openai.UserMessage(text))
 	}
 
 	params := openai.ChatCompletionNewParams{
@@ -270,7 +291,7 @@ func (c *Commands) getThreadMessages(ctx context.Context, channelID string, slac
 }
 
 func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
-	response, err := c.Generate(ctx, channelID, slackTS, msg.Message.Text, force)
+	response, err := c.Generate(ctx, channelID, slackTS, msg, force)
 	if err != nil {
 		return err
 	}

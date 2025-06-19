@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -22,13 +23,23 @@ func TestClient_ListTools(t *testing.T) {
 	require.NotNil(t, toolsResult)
 	require.NotNil(t, toolsResult.Tools)
 
-	// Verify that at least two tools are available (docrag and usage_report)
-	require.Greater(t, len(toolsResult.Tools), 1)
+	// Verify that at least three tools are available (channel_report, docrag, and usage_report)
+	require.Greater(t, len(toolsResult.Tools), 2)
 
-	// Verify that the docrag tool is present with correct properties
+	// Verify that the tools are present with correct properties
+	var channelReportToolFound bool
 	var docragToolFound bool
 	var usageReportToolFound bool
 	for _, tool := range toolsResult.Tools {
+		if tool.Name == "channel_report" {
+			channelReportToolFound = true
+			require.Equal(t, "Generate a comprehensive weekly channel report with incident analytics and raw message data.", strings.Split(tool.Description, "\n")[0])
+			require.NotNil(t, tool.InputSchema)
+			require.Equal(t, "object", tool.InputSchema.Type)
+			require.Contains(t, tool.InputSchema.Properties, "channel_id")
+			require.Contains(t, tool.InputSchema.Properties, "days")
+			require.Contains(t, tool.InputSchema.Required, "channel_id")
+		}
 		if tool.Name == "docrag" {
 			docragToolFound = true
 			require.Equal(t, "Search and respond with relevant documentation", tool.Description)
@@ -39,12 +50,13 @@ func TestClient_ListTools(t *testing.T) {
 		}
 		if tool.Name == "usage_report" {
 			usageReportToolFound = true
-			require.Equal(t, "Generate usage statistics for Ratchet bot including channel activity, module usage, and LLM consumption", tool.Description)
+			require.Equal(t, "Generate usage statistics for Ratchet bot including channel activity, module usage, and LLM consumption.", strings.Split(tool.Description, "\n")[0])
 			require.NotNil(t, tool.InputSchema)
 			require.Equal(t, "object", tool.InputSchema.Type)
 			require.Contains(t, tool.InputSchema.Properties, "days")
 		}
 	}
+	require.True(t, channelReportToolFound, "channel_report tool should be available in the tools list")
 	require.True(t, docragToolFound, "docrag tool should be available in the tools list")
 	require.True(t, usageReportToolFound, "usage_report tool should be available in the tools list")
 }

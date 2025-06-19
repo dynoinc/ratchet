@@ -23,7 +23,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
-	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -112,7 +111,6 @@ func New(
 	apiMux.HandleFunc("GET /channels", handleJSON(handlers.listChannels))
 	apiMux.HandleFunc("GET /channels/{channel_name}", handleJSON(handlers.getChannel))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
-	apiMux.HandleFunc("GET /channels/{channel_name}/report", handleJSON(handlers.generateReport))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
 	apiMux.HandleFunc("POST /channels/{channel_name}/agent-mode", handleJSON(handlers.agentMode))
 
@@ -260,20 +258,6 @@ func (h *httpHandlers) agentMode(r *http.Request) (any, error) {
 	return nil, nil
 }
 
-func (h *httpHandlers) generateReport(r *http.Request) (any, error) {
-	channelName := r.PathValue("channel_name")
-	channel, err := schema.New(h.bot.DB).GetChannelByName(r.Context(), channelName)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := report.Post(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, channel.ID); err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
 func (h *httpHandlers) listServices(r *http.Request) (any, error) {
 	services, err := schema.New(h.bot.DB).GetServices(r.Context())
 	if err != nil {
@@ -405,23 +389,18 @@ func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
 func (h *httpHandlers) generateCommand(w http.ResponseWriter, r *http.Request) {
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("ts")
-	text := r.URL.Query().Get("text")
-	if text == "" {
-		if channelID == "" || threadTS == "" {
-			http.Error(w, "channel_id and ts parameters are required, if not passing text as a parameter", http.StatusBadRequest)
-			return
-		}
-
-		msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("getting message: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		text = msg.Attrs.Message.Text
+	if channelID == "" || threadTS == "" {
+		http.Error(w, "channel_id and ts parameters are required", http.StatusBadRequest)
+		return
 	}
 
-	response, err := h.commands.Generate(r.Context(), channelID, threadTS, text, true /* force */)
+	msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("getting message: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response, err := h.commands.Generate(r.Context(), channelID, threadTS, msg.Attrs, true /* force */)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
 		return
