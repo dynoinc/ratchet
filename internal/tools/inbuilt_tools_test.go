@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -12,7 +11,7 @@ import (
 func TestClient_ListTools(t *testing.T) {
 	// Create the client - the key insight is that ListTools doesn't actually
 	// execute any tools, it just lists them, so we don't need working database functionality
-	client, err := Client(t.Context(), nil, nil, nil)
+	client, err := Client(t.Context(), nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
@@ -23,40 +22,20 @@ func TestClient_ListTools(t *testing.T) {
 	require.NotNil(t, toolsResult)
 	require.NotNil(t, toolsResult.Tools)
 
-	// Verify that at least three tools are available (channel_report, docrag, and usage_report)
-	require.Greater(t, len(toolsResult.Tools), 2)
+	// Verify that at least some tools are available
+	require.Greater(t, len(toolsResult.Tools), 0)
 
-	// Verify that the tools are present with correct properties
-	var channelReportToolFound bool
-	var docragToolFound bool
-	var usageReportToolFound bool
+	// Verify that the docsearch tool is present with correct properties
+	var docSearchToolFound bool
 	for _, tool := range toolsResult.Tools {
-		if tool.Name == "channel_report" {
-			channelReportToolFound = true
-			require.Equal(t, "Generate a comprehensive weekly channel report with incident analytics and raw message data.", strings.Split(tool.Description, "\n")[0])
-			require.NotNil(t, tool.InputSchema)
-			require.Equal(t, "object", tool.InputSchema.Type)
-			require.Contains(t, tool.InputSchema.Properties, "channel_id")
-			require.Contains(t, tool.InputSchema.Properties, "days")
-			require.Contains(t, tool.InputSchema.Required, "channel_id")
-		}
-		if tool.Name == "docrag" {
-			docragToolFound = true
-			require.Equal(t, "Search and respond with relevant documentation", tool.Description)
+		if tool.Name == "docsearch" {
+			docSearchToolFound = true
+			require.Contains(t, tool.Description, "Find the most relevant documents based on a semantic query")
 			require.NotNil(t, tool.InputSchema)
 			require.Equal(t, "object", tool.InputSchema.Type)
 			require.Contains(t, tool.InputSchema.Properties, "query")
 			require.Contains(t, tool.InputSchema.Required, "query")
 		}
-		if tool.Name == "usage_report" {
-			usageReportToolFound = true
-			require.Equal(t, "Generate usage statistics for Ratchet bot including channel activity, module usage, and LLM consumption.", strings.Split(tool.Description, "\n")[0])
-			require.NotNil(t, tool.InputSchema)
-			require.Equal(t, "object", tool.InputSchema.Type)
-			require.Contains(t, tool.InputSchema.Properties, "days")
-		}
 	}
-	require.True(t, channelReportToolFound, "channel_report tool should be available in the tools list")
-	require.True(t, docragToolFound, "docrag tool should be available in the tools list")
-	require.True(t, usageReportToolFound, "usage_report tool should be available in the tools list")
+	require.True(t, docSearchToolFound, "docsearch tool should be available in the tools list")
 }

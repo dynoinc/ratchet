@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dynoinc/ratchet/internal"
+	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
@@ -39,11 +40,12 @@ func New(
 	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
+	docsConfig *docs.Config,
 ) (*Commands, error) {
 	var mcpClients []*client.Client
 
 	// Inbuilt tools
-	inbuilt, err := tools.Client(ctx, schema.New(bot.DB), llmClient, slackIntegration)
+	inbuilt, err := tools.Client(ctx, schema.New(bot.DB), llmClient, slackIntegration, docsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("creating inbuilt tools client: %w", err)
 	}
@@ -248,8 +250,12 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 					Arguments: args,
 				},
 			})
-			if err != nil || res.IsError {
+			if err != nil {
 				return "", fmt.Errorf("tool %q execution failed: %w", toolCall.Function.Name, err)
+			}
+			if res.IsError {
+				jsn, _ := json.Marshal(res)
+				return "", fmt.Errorf("tool %q execution failed: %s", toolCall.Function.Name, string(jsn))
 			}
 
 			parts := []openai.ChatCompletionContentPartTextParam{}
