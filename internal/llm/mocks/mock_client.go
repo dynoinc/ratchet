@@ -57,51 +57,6 @@ func (mr *MockClientMockRecorder) Client() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Client", reflect.TypeOf((*MockClient)(nil).Client))
 }
 
-// GenerateChannelSuggestions mocks base method.
-func (m *MockClient) GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateChannelSuggestions", ctx, messages)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GenerateChannelSuggestions indicates an expected call of GenerateChannelSuggestions.
-func (mr *MockClientMockRecorder) GenerateChannelSuggestions(ctx, messages any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateChannelSuggestions", reflect.TypeOf((*MockClient)(nil).GenerateChannelSuggestions), ctx, messages)
-}
-
-// GenerateDocumentationResponse mocks base method.
-func (m *MockClient) GenerateDocumentationResponse(ctx context.Context, question string, documents []string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateDocumentationResponse", ctx, question, documents)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GenerateDocumentationResponse indicates an expected call of GenerateDocumentationResponse.
-func (mr *MockClientMockRecorder) GenerateDocumentationResponse(ctx, question, documents any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDocumentationResponse", reflect.TypeOf((*MockClient)(nil).GenerateDocumentationResponse), ctx, question, documents)
-}
-
-// GenerateDocumentationUpdate mocks base method.
-func (m *MockClient) GenerateDocumentationUpdate(ctx context.Context, doc, msgs string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateDocumentationUpdate", ctx, doc, msgs)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GenerateDocumentationUpdate indicates an expected call of GenerateDocumentationUpdate.
-func (mr *MockClientMockRecorder) GenerateDocumentationUpdate(ctx, doc, msgs any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDocumentationUpdate", reflect.TypeOf((*MockClient)(nil).GenerateDocumentationUpdate), ctx, doc, msgs)
-}
-
 // GenerateEmbedding mocks base method.
 func (m *MockClient) GenerateEmbedding(ctx context.Context, task, text string) ([]float32, error) {
 	m.ctrl.T.Helper()

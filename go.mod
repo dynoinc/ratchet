@@ -187,6 +187,7 @@ require (
 tool (
 	github.com/sqlc-dev/sqlc/cmd/sqlc
 	go.uber.org/mock/mockgen
+	golang.org/x/tools/cmd/goimports
 	golang.org/x/vuln/cmd/govulncheck
 	honnef.co/go/tools/cmd/staticcheck
 )

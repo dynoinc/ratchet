@@ -107,15 +107,6 @@ func Format(service, alert string, runbook *llm.RunbookResponse) []slack.Block {
 				),
 				nil, nil,
 			),
-			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "*Lexical Search Query*\n"+runbook.LexicalSearchQuery, false, false),
-				nil, nil,
-			),
-			slack.NewSectionBlock(
-				slack.NewTextBlockObject(slack.MarkdownType, "*Semantic Search Query*\n"+runbook.SemanticSearchQuery, false, false),
-				nil, nil,
-			),
-			slack.NewDividerBlock(),
 		)
 	}
 
