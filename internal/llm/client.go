@@ -56,7 +56,6 @@ type Client interface {
 type client struct {
 	client openai.Client
 	cfg    Config
-	db     *pgxpool.Pool
 }
 
 func persistLLMUsageMiddleware(db *pgxpool.Pool) option.Middleware {
@@ -258,7 +257,6 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 	return &client{
 		client: openaiClient,
 		cfg:    cfg,
-		db:     db,
 	}, nil
 }
 
