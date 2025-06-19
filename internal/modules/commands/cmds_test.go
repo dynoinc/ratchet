@@ -84,6 +84,27 @@ func TestMessageComparison(t *testing.T) {
 	}
 }
 
+func TestDocumentationSearchStrategy(t *testing.T) {
+	// This test verifies that the system prompt includes clear guidance
+	// on when to use docsearch vs upstream_search for documentation questions
+
+	// Test that the system prompt includes the documentation search strategy
+	channelID := "C1234567890"
+	incidentAction := dto.IncidentAction{Action: dto.ActionNone}
+	systemPrompt := buildSystemPrompt(channelID, &incidentAction)
+
+	// Verify that the system prompt includes the documentation search strategy
+	assert.Contains(t, systemPrompt, "DOCUMENTATION SEARCH STRATEGY")
+	assert.Contains(t, systemPrompt, "docsearch")
+	assert.Contains(t, systemPrompt, "upstream_search")
+	assert.Contains(t, systemPrompt, "comprehensive answers")
+
+	t.Log("Documentation search strategy implemented:")
+	t.Log("- docsearch: for internal documentation questions")
+	t.Log("- upstream_search: for code examples and implementation questions")
+	t.Log("- Both tools should be used for comprehensive documentation answers")
+}
+
 // Helper functions for testing
 func buildSystemPrompt(channelID string, incidentAction *dto.IncidentAction) string {
 	systemPrompt := `You are a helpful assistant that manages Slack channels and provides various utilities.
@@ -108,6 +129,23 @@ IMPORTANT INSTRUCTIONS:
 5. **ONLY offer capabilities that are available through your tools** - do not suggest checking external systems like GitHub status, deployment status, or other services unless you have specific tools for them
 6. If a user asks about something you cannot do with available tools, politely explain what you can help with instead
 7. **RESPOND TO THE CURRENT REQUEST**: Even if the conversation history contains previous topics or requests, always address the most recent user message first
+
+DOCUMENTATION SEARCH STRATEGY:
+When answering documentation questions, use BOTH search tools strategically:
+
+**For Internal Documentation Questions:**
+- Use docsearch to find relevant internal documentation from the database
+- This searches through existing documentation that has been indexed
+- Use limit=10 for comprehensive answers, limit=1 for finding specific docs to update
+
+**For Code Examples and Implementation Questions:**
+- Use upstream_search to find code snippets and implementation patterns from upstream repositories
+- This searches across GitHub repositories and other external sources for actual code examples
+
+**For Comprehensive Documentation Answers:**
+- Start with docsearch to find relevant internal documentation
+- Then use upstream_search to find code examples and implementation patterns
+- Combine both sources to provide complete answers with both documentation and code examples
 
 RESPONSE FORMAT:
 You are writing for a Slack section block. Use Slack's mrkdwn format:

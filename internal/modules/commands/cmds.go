@@ -10,11 +10,11 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/docs"
+	"github.com/dynoinc/ratchet/internal/inbuilt_tools"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
-	"github.com/dynoinc/ratchet/internal/tools"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
@@ -45,7 +45,7 @@ func New(
 	var mcpClients []*client.Client
 
 	// Inbuilt tools
-	inbuilt, err := tools.Client(ctx, schema.New(bot.DB), llmClient, slackIntegration, docsConfig)
+	inbuilt, err := inbuilt_tools.Client(ctx, schema.New(bot.DB), llmClient, slackIntegration, docsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("creating inbuilt tools client: %w", err)
 	}
@@ -179,6 +179,23 @@ IMPORTANT INSTRUCTIONS:
 6. If a user asks about something you cannot do with available tools, politely explain what you can help with instead
 7. **RESPOND TO THE CURRENT REQUEST**: Even if the conversation history contains previous topics or requests, always address the most recent user message first
 
+DOCUMENTATION SEARCH STRATEGY:
+When answering documentation questions, use BOTH search tools strategically:
+
+**For Internal Documentation Questions:**
+- Use docsearch to find relevant internal documentation from the database
+- This searches through existing documentation that has been indexed
+- Use limit=10 for comprehensive answers, limit=1 for finding specific docs to update
+
+**For Code Examples and Implementation Questions:**
+- Use upstream_search to find code snippets and implementation patterns from upstream repositories
+- This searches across GitHub repositories and other external sources for actual code examples
+
+**For Comprehensive Documentation Answers:**
+- Start with docsearch to find relevant internal documentation
+- Then use upstream_search to find code examples and implementation patterns
+- Combine both sources to provide complete answers with both documentation and code examples
+
 DOCUMENTATION UPDATE WORKFLOW:
 When a user requests documentation updates, follow this 2-step process:
 1. **STEP 1 - Find and Review**: Use docsearch to find relevant documents, then use docread to get the full content of the most relevant document
@@ -250,12 +267,14 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 				return "", fmt.Errorf("unmarshalling tool call arguments: %w", err)
 			}
 
+			slog.DebugContext(ctx, "calling tool", "tool", toolCall.Function.Name, "id", toolCall.ID)
 			res, err := client.CallTool(ctx, mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name:      toolCall.Function.Name,
 					Arguments: args,
 				},
 			})
+			slog.DebugContext(ctx, "tool call result", "tool", toolCall.Function.Name, "id", toolCall.ID, "error", err)
 			if err != nil {
 				return "", fmt.Errorf("tool %q execution failed: %w", toolCall.Function.Name, err)
 			}

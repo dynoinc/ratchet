@@ -15,9 +15,9 @@ import (
 )
 
 type gitHubSource struct {
-	AppID          int64  `yaml:"app_id"        validate:"required,gt=0"`
-	InstallationID int64  `yaml:"installation_id"  validate:"required,gt=0"`
-	PrivateKeyPath string `yaml:"private_key_path" validate:"required"`
+	AppID          int64  `yaml:"app_id"`
+	InstallationID int64  `yaml:"installation_id"`
+	PrivateKeyPath string `yaml:"private_key_path"`
 	Token          string `yaml:"token"`
 
 	GitHubURL string `yaml:"github_url"       validate:"required,url"`
@@ -139,6 +139,71 @@ func (gs *gitHubSource) get(ctx context.Context, path, revision string) (string,
 	}
 
 	return fileContent.GetContent()
+}
+
+func (gs *gitHubSource) Search(ctx context.Context, query string, limit int) ([]CodeSearchResult, error) {
+	client, err := gs.githubClient()
+	if err != nil {
+		return nil, fmt.Errorf("creating GitHub client: %w", err)
+	}
+
+	opts := &github.SearchOptions{
+		ListOptions: github.ListOptions{
+			PerPage: limit,
+		},
+	}
+
+	searchResult, _, err := client.Search.Code(ctx, query, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search code: %w", err)
+	}
+
+	var results []CodeSearchResult
+	for _, file := range searchResult.CodeResults {
+		// Extract content from the file
+		content := ""
+		if file.TextMatches != nil {
+			for _, match := range file.TextMatches {
+				if match.Fragment != nil {
+					content += *match.Fragment + "\n"
+				}
+			}
+		}
+
+		// If no text matches, try to get the file content
+		if content == "" && file.Repository != nil && file.Path != nil {
+			repoOwner := file.Repository.GetOwner().GetLogin()
+			repoName := file.Repository.GetName()
+			path := file.GetPath()
+			branch := file.Repository.GetDefaultBranch()
+
+			fileContent, _, _, err := client.Repositories.GetContents(ctx, repoOwner, repoName, path, &github.RepositoryContentGetOptions{
+				Ref: branch,
+			})
+			if err == nil && fileContent != nil {
+				decodedContent, err := fileContent.GetContent()
+				if err == nil {
+					content = decodedContent
+				}
+			}
+		}
+
+		// Truncate content if too long
+		if len(content) > 2000 {
+			content = content[:2000] + "..."
+		}
+
+		result := CodeSearchResult{
+			Repository: file.Repository.GetFullName(),
+			Path:       file.GetPath(),
+			Content:    content,
+			URL:        file.GetHTMLURL(),
+			Language:   "", // GitHub API doesn't provide language for code search results
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
 }
 
 func (gs *gitHubSource) Suggest(ctx context.Context, path, revision, content string) (string, error) {
