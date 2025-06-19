@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
@@ -24,7 +23,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
-	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
@@ -123,11 +121,11 @@ func New(
 	apiMux.HandleFunc("GET /services/{service}/alerts", handleJSON(handlers.listAlerts))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/messages", handleJSON(handlers.listThreadMessages))
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/runbook", handleJSON(handlers.getRunbook))
-	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
 	// Commands
-	apiMux.HandleFunc("GET /commands/execute", handlers.executeCommand)
+	apiMux.HandleFunc("GET /commands/generate", handlers.generateCommand)
+	apiMux.HandleFunc("POST /commands/respond", handlers.respondCommand)
 
 	// Documentation
 	apiMux.HandleFunc("GET /docs/status", handleJSON(handlers.docsStatus))
@@ -344,37 +342,6 @@ func (h *httpHandlers) getRunbook(r *http.Request) (any, error) {
 	return rbk, nil
 }
 
-func (h *httpHandlers) getRecentActivity(r *http.Request) (any, error) {
-	serviceName := r.PathValue("service")
-	alertName := r.PathValue("alert")
-
-	interval := cmp.Or(r.URL.Query().Get("interval"), "1h")
-	intervalDuration, err := time.ParseDuration(interval)
-	if err != nil {
-		return nil, err
-	}
-
-	rbk, err := runbook.Get(r.Context(), schema.New(h.bot.DB), h.llmClient, serviceName, alertName, h.slackIntegration.BotUserID())
-	if err != nil {
-		return nil, err
-	}
-
-	messages, err := recent_activity.Get(
-		r.Context(),
-		schema.New(h.bot.DB),
-		h.llmClient,
-		rbk.LexicalSearchQuery,
-		rbk.SemanticSearchQuery,
-		intervalDuration,
-		h.slackIntegration.BotUserID(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return messages, nil
-}
-
 func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 	serviceName := r.PathValue("service")
 	alertName := r.PathValue("alert")
@@ -435,7 +402,36 @@ func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
 	return nil, fmt.Errorf("source not found")
 }
 
-func (h *httpHandlers) executeCommand(w http.ResponseWriter, r *http.Request) {
+func (h *httpHandlers) generateCommand(w http.ResponseWriter, r *http.Request) {
+	channelID := r.URL.Query().Get("channel_id")
+	threadTS := r.URL.Query().Get("ts")
+	text := r.URL.Query().Get("text")
+	if text == "" {
+		if channelID == "" || threadTS == "" {
+			http.Error(w, "channel_id and ts parameters are required, if not passing text as a parameter", http.StatusBadRequest)
+			return
+		}
+
+		msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("getting message: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		text = msg.Attrs.Message.Text
+	}
+
+	response, err := h.commands.Generate(r.Context(), channelID, threadTS, text, true /* force */)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(response))
+}
+
+func (h *httpHandlers) respondCommand(w http.ResponseWriter, r *http.Request) {
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("ts")
 	if channelID == "" || threadTS == "" {
@@ -445,16 +441,18 @@ func (h *httpHandlers) executeCommand(w http.ResponseWriter, r *http.Request) {
 
 	msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "message not found", http.StatusNotFound)
+			return
+		}
+
 		http.Error(w, fmt.Sprintf("getting message: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	response, err := h.commands.Generate(r.Context(), channelID, threadTS, msg.Attrs, true /* force */)
+	err = h.commands.Respond(r.Context(), channelID, threadTS, msg.Attrs, true /* force */)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(response))
 }

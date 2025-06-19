@@ -89,22 +89,20 @@ func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS stri
 	}
 
 	force := channel.Attrs.AgentModeEnabled
-	return c.HandleMessage(ctx, channelID, slackTS, msg, force)
+	return c.Respond(ctx, channelID, slackTS, msg, force)
 }
 
 func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackTS string, parentTS string, msg dto.MessageAttrs) error {
-	return c.HandleMessage(ctx, channelID, parentTS, msg, false)
+	return c.Respond(ctx, channelID, parentTS, msg, false)
 }
 
-func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) (string, error) {
+func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg string, force bool) (string, error) {
 	botID := c.slackIntegration.BotUserID()
-	text, found := strings.CutPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
+	text, found := strings.CutPrefix(msg, fmt.Sprintf("<@%s> ", botID))
 	if !found && !force {
 		return "", nil
 	}
 
-	// Build OpenAI function definitions from the MCP schema
-	// (Avoid hand-coding JSON — let MCP do it for you)
 	var openAITools []openai.ChatCompletionToolParam
 	toolToClient := make(map[string]*client.Client)
 	for _, mcpClient := range c.mcpClients {
@@ -139,9 +137,6 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 		}
 	}
 
-	slog.DebugContext(ctx, "openAITools", "openAITools", openAITools, "toolToClient", toolToClient)
-
-	// Use OpenAI API with tool calling
 	params := openai.ChatCompletionNewParams{
 		Model: c.llmClient.Model(),
 		Messages: []openai.ChatCompletionMessageParamUnion{
@@ -154,10 +149,15 @@ IMPORTANT INSTRUCTIONS:
 4. If unsure which tools to use, try relevant ones to explore what data is available
 
 RESPONSE FORMAT:
-- Format ALL responses in **Markdown** since they will be posted to Slack
-- Use proper markdown formatting: headers (##), bullet points (-), code blocks, bold (**text**), etc.
-- Structure responses clearly with sections and bullet points
-- When you've used tools, briefly mention what you found/did at the beginning
+You are writing for a Slack section block. Use Slack's mrkdwn format:
+• *bold*, _italic_, ~strike~
+• Bullet lists with * or - 
+• Inline code and code blocks
+• Blockquotes with >
+• Links as <url|text>
+
+Do NOT use: headings (#), tables, or HTML.
+Keep responses under 3000 characters.
 
 Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`),
 			openai.UserMessage(text),
@@ -225,8 +225,8 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 	return response, nil
 }
 
-func (c *Commands) HandleMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
-	response, err := c.Generate(ctx, channelID, slackTS, msg, force)
+func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
+	response, err := c.Generate(ctx, channelID, slackTS, msg.Message.Text, force)
 	if err != nil {
 		return err
 	}

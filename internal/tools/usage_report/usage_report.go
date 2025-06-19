@@ -56,8 +56,18 @@ type LLMUsage struct {
 
 func Tool(db *schema.Queries, slackIntegration slack_integration.Integration) (mcp.Tool, server.ToolHandlerFunc) {
 	tool := mcp.Tool{
-		Name:        "usage_report",
-		Description: "Generate usage statistics for Ratchet bot including channel activity, module usage, and LLM consumption",
+		Name: "usage_report",
+		Description: `Generate usage statistics for Ratchet bot including channel activity, module usage, and LLM consumption.
+
+FORMATTING INSTRUCTIONS:
+When presenting this report, format it as a clear, structured summary with the following sections:
+
+1. **Summary Overview** - Highlight key metrics (total messages, thumbs up/down ratio, LLM requests)
+2. **Channel Activity** - List channels by message volume, showing engagement metrics
+3. **Module Performance** - Show which modules are most/least used with thumbs up/down ratios
+4. **LLM Usage** - Display token consumption and request patterns by model
+
+Use markdown formatting with headers, bullet points, and tables where appropriate. Focus on actionable insights and trends.`,
 		InputSchema: mcp.ToolInputSchema{
 			Type: "object",
 			Properties: map[string]any{

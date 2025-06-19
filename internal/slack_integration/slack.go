@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httputil"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -60,6 +62,21 @@ type handler interface {
 	NotifyReactionRemoved(ctx context.Context, ev *slackevents.ReactionRemovedEvent) error
 }
 
+type dumpRT struct{ http.RoundTripper }
+
+func (d dumpRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	reqDump, _ := httputil.DumpRequestOut(req, true)
+	fmt.Printf(">>> %s\n%s\n", req.URL, reqDump)
+
+	resp, err := d.RoundTripper.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	respDump, _ := httputil.DumpResponse(resp, true)
+	fmt.Printf("<<< %s\n%s\n", req.URL, respDump)
+	return resp, nil
+}
+
 type integration struct {
 	c Config
 	h handler
@@ -69,7 +86,7 @@ type integration struct {
 }
 
 func New(ctx context.Context, c Config, h handler) (Integration, error) {
-	api := slack.New(c.BotToken, slack.OptionAppLevelToken(c.AppToken))
+	api := slack.New(c.BotToken, slack.OptionAppLevelToken(c.AppToken), slack.OptionHTTPClient(&http.Client{Transport: dumpRT{http.DefaultTransport}}))
 
 	authTest, err := api.AuthTestContext(ctx)
 	if err != nil {

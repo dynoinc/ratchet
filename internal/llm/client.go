@@ -175,6 +175,8 @@ func extractInputFromRequest(path string, body []byte) (string, dto.LLMInput) {
 				input.Text = strings.Join(embeddingParams.Input.OfArrayOfStrings, " ")
 			}
 		}
+	} else {
+		slog.WarnContext(context.Background(), "unknown request", "path", path, "body", string(body))
 	}
 
 	return model, input
