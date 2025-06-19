@@ -37,7 +37,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
 	"github.com/dynoinc/ratchet/internal/modules/classifier"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
-	"github.com/dynoinc/ratchet/internal/modules/docrag"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
@@ -243,7 +242,6 @@ func main() {
 			channelMonitor,
 			runbook.New(bot, slackIntegration, llmClient),
 			cmds,
-			docrag.New(bot, slackIntegration, llmClient),
 		},
 	)
 
@@ -276,7 +274,7 @@ func main() {
 	}
 
 	// Initialize the HTTP server
-	handler, err := web.New(ctx, bot, slackIntegration, llmClient, docsConfig)
+	handler, err := web.New(ctx, bot, cmds, slackIntegration, llmClient, docsConfig)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up HTTP server", "error", err)
 		os.Exit(1)

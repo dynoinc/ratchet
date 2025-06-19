@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -16,10 +15,6 @@ import (
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/olekukonko/tablewriter"
-	"github.com/olekukonko/tablewriter/tw"
-	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"riverqueue.com/riverui"
 
@@ -28,12 +23,10 @@ import (
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/modules/channel_monitor"
-	"github.com/dynoinc/ratchet/internal/modules/docrag"
-	"github.com/dynoinc/ratchet/internal/modules/docupdate"
+	"github.com/dynoinc/ratchet/internal/modules/commands"
 	"github.com/dynoinc/ratchet/internal/modules/recent_activity"
 	"github.com/dynoinc/ratchet/internal/modules/report"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
-	"github.com/dynoinc/ratchet/internal/modules/usage"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
@@ -66,6 +59,7 @@ func handleJSON(handler func(*http.Request) (any, error)) http.HandlerFunc {
 
 type httpHandlers struct {
 	bot              *internal.Bot
+	commands         *commands.Commands
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
 	docsConfig       *docs.Config
@@ -74,12 +68,14 @@ type httpHandlers struct {
 func New(
 	ctx context.Context,
 	bot *internal.Bot,
+	commands *commands.Commands,
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
 	docsConfig *docs.Config,
 ) (http.Handler, error) {
 	handlers := &httpHandlers{
 		bot:              bot,
+		commands:         commands,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
 		docsConfig:       docsConfig,
@@ -130,20 +126,12 @@ func New(
 	apiMux.HandleFunc("GET /services/{service}/alerts/{alert}/recent-activity", handleJSON(handlers.getRecentActivity))
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
+	// Commands
+	apiMux.HandleFunc("GET /commands/execute", handleJSON(handlers.executeCommand))
+
 	// Documentation
 	apiMux.HandleFunc("GET /docs/status", handleJSON(handlers.docsStatus))
-	apiMux.HandleFunc("GET /docs/answer", handleJSON(handlers.docsAnswer))
-	apiMux.HandleFunc("GET /docs/answer/debug", handleJSON(handlers.docsAnswerDebug))
-	apiMux.HandleFunc("GET /docs/update", handlers.docsUpdate)
-	apiMux.HandleFunc("GET /docs/update/debug", handleJSON(handlers.docsUpdateDebug))
-	apiMux.HandleFunc("POST /docs/update", handleJSON(handlers.postPR))
 	apiMux.HandleFunc("POST /docs/refresh", handleJSON(handlers.postRefresh))
-
-	// Bot
-	apiMux.HandleFunc("GET /bot/search", handlers.search)
-	apiMux.HandleFunc("POST /bot/usage", handleJSON(handlers.postUsage))
-	apiMux.HandleFunc("GET /bot/llm-usage", handleJSON(handlers.getLLMUsage))
-	apiMux.HandleFunc("GET /bot/llm-usage/by-model", handleJSON(handlers.getLLMUsageByModel))
 
 	mux := http.NewServeMux()
 	mux.Handle("/riverui/", riverServer)
@@ -418,223 +406,6 @@ func (h *httpHandlers) postRunbook(r *http.Request) (any, error) {
 	return nil, nil
 }
 
-func (h *httpHandlers) search(w http.ResponseWriter, r *http.Request) {
-	var lexicalQuery string
-	var semanticQuery string
-	serviceName := r.URL.Query().Get("service")
-	alertName := r.URL.Query().Get("alert")
-
-	if serviceName != "" && alertName != "" {
-		qtx := schema.New(h.bot.DB)
-		runbookMessage, err := runbook.Get(
-			r.Context(),
-			qtx,
-			h.llmClient,
-			serviceName,
-			alertName,
-			h.slackIntegration.BotUserID(),
-		)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("getting runbook: %v", err), http.StatusInternalServerError)
-			return
-		}
-		if runbookMessage == nil {
-			http.Error(w, "no runbook found", http.StatusNotFound)
-			return
-		}
-		lexicalQuery = runbookMessage.LexicalSearchQuery
-		semanticQuery = runbookMessage.SemanticSearchQuery
-	} else {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("reading request body: %v", err), http.StatusInternalServerError)
-			return
-		}
-		lexicalQuery = string(body)
-		semanticQuery = string(body)
-	}
-
-	interval := cmp.Or(r.URL.Query().Get("interval"), "1h")
-	intervalDuration, err := time.ParseDuration(interval)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid interval: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	n := cmp.Or(r.URL.Query().Get("n"), "10")
-	nInt, err := strconv.Atoi(n)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid n: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	updates, err := recent_activity.GetDebug(
-		r.Context(),
-		schema.New(h.bot.DB),
-		h.llmClient,
-		lexicalQuery,
-		semanticQuery,
-		intervalDuration,
-		h.slackIntegration.BotUserID(),
-	)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("getting updates: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	table := tablewriter.NewTable(w,
-		tablewriter.WithConfig(tablewriter.Config{
-			Header: tw.CellConfig{
-				Alignment: tw.CellAlignment{Global: tw.AlignCenter},
-			},
-			Row: tw.CellConfig{
-				Alignment: tw.CellAlignment{
-					PerColumn: []tw.Align{
-						tw.AlignLeft,  // Link
-						tw.AlignLeft,  // Text
-						tw.AlignLeft,  // Text Tokens
-						tw.AlignLeft,  // Query Tokens
-						tw.AlignRight, // Lexical Score
-						tw.AlignRight, // Lexical Rank
-						tw.AlignRight, // Semantic Score
-						tw.AlignRight, // Semantic Rank
-						tw.AlignRight, // RRF Score
-					},
-				},
-			},
-		}),
-	)
-	table.Header("Link", "Text", "Text Tokens", "Query Tokens", "Lexical Score", "Lexical Rank", "Semantic Score", "Semantic Rank", "RRF Score")
-
-	limit := nInt
-	if limit > len(updates) {
-		limit = len(updates)
-	}
-
-	for _, update := range updates[:limit] {
-		text := update.MessageText
-		if len(text) > 100 {
-			text = text[:97] + "..."
-		}
-		messageLink := fmt.Sprintf("https://slack.com/archives/%s/p%s", update.ChannelID, strings.ReplaceAll(update.Ts, ".", ""))
-
-		// Get text tokens
-		textTokens := ""
-		if update.TextTokens != "" {
-			textTokens = update.TextTokens
-		}
-		if len(textTokens) > 100 {
-			textTokens = textTokens[:97] + "..."
-		}
-
-		// Get query tokens
-		queryTokens := ""
-		if update.QueryTokens != "" {
-			queryTokens = update.QueryTokens
-		}
-		if len(queryTokens) > 100 {
-			queryTokens = queryTokens[:97] + "..."
-		}
-
-		table.Append([]string{
-			messageLink,
-			text,
-			textTokens,
-			queryTokens,
-			fmt.Sprintf("%.4f", update.LexicalScore),
-			fmt.Sprintf("%d", update.LexicalRank),
-			fmt.Sprintf("%.4f", update.SemanticDistance),
-			fmt.Sprintf("%d", update.SemanticRank),
-			fmt.Sprintf("%.4f", update.RrfScore),
-		})
-	}
-
-	table.Render()
-}
-
-func (h *httpHandlers) postUsage(r *http.Request) (any, error) {
-	channelID := r.URL.Query().Get("channel_id")
-
-	if err := usage.Post(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, channelID); err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-func (h *httpHandlers) getLLMUsage(r *http.Request) (any, error) {
-	// Parse time range parameters
-	startTimeStr := r.URL.Query().Get("start_time")
-	endTimeStr := r.URL.Query().Get("end_time")
-
-	var startTime, endTime time.Time
-	var err error
-
-	if startTimeStr != "" {
-		startTime, err = time.Parse(time.RFC3339, startTimeStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid start_time format: %w", err)
-		}
-	} else {
-		// Default to 7 days ago if not specified
-		startTime = time.Now().AddDate(0, 0, -7)
-	}
-
-	if endTimeStr != "" {
-		endTime, err = time.Parse(time.RFC3339, endTimeStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid end_time format: %w", err)
-		}
-	} else {
-		// Default to now if not specified
-		endTime = time.Now()
-	}
-
-	// Get LLM usage data
-	usageData, err := schema.New(h.bot.DB).GetLLMUsageByTimeRange(r.Context(), schema.GetLLMUsageByTimeRangeParams{
-		StartTime: pgtype.Timestamptz{Time: startTime, Valid: true},
-		EndTime:   pgtype.Timestamptz{Time: endTime, Valid: true},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return usageData, nil
-}
-
-func (h *httpHandlers) getLLMUsageByModel(r *http.Request) (any, error) {
-	// Get model parameter
-	model := r.URL.Query().Get("model")
-	if model == "" {
-		return nil, fmt.Errorf("model parameter is required")
-	}
-
-	// Parse pagination parameters
-	limit := cmp.Or(r.URL.Query().Get("limit"), "100")
-	limitInt, err := strconv.ParseInt(limit, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid limit: %w", err)
-	}
-
-	offset := cmp.Or(r.URL.Query().Get("offset"), "0")
-	offsetInt, err := strconv.ParseInt(offset, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid offset: %w", err)
-	}
-
-	// Get LLM usage data by model
-	usageData, err := schema.New(h.bot.DB).GetLLMUsageByModel(r.Context(), schema.GetLLMUsageByModelParams{
-		Model:     model,
-		LimitVal:  int32(limitInt),
-		OffsetVal: int32(offsetInt),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return usageData, nil
-}
-
 func (h *httpHandlers) docsStatus(r *http.Request) (any, error) {
 	status, err := schema.New(h.bot.DB).GetDocumentationStatus(r.Context())
 	if err != nil {
@@ -642,133 +413,6 @@ func (h *httpHandlers) docsStatus(r *http.Request) (any, error) {
 	}
 
 	return status, nil
-}
-
-func (h *httpHandlers) docsAnswer(r *http.Request) (any, error) {
-	channelID := r.URL.Query().Get("channel_id")
-	ts := r.URL.Query().Get("ts")
-	text := r.URL.Query().Get("text")
-
-	if channelID == "" || ts == "" {
-		return nil, fmt.Errorf("channel_id and thread_ts parameters are required")
-	}
-
-	if text == "" {
-		text = "lookup documentation"
-	}
-
-	answer, links, err := docrag.Compute(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, channelID, ts, text)
-	if err != nil {
-		return nil, err
-	}
-
-	return map[string]any{
-		"answer": answer,
-		"links":  links,
-	}, nil
-}
-
-func (h *httpHandlers) docsAnswerDebug(r *http.Request) (any, error) {
-	channelName := r.URL.Query().Get("channel_name")
-	question := r.URL.Query().Get("question")
-	if question == "" {
-		channelID := r.URL.Query().Get("channel_id")
-		ts := r.URL.Query().Get("ts")
-		if channelID == "" || ts == "" {
-			return nil, fmt.Errorf("channel_id and thread_ts parameters are required")
-		}
-
-		channelInfo, err := schema.New(h.bot.DB).GetChannel(r.Context(), channelID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get channel info: %w", err)
-		}
-
-		msg, err := schema.New(h.bot.DB).GetMessage(r.Context(), schema.GetMessageParams{
-			ChannelID: channelID,
-			Ts:        ts,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("getting message: %w", err)
-		}
-
-		channelName = channelInfo.Attrs.Name
-		question = msg.Attrs.Message.Text
-	}
-
-	text := r.URL.Query().Get("text")
-	if text == "" {
-		text = "lookup documentation"
-	}
-
-	return docrag.Debug(r.Context(), schema.New(h.bot.DB), h.llmClient, channelName, question, text)
-}
-
-func (h *httpHandlers) docsUpdate(w http.ResponseWriter, r *http.Request) {
-	channelID := r.URL.Query().Get("channel_id")
-	ts := r.URL.Query().Get("ts")
-	text := r.URL.Query().Get("text")
-
-	if h.docsConfig == nil {
-		http.Error(w, "documentation config not available", http.StatusBadRequest)
-		return
-	}
-
-	doc, updatedDoc, err := docupdate.Compute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, ts, text)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	diff := difflib.UnifiedDiff{
-		A:        difflib.SplitLines(doc.Content),
-		B:        difflib.SplitLines(updatedDoc),
-		FromFile: "Original",
-		ToFile:   "Updated",
-		Context:  3,
-	}
-
-	diffText, err := difflib.GetUnifiedDiffString(diff)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error generating diff: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(fmt.Sprintf("Updating path: %s\n\n%s", doc.Path, diffText)))
-}
-
-func (h *httpHandlers) docsUpdateDebug(r *http.Request) (any, error) {
-	channelID := r.URL.Query().Get("channel_id")
-	ts := r.URL.Query().Get("ts")
-	text := r.URL.Query().Get("text")
-
-	if h.docsConfig == nil {
-		return nil, fmt.Errorf("documentation config not available")
-	}
-
-	docs, err := docupdate.DebugCompute(r.Context(), schema.New(h.bot.DB), h.llmClient, channelID, ts, text)
-	if err != nil {
-		return nil, err
-	}
-
-	return docs, nil
-}
-
-func (h *httpHandlers) postPR(r *http.Request) (any, error) {
-	channelID := r.URL.Query().Get("channel_id")
-	threadTS := r.URL.Query().Get("thread_ts")
-	text := r.URL.Query().Get("text")
-
-	if h.docsConfig == nil {
-		return nil, fmt.Errorf("documentation config not available")
-	}
-
-	err := docupdate.Post(r.Context(), schema.New(h.bot.DB), h.llmClient, h.slackIntegration, h.docsConfig, channelID, threadTS, text)
-	if err != nil {
-		return nil, err
-	}
-
-	return nil, nil
 }
 
 func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
@@ -789,4 +433,24 @@ func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
 	}
 
 	return nil, fmt.Errorf("source not found")
+}
+
+func (h *httpHandlers) executeCommand(r *http.Request) (any, error) {
+	channelID := r.URL.Query().Get("channel_id")
+	threadTS := r.URL.Query().Get("ts")
+	if channelID == "" || threadTS == "" {
+		return nil, fmt.Errorf("channel_id and ts parameters are required")
+	}
+
+	msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
+	if err != nil {
+		return nil, fmt.Errorf("getting message: %w", err)
+	}
+
+	response, err := h.commands.Generate(r.Context(), channelID, threadTS, msg.Attrs, true /* force */)
+	if err != nil {
+		return nil, fmt.Errorf("generating command: %w", err)
+	}
+
+	return response, nil
 }

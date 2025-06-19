@@ -10,14 +10,12 @@ import (
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/llm"
-	"github.com/dynoinc/ratchet/internal/modules/docrag"
-	"github.com/dynoinc/ratchet/internal/modules/docupdate"
-	"github.com/dynoinc/ratchet/internal/modules/report"
-	"github.com/dynoinc/ratchet/internal/modules/usage"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/dynoinc/ratchet/internal/tools"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
 	"github.com/slack-go/slack"
 )
@@ -31,6 +29,8 @@ type Commands struct {
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
+
+	mcpClients []*client.Client
 }
 
 func New(
@@ -45,11 +45,19 @@ func New(
 		}
 	}
 
+	var mcpClients []*client.Client
+	inbuilt, err := tools.Client(schema.New(bot.DB), llmClient)
+	if err != nil {
+		return nil, fmt.Errorf("creating inbuilt tools client: %w", err)
+	}
+	mcpClients = append(mcpClients, inbuilt)
+
 	return &Commands{
 		config:           config,
 		bot:              bot,
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
+		mcpClients:       mcpClients,
 	}, nil
 }
 
@@ -64,30 +72,56 @@ func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS stri
 	}
 
 	force := channel.Attrs.AgentModeEnabled
-	return c.handleMessage(ctx, channelID, slackTS, msg, force)
+	return c.HandleMessage(ctx, channelID, slackTS, msg, force)
 }
 
 func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackTS string, parentTS string, msg dto.MessageAttrs) error {
-	return c.handleMessage(ctx, channelID, parentTS, msg, false)
+	return c.HandleMessage(ctx, channelID, parentTS, msg, false)
 }
 
-func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
+func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) (string, error) {
 	botID := c.slackIntegration.BotUserID()
 	text, found := strings.CutPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID))
 	if !found && !force {
-		return nil
+		return "", nil
+	}
+
+	// Build OpenAI function definitions from the MCP schema
+	// (Avoid hand-coding JSON — let MCP do it for you)
+	var openAITools []openai.ChatCompletionToolParam
+	toolToClient := make(map[string]*client.Client)
+	for _, mcpClient := range c.mcpClients {
+		tools, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+		if err != nil {
+			slog.WarnContext(ctx, "listing tools", "error", err)
+			continue
+		}
+
+		for _, t := range tools.Tools {
+			openAITools = append(openAITools, openai.ChatCompletionToolParam{
+				Type: "function",
+				Function: openai.FunctionDefinitionParam{
+					Name:        t.Name,
+					Description: openai.String(t.Description),
+					Parameters:  openai.FunctionParameters(t.InputSchema.Properties),
+				},
+			})
+
+			toolToClient[t.Name] = mcpClient
+		}
 	}
 
 	// Use OpenAI API with tool calling
 	params := openai.ChatCompletionNewParams{
+		Model: c.llmClient.Model(),
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(`You are a helpful assistant that manages Slack channels and provides various utilities. 
 Use the available tools to help users with reports, documentation, and channel settings.
 Always provide clear and concise responses about what actions you've taken.`),
 			openai.UserMessage(text),
 		},
-		Tools: tools.Definitions(),
-		Model: c.llmClient.Model(),
+		Tools:             openAITools,
+		ParallelToolCalls: openai.Bool(true),
 	}
 
 	var response string
@@ -95,7 +129,7 @@ Always provide clear and concise responses about what actions you've taken.`),
 		openaiClient := c.llmClient.Client()
 		completion, err := openaiClient.Chat.Completions.New(ctx, params)
 		if err != nil {
-			return fmt.Errorf("processing request: %w", err)
+			return "", fmt.Errorf("processing request: %w", err)
 		}
 
 		toolCalls := completion.Choices[0].Message.ToolCalls
@@ -106,14 +140,53 @@ Always provide clear and concise responses about what actions you've taken.`),
 
 		params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
 		for _, toolCall := range toolCalls {
-			result, err := c.executeTool(ctx, toolCall.Function.Name, toolCall.Function.Arguments, channelID, slackTS)
-			if err != nil {
-				slog.ErrorContext(ctx, "Tool execution failed", "tool", toolCall.Function.Name, "error", err)
-				return fmt.Errorf("tool execution failed: %w", err)
+			client, ok := toolToClient[toolCall.Function.Name]
+			if !ok {
+				slog.ErrorContext(ctx, "Tool not found", "tool", toolCall.Function.Name)
+				continue
 			}
 
-			params.Messages = append(params.Messages, openai.ToolMessage(result, toolCall.ID))
+			var args map[string]any
+			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+				return "", fmt.Errorf("unmarshalling tool call arguments: %w", err)
+			}
+
+			res, err := client.CallTool(ctx, mcp.CallToolRequest{
+				Params: mcp.CallToolParams{
+					Name:      toolCall.Function.Name,
+					Arguments: args,
+				},
+			})
+			if err != nil || res.IsError {
+				return "", fmt.Errorf("tool %q execution failed: %w", toolCall.Function.Name, err)
+			}
+
+			parts := []openai.ChatCompletionContentPartTextParam{}
+			for _, content := range res.Content {
+				if text, ok := mcp.AsTextContent(content); ok {
+					parts = append(parts, openai.ChatCompletionContentPartTextParam{
+						Type: "text",
+						Text: text.Text,
+					})
+				}
+			}
+
+			params.Messages = append(params.Messages, openai.ChatCompletionMessageParamUnion{
+				OfTool: &openai.ChatCompletionToolMessageParam{
+					ToolCallID: toolCall.ID,
+					Content:    openai.ChatCompletionToolMessageParamContentUnion{OfArrayOfContentParts: parts},
+				},
+			})
 		}
+	}
+
+	return response, nil
+}
+
+func (c *Commands) HandleMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
+	response, err := c.Generate(ctx, channelID, slackTS, msg, force)
+	if err != nil {
+		return err
 	}
 
 	if response != "" {
@@ -128,64 +201,4 @@ Always provide clear and concise responses about what actions you've taken.`),
 	}
 
 	return nil
-}
-
-func (c *Commands) executeTool(ctx context.Context, toolName string, args string, channelID, messageTS string) (string, error) {
-	var arguments map[string]interface{}
-	if err := json.Unmarshal([]byte(args), &arguments); err != nil {
-		return "", fmt.Errorf("parsing tool arguments: %w", err)
-	}
-
-	switch toolName {
-	case "generate_weekly_report":
-		return report.Generate(ctx, schema.New(c.bot.DB), c.llmClient, channelID)
-
-	case "generate_usage_report":
-		return usage.Generate(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
-
-	case "enable_auto_doc_reply":
-		err := c.bot.EnableAutoDocReply(ctx, channelID)
-		if err != nil {
-			return "", err
-		}
-		return "Auto documentation replies have been enabled for this channel.", nil
-
-	case "disable_auto_doc_reply":
-		err := c.bot.DisableAutoDocReply(ctx, channelID)
-		if err != nil {
-			return "", err
-		}
-		return "Auto documentation replies have been disabled for this channel.", nil
-
-	case "lookup_documentation":
-		query := arguments["query"].(string)
-		answer, links, err := docrag.Compute(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, messageTS, query)
-		if err != nil {
-			return "", err
-		}
-
-		result := answer
-		if len(links) > 0 {
-			result += "\n\nSources:\n"
-			for _, link := range links {
-				result += fmt.Sprintf("- %s\n", link)
-			}
-		}
-		return result, nil
-
-	case "update_documentation":
-		request := arguments["request"].(string)
-		if c.bot.DocsConfig == nil {
-			return "Documentation updates are not configured for this instance.", nil
-		}
-
-		url, err := docupdate.Generate(ctx, schema.New(c.bot.DB), c.llmClient, c.bot.DocsConfig, channelID, messageTS, request)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("I've created a documentation update PR: %s", url), nil
-
-	default:
-		return "", fmt.Errorf("unknown tool: %s", toolName)
-	}
 }
