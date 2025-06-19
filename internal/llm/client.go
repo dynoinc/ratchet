@@ -103,7 +103,6 @@ func persistLLMUsageMiddleware(db *pgxpool.Pool) option.Middleware {
 			}
 		}
 
-		// Persist the usage data
 		params := schema.AddLLMUsageParams{
 			Input:  input,
 			Output: output,
@@ -172,6 +171,11 @@ func extractInputFromRequest(path string, body []byte) (string, dto.LLMInput) {
 				input.Text = strings.Join(embeddingParams.Input.OfArrayOfStrings, " ")
 			}
 		}
+	} else if strings.Contains(path, "/models") {
+		pathParts := strings.Split(path, "/")
+		if len(pathParts) >= 3 {
+			model = pathParts[len(pathParts)-1]
+		}
 	} else {
 		slog.WarnContext(context.Background(), "unknown request", "path", path, "body", string(body))
 	}
@@ -192,15 +196,14 @@ func extractOutputFromResponse(statusCode int, body []byte) dto.LLMOutput {
 	if err := json.Unmarshal(body, &chatResp); err == nil {
 		if len(chatResp.Choices) > 0 {
 			output.Content = chatResp.Choices[0].Message.Content
+			output.Usage = &dto.LLMUsageStats{
+				PromptTokens:     int(chatResp.Usage.PromptTokens),
+				CompletionTokens: int(chatResp.Usage.CompletionTokens),
+				TotalTokens:      int(chatResp.Usage.TotalTokens),
+			}
+			return output
 		}
-
-		output.Usage = &dto.LLMUsageStats{
-			PromptTokens:     int(chatResp.Usage.PromptTokens),
-			CompletionTokens: int(chatResp.Usage.CompletionTokens),
-			TotalTokens:      int(chatResp.Usage.TotalTokens),
-		}
-
-		return output
+		// If no choices, do not treat as chat completion, continue to next parser
 	}
 
 	// Try to parse as Embedding response
@@ -216,6 +219,14 @@ func extractOutputFromResponse(statusCode int, body []byte) dto.LLMOutput {
 			TotalTokens:  int(embeddingResp.Usage.TotalTokens),
 		}
 
+		return output
+	}
+
+	// Try to parse as Model response
+	var modelResp openai.Model
+	if err := json.Unmarshal(body, &modelResp); err == nil {
+		output.Content = fmt.Sprintf("Model: %s, Created: %d, OwnedBy: %s",
+			modelResp.ID, modelResp.Created, modelResp.OwnedBy)
 		return output
 	}
 

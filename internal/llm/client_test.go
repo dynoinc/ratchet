@@ -48,3 +48,38 @@ func TestJSONSchemaValidator(t *testing.T) {
 	require.Empty(t, resp)
 	require.Equal(t, `{"hello":1}`, space.ReplaceAllString(respMsg, ""))
 }
+
+func TestModelsEndpointHandling(t *testing.T) {
+	// Test extractInputFromRequest for models endpoint
+	path := "/v1/models/gpt-4.1"
+	body := []byte{} // Models endpoint typically has no body
+
+	model, input := extractInputFromRequest(path, body)
+
+	require.Equal(t, "gpt-4.1", model)
+	require.Empty(t, input.Messages)
+	require.Empty(t, input.Text)
+	require.Empty(t, input.Parameters)
+
+	// Test extractOutputFromResponse for models endpoint
+	modelResponse := `{
+		"id": "gpt-4.1",
+		"object": "model",
+		"created": 1686935002,
+		"owned_by": "openai"
+	}`
+
+	output := extractOutputFromResponse(200, []byte(modelResponse))
+
+	// Debug output
+	t.Logf("Output: %+v", output)
+	t.Logf("Content: %q", output.Content)
+	t.Logf("Error: %q", output.Error)
+
+	require.Empty(t, output.Error)
+	require.Contains(t, output.Content, "Model: gpt-4.1")
+	require.Contains(t, output.Content, "Created: 1686935002")
+	require.Contains(t, output.Content, "OwnedBy: openai")
+	require.Nil(t, output.Usage)
+	require.Nil(t, output.Embedding)
+}
