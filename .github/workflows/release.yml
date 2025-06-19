@@ -7,9 +7,7 @@ jobs:
   build:
     uses: ./.github/workflows/build.yml
     permissions:
-      security-events: write
       contents: read
-      packages: read
 
   bump_scan_push:
     runs-on: ubuntu-latest
@@ -27,7 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          fetch-tags: true
 
       - name: Check for new commits
         id: check_commits
@@ -35,24 +34,25 @@ jobs:
           LAST_TAG=$(git describe --tags --abbrev=0 || echo "")
           if [ -z "$LAST_TAG" ]; then
             echo "No previous tag found. Proceeding with version bump."
-            echo "NEW_COMMITS=true" >> $GITHUB_ENV
-            echo "LAST_VERSION=0.0.0" >> $GITHUB_ENV
+            echo "NEW_COMMITS=true" >> $GITHUB_OUTPUT
+            echo "LAST_VERSION=0.0.0" >> $GITHUB_OUTPUT
           else
             NEW_COMMITS=$(git log $LAST_TAG..HEAD --oneline)
             if [ -z "$NEW_COMMITS" ]; then
               echo "No new commits since last tag."
-              echo "NEW_COMMITS=false" >> $GITHUB_ENV
+              echo "NEW_COMMITS=false" >> $GITHUB_OUTPUT
             else
               echo "New commits found."
-              echo "NEW_COMMITS=true" >> $GITHUB_ENV
-              echo "LAST_VERSION=${LAST_TAG#v}" >> $GITHUB_ENV
+              echo "NEW_COMMITS=true" >> $GITHUB_OUTPUT
+              echo "LAST_VERSION=${LAST_TAG#v}" >> $GITHUB_OUTPUT
             fi
           fi
 
       - name: Generate version
         id: generate_version
-        if: env.NEW_COMMITS == 'true'
+        if: steps.check_commits.outputs.NEW_COMMITS == 'true'
         run: |
+          LAST_VERSION="${{ steps.check_commits.outputs.LAST_VERSION }}"
           IFS='.' read -r major minor patch <<< "$LAST_VERSION"
           NEW_VERSION="$major.$minor.$((patch + 1))"
           echo "VERSION=v$NEW_VERSION" >> $GITHUB_OUTPUT
@@ -68,6 +68,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Docker Image
+        if: steps.check_commits.outputs.NEW_COMMITS == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -81,6 +82,7 @@ jobs:
 
       - name: Scan Docker Image with Trivy
         id: trivy_scan
+        if: steps.check_commits.outputs.NEW_COMMITS == 'true'
         uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: ratchet:latest
@@ -91,12 +93,13 @@ jobs:
         continue-on-error: true
 
       - name: Upload SARIF Report
+        if: steps.check_commits.outputs.NEW_COMMITS == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
 
       - name: Fail if vulnerabilities found
-        if: steps.trivy_scan.outcome == 'failure'
+        if: steps.check_commits.outputs.NEW_COMMITS == 'true' && steps.trivy_scan.outcome == 'failure'
         run: |
           echo "❌ Security vulnerabilities found in the image!"
           echo "Version bump will not be committed and image will not be pushed."
@@ -104,7 +107,7 @@ jobs:
 
       - name: Commit version update
         id: commit_and_push
-        if: env.NEW_COMMITS == 'true'
+        if: steps.check_commits.outputs.NEW_COMMITS == 'true'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -113,6 +116,7 @@ jobs:
           echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Push Docker image (reusing already built image)
+        if: steps.check_commits.outputs.NEW_COMMITS == 'true'
         run: |
           echo "Pushing already built Docker images..."
           docker push ghcr.io/${{ github.repository }}:latest
