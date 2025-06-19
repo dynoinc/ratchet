@@ -15,9 +15,14 @@ RUN go build -trimpath -ldflags="-s -w" -o ratchet ./cmd/ratchet
 FROM public.ecr.aws/lts/ubuntu:24.04_stable AS runner
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends --only-upgrade libudev1=255.4-1ubuntu8.8 && \
-    apt-get install -y --no-install-recommends --only-upgrade libsystemd0=255.4-1ubuntu8.8 && \
-    apt-get install -y --no-install-recommends ca-certificates && \
+    apt-get install -y --no-install-recommends \
+        --only-upgrade libudev1=255.4-1ubuntu8.8 \
+        --only-upgrade libsystemd0=255.4-1ubuntu8.8 \
+        --only-upgrade libpam0g=1.5.3-5ubuntu5.4 \
+        --only-upgrade libpam-runtime=1.5.3-5ubuntu5.4 \
+        --only-upgrade libpam-modules-bin=1.5.3-5ubuntu5.4 \
+        --only-upgrade libpam-modules=1.5.3-5ubuntu5.4 \
+        ca-certificates && \
     update-ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
