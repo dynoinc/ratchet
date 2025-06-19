@@ -51,6 +51,9 @@ IMPORTANT: When rendering an answer based on the search results, always include
 the top 3 links from the 'identifier' field of the returned documents. This helps
 users verify the information and access the source documentation.
 
+WORKFLOW: This is typically the first step in documentation updates. After finding
+relevant documents, use docread to get the full content of the most relevant document.
+
 Returns a list of relevant documents with their content and metadata. Each document
 includes an 'identifier' field containing the full document URL.`,
 		InputSchema: mcp.ToolInputSchema{

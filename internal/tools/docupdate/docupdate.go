@@ -44,6 +44,16 @@ The tool will:
 4. Create a pull request
 5. Return the PR URL
 
+WORKFLOW: This is the final step in the documentation update workflow. Only use this
+after you have:
+1. Found relevant documents with docsearch
+2. Reviewed the current content with docread
+3. Prepared the updated content
+4. Received explicit user approval to proceed
+
+IMPORTANT: Always get user approval before creating pull requests. Show the proposed
+changes and ask for confirmation before calling this tool.
+
 This is the final step in the documentation update workflow after the user
 has approved the planned changes.`,
 		InputSchema: mcp.ToolInputSchema{

@@ -29,6 +29,9 @@ func Tool(db *schema.Queries) (mcp.Tool, server.ToolHandlerFunc) {
 This tool retrieves a document from the documentation database using its full URL.
 The identifier must be a complete document URL (e.g., "https://github.com/owner/repo/blob/main/docs/README.md").
 
+WORKFLOW: This is typically used after docsearch to get the full content of a specific
+document for review or updates. Use this to examine the current content before making changes.
+
 Returns the full document content.`,
 		InputSchema: mcp.ToolInputSchema{
 			Type: "object",
