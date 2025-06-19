@@ -60,20 +60,6 @@ func (b *Bot) UpdateChannel(ctx context.Context, tx pgx.Tx, params schema.Update
 	return nil
 }
 
-func (b *Bot) EnableAutoDocReply(ctx context.Context, channelID string) error {
-	return b.UpdateChannel(ctx, nil, schema.UpdateChannelAttrsParams{
-		ID:    channelID,
-		Attrs: dto.ChannelAttrs{DocResponsesEnabled: true},
-	})
-}
-
-func (b *Bot) DisableAutoDocReply(ctx context.Context, channelID string) error {
-	return b.UpdateChannel(ctx, nil, schema.UpdateChannelAttrsParams{
-		ID:    channelID,
-		Attrs: dto.ChannelAttrs{DocResponsesEnabled: false},
-	})
-}
-
 func (b *Bot) EnableAgentMode(ctx context.Context, channelID string) error {
 	return b.UpdateChannel(ctx, nil, schema.UpdateChannelAttrsParams{
 		ID:    channelID,

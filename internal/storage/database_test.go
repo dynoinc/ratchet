@@ -176,7 +176,7 @@ func TestInsertDocWithEmbeddings(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestAutoDocReply(t *testing.T) {
+func TestAgentMode(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := t.Context()
 
@@ -187,21 +187,21 @@ func TestAutoDocReply(t *testing.T) {
 
 	err = qtx.UpdateChannelAttrs(ctx, schema.UpdateChannelAttrsParams{
 		ID:    channel.ID,
-		Attrs: dto.ChannelAttrs{DocResponsesEnabled: true},
+		Attrs: dto.ChannelAttrs{AgentModeEnabled: true},
 	})
 	require.NoError(t, err)
 
 	channelInfo, err := qtx.GetChannel(ctx, channel.ID)
 	require.NoError(t, err)
-	require.True(t, channelInfo.Attrs.DocResponsesEnabled)
+	require.True(t, channelInfo.Attrs.AgentModeEnabled)
 
 	err = qtx.UpdateChannelAttrs(ctx, schema.UpdateChannelAttrsParams{
 		ID:    channel.ID,
-		Attrs: dto.ChannelAttrs{DocResponsesEnabled: false},
+		Attrs: dto.ChannelAttrs{AgentModeEnabled: false},
 	})
 	require.NoError(t, err)
 
 	channelInfo, err = qtx.GetChannel(ctx, channel.ID)
 	require.NoError(t, err)
-	require.False(t, channelInfo.Attrs.DocResponsesEnabled)
+	require.False(t, channelInfo.Attrs.AgentModeEnabled)
 }
