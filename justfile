@@ -4,9 +4,9 @@ gen:
         go mod tidy
         go generate ./...
         go tool sqlc generate -f ./internal/storage/sqlc.yml
+        go tool goimports -local=github.com/dynoinc/ratchet -w .
 
 lint: gen
-        go tool goimports -local=github.com/dynoinc/ratchet -w .
         go vet ./...
         go tool staticcheck ./...
         go tool govulncheck
