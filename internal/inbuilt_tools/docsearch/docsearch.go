@@ -9,7 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/pgvector/pgvector-go"
 
-	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docutils"
+	docspkg "github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
@@ -107,7 +107,7 @@ func Execute(ctx context.Context, db *schema.Queries, llmClient llm.Client, quer
 	vec := pgvector.NewVector(embedding)
 
 	// Search for closest documents
-	docs, err := db.GetClosestDocs(ctx, schema.GetClosestDocsParams{
+	docResults, err := db.GetClosestDocs(ctx, schema.GetClosestDocsParams{
 		Embedding: &vec,
 		LimitVal:  int32(limit),
 	})
@@ -116,9 +116,9 @@ func Execute(ctx context.Context, db *schema.Queries, llmClient llm.Client, quer
 	}
 
 	// Convert to response format
-	documents := make([]DocumentSearchResult, 0, len(docs))
-	for _, doc := range docs {
-		identifier := docutils.MakeURL(doc.Url, doc.Revision, doc.Path)
+	documents := make([]DocumentSearchResult, 0, len(docResults))
+	for _, doc := range docResults {
+		identifier := docspkg.MakeURL(doc.Url, doc.Revision, doc.Path)
 
 		documents = append(documents, DocumentSearchResult{
 			Identifier: identifier,

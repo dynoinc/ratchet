@@ -9,7 +9,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	docspkg "github.com/dynoinc/ratchet/internal/docs"
-	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docutils"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
@@ -111,7 +110,7 @@ has approved the planned changes.`,
 
 func Execute(ctx context.Context, db *schema.Queries, docsConfig *docspkg.Config, identifier, updatedContent, commitMessage string) (*DocUpdateResponse, error) {
 	// Parse the identifier to get document parts
-	docURL, err := docutils.ParseURL(identifier)
+	docURL, err := docspkg.ParseURL(identifier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse identifier %s: %w", identifier, err)
 	}

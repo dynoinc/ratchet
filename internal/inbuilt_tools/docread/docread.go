@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docutils"
+	docspkg "github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 )
 
@@ -69,7 +69,7 @@ Returns the full document content.`,
 
 func Execute(ctx context.Context, db *schema.Queries, identifier string) (*DocReadResponse, error) {
 	// Parse the identifier to get document parts
-	docURL, err := docutils.ParseURL(identifier)
+	docURL, err := docspkg.ParseURL(identifier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse identifier %s: %w", identifier, err)
 	}
