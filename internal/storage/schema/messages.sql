@@ -119,10 +119,19 @@ SELECT channel_id,
        parent_ts,
        ts,
        attrs
-FROM messages_v3
-WHERE channel_id = @channel_id
-  AND parent_ts = @parent_ts :: text
-  AND (@bot_id :: text = '' OR attrs -> 'message' ->> 'user' != @bot_id :: text);
+FROM (
+    SELECT channel_id,
+           parent_ts,
+           ts,
+           attrs
+    FROM messages_v3
+    WHERE channel_id = @channel_id
+      AND parent_ts = @parent_ts :: text
+      AND (@bot_id :: text = '' OR attrs -> 'message' ->> 'user' != @bot_id :: text)
+    ORDER BY (ts::float) DESC
+    LIMIT @limit_val
+) subquery
+ORDER BY (ts::float) ASC;
 
 -- name: GetThreadMessagesByServiceAndAlert :many
 SELECT t.channel_id,

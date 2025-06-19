@@ -73,6 +73,7 @@ func Post(
 		threadMessages, err := qtx.GetThreadMessages(ctx, schema.GetThreadMessagesParams{
 			ChannelID: msg.ChannelID,
 			ParentTs:  msg.Ts,
+			LimitVal:  10,
 		})
 		if err != nil {
 			return fmt.Errorf("getting thread messages: %w", err)

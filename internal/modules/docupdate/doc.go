@@ -38,6 +38,7 @@ func computeEmbedding(
 	threadMsgs, err := queries.GetThreadMessages(ctx, schema.GetThreadMessagesParams{
 		ChannelID: channelID,
 		ParentTs:  ts,
+		LimitVal:  10,
 	})
 	if err != nil {
 		return pgvector.Vector{}, "", fmt.Errorf("failed to get thread messages: %w", err)

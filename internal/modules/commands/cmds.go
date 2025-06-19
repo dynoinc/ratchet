@@ -103,6 +103,12 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 		return "", nil
 	}
 
+	// Get thread messages for context
+	threadMessages, err := c.getThreadMessages(ctx, channelID, slackTS)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to get thread messages for context", "error", err)
+	}
+
 	var openAITools []openai.ChatCompletionToolParam
 	toolToClient := make(map[string]*client.Client)
 	for _, mcpClient := range c.mcpClients {
@@ -137,16 +143,17 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 		}
 	}
 
-	params := openai.ChatCompletionNewParams{
-		Model: c.llmClient.Model(),
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(`You are a helpful assistant that manages Slack channels and provides various utilities.
+	// Build conversation history from thread messages
+	var conversationHistory []openai.ChatCompletionMessageParamUnion
+	conversationHistory = append(conversationHistory, openai.SystemMessage(`You are a helpful assistant that manages Slack channels and provides various utilities.
 
 IMPORTANT INSTRUCTIONS:
 1. **ALWAYS use the available tools** when they can help answer the user's request or perform actions
 2. **DO NOT** try to answer questions about data, reports, documentation, or channel information without using the appropriate tools first
 3. Use multiple tools in parallel when possible to gather comprehensive information
 4. If unsure which tools to use, try relevant ones to explore what data is available
+5. **ONLY offer capabilities that are available through your tools** - do not suggest checking external systems like GitHub status, deployment status, or other services unless you have specific tools for them
+6. If a user asks about something you cannot do with available tools, politely explain what you can help with instead
 
 RESPONSE FORMAT:
 You are writing for a Slack section block. Use Slack's mrkdwn format:
@@ -159,9 +166,30 @@ You are writing for a Slack section block. Use Slack's mrkdwn format:
 Do NOT use: headings (#), tables, or HTML.
 Keep responses under 3000 characters.
 
-Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`),
-			openai.UserMessage(text),
-		},
+Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`))
+
+	// Add thread history as context
+	for _, threadMsg := range threadMessages {
+		if threadMsg.Attrs.Message.User == c.slackIntegration.BotUserID() {
+			// Assistant message
+			slog.DebugContext(ctx, "assistant message", "message", threadMsg.Attrs.Message.Text)
+			conversationHistory = append(conversationHistory, openai.AssistantMessage(threadMsg.Attrs.Message.Text))
+		} else {
+			// User message
+			text := strings.TrimPrefix(threadMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", c.slackIntegration.BotUserID()))
+			slog.DebugContext(ctx, "user message", "message", text)
+			conversationHistory = append(conversationHistory, openai.UserMessage(text))
+		}
+	}
+
+	if len(threadMessages) == 0 {
+		// No data available for the thread, just act on the current message.
+		conversationHistory = append(conversationHistory, openai.UserMessage(text))
+	}
+
+	params := openai.ChatCompletionNewParams{
+		Model:             c.llmClient.Model(),
+		Messages:          conversationHistory,
 		Tools:             openAITools,
 		ParallelToolCalls: openai.Bool(true),
 	}
@@ -223,6 +251,22 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 	}
 
 	return response, nil
+}
+
+// getThreadMessages retrieves the last 10 messages in a thread
+func (c *Commands) getThreadMessages(ctx context.Context, channelID string, slackTS string) ([]schema.GetThreadMessagesRow, error) {
+	// Get thread messages from database
+	threadMessages, err := schema.New(c.bot.DB).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+		ChannelID: channelID,
+		ParentTs:  slackTS,
+		BotID:     "", // Don't filter out bot messages, we'll classify them ourselves
+		LimitVal:  10,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting thread messages: %w", err)
+	}
+
+	return threadMessages, nil
 }
 
 func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
