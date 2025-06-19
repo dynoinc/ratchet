@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os/exec"
+	"os"
 	"strings"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -40,18 +40,30 @@ func New(
 	slackIntegration slack_integration.Integration,
 	llmClient llm.Client,
 ) (*Commands, error) {
-	for _, url := range config.MCPServerURLs {
-		if _, err := exec.LookPath(url); err != nil {
-			return nil, fmt.Errorf("looking up MCP server: %w", err)
-		}
-	}
-
 	var mcpClients []*client.Client
+
+	// Inbuilt tools
 	inbuilt, err := tools.Client(ctx, schema.New(bot.DB), llmClient)
 	if err != nil {
 		return nil, fmt.Errorf("creating inbuilt tools client: %w", err)
 	}
 	mcpClients = append(mcpClients, inbuilt)
+
+	// External MCP servers
+	for _, url := range config.MCPServerURLs {
+		mc, err := client.NewStdioMCPClient(url, os.Environ())
+		if err != nil {
+			return nil, fmt.Errorf("creating MCP client: %w", err)
+		}
+
+		_, err = mc.Initialize(ctx, mcp.InitializeRequest{})
+		if err != nil {
+			return nil, fmt.Errorf("initializing MCP client: %w", err)
+		}
+
+		slog.DebugContext(ctx, "created MCP client", "url", url)
+		mcpClients = append(mcpClients, mc)
+	}
 
 	return &Commands{
 		config:           config,
@@ -117,6 +129,8 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 			toolToClient[t.Name] = mcpClient
 		}
 	}
+
+	slog.DebugContext(ctx, "openAITools", "openAITools", openAITools, "toolToClient", toolToClient)
 
 	// Use OpenAI API with tool calling
 	params := openai.ChatCompletionNewParams{
