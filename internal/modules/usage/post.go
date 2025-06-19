@@ -86,10 +86,11 @@ func get(ctx context.Context, db *schema.Queries, slackIntegration slack_integra
 		modUsage.TotalMessages++
 
 		for name, count := range msg.Attrs.Reactions {
-			if name == "+1" {
+			switch name {
+			case "+1":
 				usage.TotalThumbsUp += count
 				modUsage.TotalThumbsUp += count
-			} else if name == "-1" {
+			case "-1":
 				usage.TotalThumbsDown += count
 				modUsage.TotalThumbsDown += count
 			}
@@ -423,4 +424,140 @@ func format(ctx context.Context, qtx *schema.Queries, report report) []slack.Blo
 	blocks = append(blocks, slack_integration.CreateSignatureBlock("Usage Report")...)
 
 	return blocks
+}
+
+func Generate(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, channelID string) (string, error) {
+	report, err := get(ctx, db, slackIntegration)
+	if err != nil {
+		return "", fmt.Errorf("getting usage report: %w", err)
+	}
+
+	return formatAsText(report), nil
+}
+
+func formatAsText(report report) string {
+	type channelStats struct {
+		id         string
+		messages   int
+		thumbsUp   int
+		thumbsDown int
+	}
+
+	var channels []channelStats
+	var totalMessages, totalThumbsUp, totalThumbsDown int
+	for id, usage := range report.ChannelUsage {
+		totalMessages += usage.TotalMessages
+		totalThumbsUp += usage.TotalThumbsUp
+		totalThumbsDown += usage.TotalThumbsDown
+
+		channels = append(channels, channelStats{
+			id:         id,
+			messages:   usage.TotalMessages,
+			thumbsUp:   usage.TotalThumbsUp,
+			thumbsDown: usage.TotalThumbsDown,
+		})
+	}
+
+	sort.Slice(channels, func(i, j int) bool {
+		return channels[i].messages > channels[j].messages
+	})
+
+	type moduleStats struct {
+		name       string
+		messages   int
+		thumbsUp   int
+		thumbsDown int
+	}
+
+	var modules []moduleStats
+	for name, usage := range report.ModuleUsage {
+		modules = append(modules, moduleStats{
+			name:       name,
+			messages:   usage.TotalMessages,
+			thumbsUp:   usage.TotalThumbsUp,
+			thumbsDown: usage.TotalThumbsDown,
+		})
+	}
+
+	sort.Slice(modules, func(i, j int) bool {
+		return modules[i].messages > modules[j].messages
+	})
+
+	// Prepare LLM usage statistics
+	type llmStats struct {
+		model        string
+		requests     int
+		promptTokens int
+		outputTokens int
+	}
+
+	var llmModels []llmStats
+	var totalRequests int
+	for model, usage := range report.LLMUsage {
+		totalRequests += usage.TotalRequests
+
+		llmModels = append(llmModels, llmStats{
+			model:        model,
+			requests:     usage.TotalRequests,
+			promptTokens: usage.TotalPromptTokens,
+			outputTokens: usage.TotalOutputTokens,
+		})
+	}
+
+	sort.Slice(llmModels, func(i, j int) bool {
+		return llmModels[i].requests > llmModels[j].requests
+	})
+
+	var result strings.Builder
+
+	// Header
+	result.WriteString("# Ratchet Bot Usage Report\n\n")
+	result.WriteString(fmt.Sprintf("Report period: %s to %s\n\n",
+		report.StartTs.Format("Jan 2, 2006"),
+		report.EndTs.Format("Jan 2, 2006")))
+
+	// Summary
+	result.WriteString(fmt.Sprintf("**Summary**: Channels: %d, Total Messages: %d, Total 👍: %d, Total 👎: %d, LLM Requests: %d\n\n",
+		report.ChannelCount, totalMessages, totalThumbsUp, totalThumbsDown, totalRequests))
+
+	// Add LLM Usage section if we have data
+	if len(llmModels) > 0 {
+		result.WriteString("## LLM Usage Breakdown\n\n")
+		result.WriteString("| Model | Requests | Prompt Tokens | Output Tokens |\n")
+		result.WriteString("|-------|----------|---------------|---------------|\n")
+
+		for _, model := range llmModels {
+			result.WriteString(fmt.Sprintf("| %s | %d | %d | %d |\n",
+				model.model, model.requests, model.promptTokens, model.outputTokens))
+		}
+		result.WriteString("\n")
+	}
+
+	// Module Breakdown
+	result.WriteString("## Module Breakdown\n\n")
+	result.WriteString("| Module | Messages | 👍 | 👎 |\n")
+	result.WriteString("|--------|----------|---|---|\n")
+
+	for _, mod := range modules {
+		result.WriteString(fmt.Sprintf("| %s | %d | %d | %d |\n",
+			mod.name, mod.messages, mod.thumbsUp, mod.thumbsDown))
+	}
+	result.WriteString("\n")
+
+	// Channel Breakdown
+	result.WriteString("## Top 5 Channels\n\n")
+	result.WriteString("| Channel | Messages | 👍 | 👎 |\n")
+	result.WriteString("|---------|----------|---|---|\n")
+
+	for i, ch := range channels {
+		if i >= 5 {
+			break
+		}
+
+		channelName := ch.id // fallback to ID if not available
+		result.WriteString(fmt.Sprintf("| %s | %d | %d | %d |\n",
+			channelName, ch.messages, ch.thumbsUp, ch.thumbsDown))
+	}
+
+	return result.String()
 }

@@ -176,3 +176,41 @@ func Post(
 
 	return nil
 }
+
+func Generate(
+	ctx context.Context,
+	queries *schema.Queries,
+	llm llm.Client,
+	docsConfig *docs.Config,
+	channelID string,
+	ts string,
+	text string,
+) (string, error) {
+	if docsConfig == nil {
+		return "", fmt.Errorf("documentation config not available")
+	}
+
+	doc, updatedDoc, err := Compute(ctx, queries, llm, channelID, ts, text)
+	if err != nil {
+		return "", fmt.Errorf("failed to compute: %w", err)
+	}
+
+	var source docs.Source
+	for _, s := range docsConfig.Sources {
+		if s.URL() == doc.Url {
+			source = s
+			break
+		}
+	}
+
+	if source == (docs.Source{}) {
+		return "", fmt.Errorf("no matching source found for document")
+	}
+
+	url, err := source.Suggest(ctx, doc.Path, doc.Revision, updatedDoc)
+	if err != nil {
+		return "", fmt.Errorf("failed to suggest documentation update: %w", err)
+	}
+
+	return url, nil
+}

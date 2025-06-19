@@ -43,37 +43,6 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
-// ClassifyCommand mocks base method.
-func (m *MockClient) ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClassifyCommand", ctx, text, sampleMessages)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ClassifyCommand indicates an expected call of ClassifyCommand.
-func (mr *MockClientMockRecorder) ClassifyCommand(ctx, text, sampleMessages any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyCommand", reflect.TypeOf((*MockClient)(nil).ClassifyCommand), ctx, text, sampleMessages)
-}
-
-// ClassifyMessage mocks base method.
-func (m *MockClient) ClassifyMessage(ctx context.Context, text string, classes map[string]string) (string, string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClassifyMessage", ctx, text, classes)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(string)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ClassifyMessage indicates an expected call of ClassifyMessage.
-func (mr *MockClientMockRecorder) ClassifyMessage(ctx, text, classes any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyMessage", reflect.TypeOf((*MockClient)(nil).ClassifyMessage), ctx, text, classes)
-}
-
 // Client mocks base method.
 func (m *MockClient) Client() openai.Client {
 	m.ctrl.T.Helper()
@@ -161,6 +130,20 @@ func (m *MockClient) GenerateRunbook(ctx context.Context, service, alert string,
 func (mr *MockClientMockRecorder) GenerateRunbook(ctx, service, alert, msgs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateRunbook", reflect.TypeOf((*MockClient)(nil).GenerateRunbook), ctx, service, alert, msgs)
+}
+
+// Model mocks base method.
+func (m *MockClient) Model() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Model")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// Model indicates an expected call of Model.
+func (mr *MockClientMockRecorder) Model() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Model", reflect.TypeOf((*MockClient)(nil).Model))
 }
 
 // RunJSONModePrompt mocks base method.

@@ -445,3 +445,257 @@ func calculateAverage(durations []time.Duration) time.Duration {
 
 	return total / time.Duration(len(durations))
 }
+
+func Generate(
+	ctx context.Context,
+	qtx *schema.Queries,
+	llmClient llm.Client,
+	channelID string,
+) (string, error) {
+	messages, err := qtx.GetMessagesWithinTS(ctx, schema.GetMessagesWithinTSParams{
+		ChannelID: channelID,
+		StartTs:   fmt.Sprintf("%d.000000", time.Now().AddDate(0, 0, -7).Unix()),
+		EndTs:     fmt.Sprintf("%d.000000", time.Now().Unix()),
+	})
+	if err != nil {
+		return "", fmt.Errorf("getting messages for channel: %w", err)
+	}
+
+	incidentCounts := make(map[string]int)                // key: "service/alert"
+	incidentDurations := make(map[string][]time.Duration) // key: "service/alert"
+	triageMsgCounts := make(map[string]int)               // key: "service/alert"
+
+	for _, msg := range messages {
+		incidentKey := fmt.Sprintf("%s/%s", msg.Attrs.IncidentAction.Service, msg.Attrs.IncidentAction.Alert)
+
+		switch msg.Attrs.IncidentAction.Action {
+		case dto.ActionOpenIncident:
+			incidentCounts[incidentKey]++
+
+			msgs, err := qtx.GetThreadMessagesByServiceAndAlert(ctx, schema.GetThreadMessagesByServiceAndAlertParams{
+				Service: msg.Attrs.IncidentAction.Service,
+				Alert:   msg.Attrs.IncidentAction.Alert,
+			})
+			if err != nil {
+				return "", fmt.Errorf("getting thread messages: %w", err)
+			}
+
+			triageMsgCounts[incidentKey] += len(msgs)
+		case dto.ActionCloseIncident:
+			incidentDurations[incidentKey] = append(incidentDurations[incidentKey], msg.Attrs.IncidentAction.Duration.Duration)
+		}
+	}
+
+	textMessages := make([][]string, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Attrs.Message.BotID != "" {
+			continue
+		}
+
+		threadMessages, err := qtx.GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+			ChannelID: msg.ChannelID,
+			ParentTs:  msg.Ts,
+		})
+		if err != nil {
+			return "", fmt.Errorf("getting thread messages: %w", err)
+		}
+
+		fullThreadMessages := []string{msg.Attrs.Message.Text}
+		for _, threadMessage := range threadMessages {
+			if threadMessage.Attrs.Message.BotID != "" {
+				continue
+			}
+
+			fullThreadMessages = append(fullThreadMessages, threadMessage.Attrs.Message.Text)
+		}
+
+		textMessages = append(textMessages, fullThreadMessages)
+	}
+
+	suggestions, err := llmClient.GenerateChannelSuggestions(ctx, textMessages)
+	if err != nil {
+		return "", fmt.Errorf("generating suggestions: %w", err)
+	}
+
+	// Compute long-running alerts
+	var longRunningAlerts []alertEntry
+	for alert, durations := range incidentDurations {
+		avgDuration := calculateAverage(durations)
+		if avgDuration > 72*time.Hour { // 3 days
+			service, alertName, _ := strings.Cut(alert, "/")
+			longRunningAlerts = append(longRunningAlerts, alertEntry{
+				service:  service,
+				alert:    alertName,
+				count:    incidentCounts[alert],
+				duration: avgDuration,
+			})
+		}
+	}
+	// Sort by duration descending and take top 5
+	slices.SortFunc(longRunningAlerts, func(a, b alertEntry) int {
+		return int(b.duration.Seconds()) - int(a.duration.Seconds())
+	})
+	if len(longRunningAlerts) > 5 {
+		longRunningAlerts = longRunningAlerts[:5]
+	}
+
+	// Compute untriaged alerts
+	var untriagedAlerts []alertEntry
+	for alert, count := range incidentCounts {
+		if triageMsgCounts[alert] == 0 {
+			service, alertName, _ := strings.Cut(alert, "/")
+			untriagedAlerts = append(untriagedAlerts, alertEntry{
+				service: service,
+				alert:   alertName,
+				count:   count,
+			})
+		}
+	}
+	// Sort by count descending and take top 5
+	slices.SortFunc(untriagedAlerts, func(a, b alertEntry) int {
+		return b.count - a.count
+	})
+	if len(untriagedAlerts) > 5 {
+		untriagedAlerts = untriagedAlerts[:5]
+	}
+
+	// Compute frequently firing alerts
+	var frequentAlerts []alertEntry
+	for alert, count := range incidentCounts {
+		if count > 5 {
+			service, alertName, _ := strings.Cut(alert, "/")
+			frequentAlerts = append(frequentAlerts, alertEntry{
+				service: service,
+				alert:   alertName,
+				count:   count,
+			})
+		}
+	}
+	// Sort by count descending and take top 5
+	slices.SortFunc(frequentAlerts, func(a, b alertEntry) int {
+		return b.count - a.count
+	})
+	if len(frequentAlerts) > 5 {
+		frequentAlerts = frequentAlerts[:5]
+	}
+
+	return formatAsText(
+		channelID,
+		incidentCounts,
+		incidentDurations,
+		suggestions,
+		longRunningAlerts,
+		untriagedAlerts,
+		frequentAlerts,
+	), nil
+}
+
+func formatAsText(
+	channelID string,
+	incidentCounts map[string]int,
+	incidentDurations map[string][]time.Duration,
+	suggestions string,
+	longRunningAlerts []alertEntry,
+	untriagedAlerts []alertEntry,
+	frequentAlerts []alertEntry,
+) string {
+	var result strings.Builder
+
+	// Header
+	result.WriteString("**Weekly Channel Report**\n")
+	result.WriteString(fmt.Sprintf("Channel: <#%s>\n", channelID))
+	result.WriteString(fmt.Sprintf("Period: %s - %s\n\n",
+		time.Now().AddDate(0, 0, -7).Format("2006-01-02"),
+		time.Now().Format("2006-01-02")))
+
+	// Alerts section
+	if len(incidentCounts) > 0 {
+		result.WriteString("**Top Alerts:**\n\n")
+
+		alerts := make([]alertEntry, 0, len(incidentCounts))
+		for alert, count := range incidentCounts {
+			service, alertName, _ := strings.Cut(alert, "/")
+			avgDuration := calculateAverage(incidentDurations[alert])
+			alerts = append(alerts, alertEntry{
+				service:  service,
+				alert:    alertName,
+				count:    count,
+				duration: avgDuration,
+			})
+		}
+
+		// Sort alerts by count (descending), then by service name, then by alert name
+		slices.SortFunc(alerts, func(a, b alertEntry) int {
+			if a.count != b.count {
+				return b.count - a.count // Descending order
+			}
+			if a.service != b.service {
+				return strings.Compare(a.service, b.service)
+			}
+			return strings.Compare(a.alert, b.alert)
+		})
+
+		// Take top 5
+		if len(alerts) > 5 {
+			alerts = alerts[:5]
+		}
+
+		result.WriteString("| Service | Alert | Count | Avg Duration |\n")
+		result.WriteString("|---------|-------|-------|-------------|\n")
+		for _, entry := range alerts {
+			alertName := entry.alert
+			if len(alertName) > 30 {
+				alertName = alertName[:27] + "..."
+			}
+			result.WriteString(fmt.Sprintf("| %s | %s | %d | %s |\n",
+				entry.service, alertName, entry.count, entry.duration.Round(time.Second).String()))
+		}
+		result.WriteString("\n")
+	}
+
+	// Frequently firing alerts section
+	if len(frequentAlerts) > 0 {
+		result.WriteString("**Frequently Firing Alerts:**\n")
+		result.WriteString("The following alerts fired more than 5 times this week and may need attention:\n\n")
+		result.WriteString("| Service | Alert | Count |\n")
+		result.WriteString("|---------|-------|-------|\n")
+		for _, entry := range frequentAlerts {
+			result.WriteString(fmt.Sprintf("| %s | %s | %d |\n", entry.service, entry.alert, entry.count))
+		}
+		result.WriteString("Consider reviewing these alerts to reduce noise and improve signal.\n\n")
+	}
+
+	// Long-running alerts section
+	if len(longRunningAlerts) > 0 {
+		result.WriteString("**Alerts with Long Resolution Times:**\n")
+		result.WriteString("The following alerts consistently take more than 3 days to resolve and may need review:\n\n")
+		result.WriteString("| Service | Alert | Avg Duration |\n")
+		result.WriteString("|---------|-------|-------------|\n")
+		for _, entry := range longRunningAlerts {
+			result.WriteString(fmt.Sprintf("| %s | %s | %s |\n",
+				entry.service, entry.alert, entry.duration.Round(time.Hour).String()))
+		}
+		result.WriteString("Consider reviewing and potentially removing these alerts if they're not providing value.\n\n")
+	}
+
+	// Untriaged alerts section
+	if len(untriagedAlerts) > 0 {
+		result.WriteString("**Alerts with No Triage Activity:**\n")
+		result.WriteString("The following alerts had no team interaction and may be unnecessary:\n\n")
+		result.WriteString("| Service | Alert | Count |\n")
+		result.WriteString("|---------|-------|-------|\n")
+		for _, entry := range untriagedAlerts {
+			result.WriteString(fmt.Sprintf("| %s | %s | %d |\n", entry.service, entry.alert, entry.count))
+		}
+		result.WriteString("Consider removing these alerts as they don't seem to require team attention.\n\n")
+	}
+
+	// Format suggestions
+	if len(suggestions) > 0 {
+		result.WriteString("**Suggestions for Improvement:**\n\n")
+		result.WriteString(suggestions)
+		result.WriteString("\n")
+	}
+
+	return result.String()
+}

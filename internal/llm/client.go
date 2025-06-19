@@ -46,6 +46,7 @@ func DefaultConfig() Config {
 
 type Client interface {
 	Client() openai.Client
+	Model() string
 
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	GenerateChannelSuggestions(ctx context.Context, messages [][]string) (string, error)
@@ -53,8 +54,6 @@ type Client interface {
 	GenerateDocumentationUpdate(ctx context.Context, doc string, msgs string) (string, error)
 	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
-	ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error)
-	ClassifyMessage(ctx context.Context, text string, classes map[string]string) (string, string, error)
 }
 
 type client struct {
@@ -287,6 +286,10 @@ func downloadOllamaModel(ctx context.Context, s string) error {
 
 func (c *client) Client() openai.Client {
 	return c.client
+}
+
+func (c *client) Model() string {
+	return c.cfg.Model
 }
 
 // runChatCompletion is a helper function to run chat completions with common logic
@@ -564,127 +567,6 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 		}
 	}
 	return respMsg, "", nil
-}
-
-func (c *client) ClassifyCommand(ctx context.Context, text string, sampleMessages map[string][]string) (string, error) {
-	prompt := `You are a command classifier for a Slack bot named Ratchet that helps reduce operational toil. Your task is to identify the most appropriate command from user input.
-
-Given a message, respond with EXACTLY ONE of these commands (no explanation, just the command name):
-- weekly_report (for generating incident/alert reports or summaries for a channel)
-- usage_report (for showing bot usage statistics and feedback metrics)
-- enable_auto_doc_reply (for enabling auto doc reply)
-- disable_auto_doc_reply (for disabling auto doc reply)
-- lookup_documentation (for looking up documentation)
-- update_documentation (for updating documentation)
-- none (for messages that don't match any supported command)
-
-Do not add any conversational text, explanation, or formatting; output *only* the single command name.
-
-Examples:`
-
-	// Add examples from sampleMessages
-	for cmd, examples := range sampleMessages {
-		for _, example := range examples {
-			prompt += fmt.Sprintf("\nUser: %q\nResponse: %s\n", example, cmd)
-		}
-	}
-
-	prompt += `
-Classify the following message with ONLY the command name and nothing else:
-
-User: %s
-Response:
-`
-
-	chatMessages := createLLMMessages(prompt, text)
-	content, err := c.runChatCompletion(ctx, chatMessages, 0.0, false)
-	if err != nil {
-		return "", fmt.Errorf("classifying command: %w", err)
-	}
-
-	return content, nil
-}
-
-func (c *client) ClassifyMessage(ctx context.Context, text string, classes map[string]string) (string, string, error) {
-	prompt := `You are an expert at classifying Slack messages in team help and operations channels. Your task is to analyze messages and categorize them accurately.
-
-CLASSIFICATION PROCESS:
-1. Read the message carefully and identify the main intent
-2. Consider the context (team/ops channel communication)
-3. Look for key indicators like question words, action requests, urgency markers
-4. Match against the provided classes based on the primary purpose
-
-AVAILABLE CLASSES:`
-
-	for class, description := range classes {
-		prompt += fmt.Sprintf("\n- %s: %s", class, description)
-	}
-
-	prompt += `
-
-CLASSIFICATION EXAMPLES:
-
-Help Request Examples:
-- "How do I restart the payment service?"
-- "Getting 500 errors on the API, anyone know what's wrong?"
-- "Can someone help me debug this database connection issue?"
-
-Production Change Examples:
-- "Need to deploy the hotfix to production ASAP"
-- "Can we update the config for the auth service?"
-- "Planning to scale up the workers, any objections?"
-
-Code Review Examples:
-- "PR ready for review: https://github.com/org/repo/pull/123"
-- "Can someone take a look at my changes?"
-- "Need eyes on this refactor before merging"
-
-Incident Report Examples:
-- "ALERT: Payment service is down"
-- "Users reporting login failures across all regions"
-- "Database CPU is at 95%, investigating"
-
-Status Update Examples:
-- "Deployment completed successfully"
-- "Fixed the issue, monitoring for any further problems"
-- "Services are back to normal"
-
-Other Examples:
-- "Thanks for the help!"
-- "Good morning team"
-- "Meeting in 5 minutes"
-
-INSTRUCTIONS:
-- Analyze the message's PRIMARY intent and purpose
-- Choose the MOST SPECIFIC class that fits
-- If multiple classes could apply, pick the one that represents the main action needed
-- Use "other" only for messages that clearly don't fit any provided class
-- Provide a concise reason explaining your classification choice
-
-Message to classify: "%s"
-
-Return a JSON object with "class" and "reason" fields:`
-
-	chatMessages := createLLMMessages(prompt, text)
-	respContent, err := c.runChatCompletion(ctx, chatMessages, 0.1, true)
-	if err != nil {
-		return "", "", fmt.Errorf("classifying message: %w", err)
-	}
-
-	var resp struct {
-		Class  string `json:"class"`
-		Reason string `json:"reason"`
-	}
-
-	if err := json.Unmarshal([]byte(respContent), &resp); err != nil {
-		return "", "", fmt.Errorf("unmarshaling response: %w", err)
-	}
-
-	if resp.Class == "" {
-		return "", "", fmt.Errorf("no class found in response: %s", respContent)
-	}
-
-	return resp.Class, resp.Reason, nil
 }
 
 func (c *client) GenerateDocumentationResponse(ctx context.Context, question string, documents []string) (string, error) {

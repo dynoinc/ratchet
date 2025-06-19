@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -16,65 +17,14 @@ import (
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
+	"github.com/dynoinc/ratchet/internal/tools"
+	"github.com/openai/openai-go"
+	"github.com/slack-go/slack"
 )
 
 type Config struct {
 	MCPServerURLs []string `envconfig:"MCP_SERVER_URLS"`
 }
-
-type cmd string
-
-const (
-	cmdNone                cmd = "none"
-	cmdPostWeeklyReport    cmd = "weekly_report"
-	cmdPostUsageReport     cmd = "usage_report"
-	cmdEnableAutoDocReply  cmd = "enable_auto_doc_reply"
-	cmdDisableAutoDocReply cmd = "disable_auto_doc_reply"
-	cmdLookupDocumentation cmd = "lookup_documentation"
-	cmdUpdateDocumentation cmd = "update_documentation"
-)
-
-var (
-	sampleMessages = map[string][]string{
-		string(cmdNone): {
-			"how are you doing?",
-			"what's the weather like?",
-			"can you help me with something?",
-		},
-		string(cmdPostWeeklyReport): {
-			"generate weekly incident report for this channel",
-			"post report",
-			"what's the status report",
-			"show me the weekly summary",
-		},
-		string(cmdPostUsageReport): {
-			"show ratchet bot usage statistics",
-			"post usage report",
-			"how many people are using the bot?",
-		},
-		string(cmdEnableAutoDocReply): {
-			"enable auto doc reply",
-			"reply to questions with documentation automatically",
-			"lookup documentation by default",
-		},
-		string(cmdDisableAutoDocReply): {
-			"disable auto doc reply",
-			"stop replying to questions automatically",
-			"stop looking up documentation by default",
-		},
-		string(cmdLookupDocumentation): {
-			"lookup documentation",
-			"what does the documentation say",
-			"reference the docs",
-		},
-		string(cmdUpdateDocumentation): {
-			"update the documentation",
-			"update the docs",
-			"open a PR or a pull request",
-			"fix the docs",
-		},
-	}
-)
 
 type Commands struct {
 	config           Config
@@ -107,37 +57,6 @@ func (c *Commands) Name() string {
 	return "commands"
 }
 
-func (c *Commands) findCommand(ctx context.Context, text string) (cmd, error) {
-	text = strings.ToLower(strings.TrimSpace(text))
-	if text == "" {
-		return cmdNone, nil
-	}
-
-	result, err := c.llmClient.ClassifyCommand(ctx, text, sampleMessages)
-	if err != nil {
-		return cmdNone, err
-	}
-
-	result = strings.TrimSpace(strings.ToLower(result))
-	switch result {
-	case "weekly_report":
-		return cmdPostWeeklyReport, nil
-	case "usage_report":
-		return cmdPostUsageReport, nil
-	case "enable_auto_doc_reply":
-		return cmdEnableAutoDocReply, nil
-	case "disable_auto_doc_reply":
-		return cmdDisableAutoDocReply, nil
-	case "lookup_documentation":
-		return cmdLookupDocumentation, nil
-	case "update_documentation":
-		return cmdUpdateDocumentation, nil
-	default:
-		slog.DebugContext(ctx, "unknown command", "text", text, "command", result)
-		return cmdNone, nil
-	}
-}
-
 func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	channel, err := c.bot.GetChannel(ctx, channelID)
 	if err != nil {
@@ -159,26 +78,114 @@ func (c *Commands) handleMessage(ctx context.Context, channelID string, slackTS 
 		return nil
 	}
 
-	bestMatch, err := c.findCommand(ctx, text)
-	if err != nil {
-		return err
+	// Use OpenAI API with tool calling
+	params := openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(`You are a helpful assistant that manages Slack channels and provides various utilities. 
+Use the available tools to help users with reports, documentation, and channel settings.
+Always provide clear and concise responses about what actions you've taken.`),
+			openai.UserMessage(text),
+		},
+		Tools: tools.Definitions(),
+		Model: c.llmClient.Model(),
 	}
 
-	switch bestMatch {
-	case cmdPostWeeklyReport:
-		return report.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
-	case cmdPostUsageReport:
-		return usage.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
-	case cmdEnableAutoDocReply:
-		return c.bot.EnableAutoDocReply(ctx, channelID)
-	case cmdDisableAutoDocReply:
-		return c.bot.DisableAutoDocReply(ctx, channelID)
-	case cmdLookupDocumentation:
-		return docrag.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, slackTS, text)
-	case cmdUpdateDocumentation:
-		return docupdate.Post(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, c.bot.DocsConfig, channelID, slackTS, text)
-	case cmdNone: // nothing to do
+	var response string
+	for range 5 {
+		openaiClient := c.llmClient.Client()
+		completion, err := openaiClient.Chat.Completions.New(ctx, params)
+		if err != nil {
+			return fmt.Errorf("processing request: %w", err)
+		}
+
+		toolCalls := completion.Choices[0].Message.ToolCalls
+		if len(toolCalls) == 0 {
+			response = completion.Choices[0].Message.Content
+			break
+		}
+
+		params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
+		for _, toolCall := range toolCalls {
+			result, err := c.executeTool(ctx, toolCall.Function.Name, toolCall.Function.Arguments, channelID, slackTS)
+			if err != nil {
+				slog.ErrorContext(ctx, "Tool execution failed", "tool", toolCall.Function.Name, "error", err)
+				return fmt.Errorf("tool execution failed: %w", err)
+			}
+
+			params.Messages = append(params.Messages, openai.ToolMessage(result, toolCall.ID))
+		}
+	}
+
+	if response != "" {
+		blocks := []slack.Block{
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, response, false, false),
+				nil, nil,
+			),
+		}
+		blocks = append(blocks, slack_integration.CreateSignatureBlock("Commands")...)
+		return c.slackIntegration.PostThreadReply(ctx, channelID, slackTS, blocks...)
 	}
 
 	return nil
+}
+
+func (c *Commands) executeTool(ctx context.Context, toolName string, args string, channelID, messageTS string) (string, error) {
+	var arguments map[string]interface{}
+	if err := json.Unmarshal([]byte(args), &arguments); err != nil {
+		return "", fmt.Errorf("parsing tool arguments: %w", err)
+	}
+
+	switch toolName {
+	case "generate_weekly_report":
+		return report.Generate(ctx, schema.New(c.bot.DB), c.llmClient, channelID)
+
+	case "generate_usage_report":
+		return usage.Generate(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID)
+
+	case "enable_auto_doc_reply":
+		err := c.bot.EnableAutoDocReply(ctx, channelID)
+		if err != nil {
+			return "", err
+		}
+		return "Auto documentation replies have been enabled for this channel.", nil
+
+	case "disable_auto_doc_reply":
+		err := c.bot.DisableAutoDocReply(ctx, channelID)
+		if err != nil {
+			return "", err
+		}
+		return "Auto documentation replies have been disabled for this channel.", nil
+
+	case "lookup_documentation":
+		query := arguments["query"].(string)
+		answer, links, err := docrag.Compute(ctx, schema.New(c.bot.DB), c.llmClient, c.slackIntegration, channelID, messageTS, query)
+		if err != nil {
+			return "", err
+		}
+
+		result := answer
+		if len(links) > 0 {
+			result += "\n\nSources:\n"
+			for _, link := range links {
+				result += fmt.Sprintf("- %s\n", link)
+			}
+		}
+		return result, nil
+
+	case "update_documentation":
+		request := arguments["request"].(string)
+		if c.bot.DocsConfig == nil {
+			return "Documentation updates are not configured for this instance.", nil
+		}
+
+		url, err := docupdate.Generate(ctx, schema.New(c.bot.DB), c.llmClient, c.bot.DocsConfig, channelID, messageTS, request)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("I've created a documentation update PR: %s", url), nil
+
+	default:
+		return "", fmt.Errorf("unknown tool: %s", toolName)
+	}
 }
