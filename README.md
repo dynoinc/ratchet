@@ -123,3 +123,11 @@ Ratchet will respond to questions without waiting for explicit requests.
   go run ./cmd/ratchet --help
   go run ./cmd/ratchet
 ```
+
+* Onboard a channel where ratchet bot is added and then ask it process a message. Remember you will need
+  to onboard again if you want to test it against new messages since in devmode we do not enable Slack socketmode.
+
+```bash
+  curl http://localhost:5001/api/channels/ratchet-test/onboard -X POST
+  curl http://localhost:5001/api/commands/generate?channel_id=FAKECHANNELID\&ts=1750324493.161329
+```
