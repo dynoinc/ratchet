@@ -229,7 +229,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cmds, err := commands.New(c.Commands, bot, slackIntegration, llmClient)
+	cmds, err := commands.New(ctx, c.Commands, bot, slackIntegration, llmClient)
 	if err != nil {
 		slog.ErrorContext(ctx, "setting up commands", "error", err)
 		os.Exit(1)

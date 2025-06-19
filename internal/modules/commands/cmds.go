@@ -34,6 +34,7 @@ type Commands struct {
 }
 
 func New(
+	ctx context.Context,
 	config Config,
 	bot *internal.Bot,
 	slackIntegration slack_integration.Integration,
@@ -46,7 +47,7 @@ func New(
 	}
 
 	var mcpClients []*client.Client
-	inbuilt, err := tools.Client(schema.New(bot.DB), llmClient)
+	inbuilt, err := tools.Client(ctx, schema.New(bot.DB), llmClient)
 	if err != nil {
 		return nil, fmt.Errorf("creating inbuilt tools client: %w", err)
 	}
@@ -98,12 +99,18 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 		}
 
 		for _, t := range tools.Tools {
+			inputSchemaMap := map[string]any{
+				"type":       t.InputSchema.Type,
+				"properties": t.InputSchema.Properties,
+				"required":   t.InputSchema.Required,
+			}
+
 			openAITools = append(openAITools, openai.ChatCompletionToolParam{
 				Type: "function",
 				Function: openai.FunctionDefinitionParam{
 					Name:        t.Name,
 					Description: openai.String(t.Description),
-					Parameters:  openai.FunctionParameters(t.InputSchema.Properties),
+					Parameters:  openai.FunctionParameters(inputSchemaMap),
 				},
 			})
 
@@ -115,9 +122,21 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 	params := openai.ChatCompletionNewParams{
 		Model: c.llmClient.Model(),
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(`You are a helpful assistant that manages Slack channels and provides various utilities. 
-Use the available tools to help users with reports, documentation, and channel settings.
-Always provide clear and concise responses about what actions you've taken.`),
+			openai.SystemMessage(`You are a helpful assistant that manages Slack channels and provides various utilities.
+
+IMPORTANT INSTRUCTIONS:
+1. **ALWAYS use the available tools** when they can help answer the user's request or perform actions
+2. **DO NOT** try to answer questions about data, reports, documentation, or channel information without using the appropriate tools first
+3. Use multiple tools in parallel when possible to gather comprehensive information
+4. If unsure which tools to use, try relevant ones to explore what data is available
+
+RESPONSE FORMAT:
+- Format ALL responses in **Markdown** since they will be posted to Slack
+- Use proper markdown formatting: headers (##), bullet points (-), code blocks, bold (**text**), etc.
+- Structure responses clearly with sections and bullet points
+- When you've used tools, briefly mention what you found/did at the beginning
+
+Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`),
 			openai.UserMessage(text),
 		},
 		Tools:             openAITools,
