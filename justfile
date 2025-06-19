@@ -6,7 +6,7 @@ gen:
         go tool sqlc generate -f ./internal/storage/sqlc.yml
 
 lint: gen
-        go tool goimports -local=. -w .
+        go tool goimports -local=github.com/dynoinc/ratchet -w .
         go vet ./...
         go tool staticcheck ./...
         go tool govulncheck

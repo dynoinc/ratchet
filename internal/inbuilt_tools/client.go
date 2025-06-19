@@ -3,6 +3,11 @@ package inbuilt_tools
 import (
 	"context"
 
+	"github.com/earthboundkid/versioninfo/v2"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/agent_mode"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/channel_report"
@@ -14,10 +19,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
-	"github.com/earthboundkid/versioninfo/v2"
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // This file contains tool definitions for the commands module.

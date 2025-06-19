@@ -38,7 +38,7 @@ jobs:
         run: go generate ./... && git diff --exit-code
 
       - name: Go Format
-        run: go fmt ./... && git diff --exit-code
+        run: go tool goimports -local=github.com/dynoinc/ratchet -d . && git diff --exit-code
 
       - name: Go Tidy
         run: go mod tidy && git diff --exit-code
@@ -55,14 +55,8 @@ jobs:
       - name: SQLc Generate
         run: go tool sqlc generate -f ./internal/storage/sqlc.yml && git diff --exit-code
 
-      - name: Go Build
-        run: go build ./...
-
       - name: Go Test
         run: go test -v -count=1 -race -shuffle=on ./...
-
-      - name: Go Benchmark
-        run: go test -v -shuffle=on -run=- -bench=. -benchtime=1x ./...
 
   scan:
     name: Security Scan

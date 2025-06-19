@@ -8,6 +8,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openai/openai-go"
+	"github.com/slack-go/slack"
+
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools"
@@ -15,10 +20,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/openai/openai-go"
-	"github.com/slack-go/slack"
 )
 
 type Config struct {

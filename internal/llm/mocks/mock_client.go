@@ -13,10 +13,11 @@ import (
 	context "context"
 	reflect "reflect"
 
-	llm "github.com/dynoinc/ratchet/internal/llm"
 	openai "github.com/openai/openai-go"
 	jsonschema "github.com/qri-io/jsonschema"
 	gomock "go.uber.org/mock/gomock"
+
+	llm "github.com/dynoinc/ratchet/internal/llm"
 )
 
 // MockClient is a mock of Client interface.

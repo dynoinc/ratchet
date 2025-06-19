@@ -5,9 +5,10 @@
 package schema
 
 import (
-	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
+
+	dto "github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 type ChannelsV2 struct {

@@ -4,8 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
 func TestAlertFiringContext(t *testing.T) {
