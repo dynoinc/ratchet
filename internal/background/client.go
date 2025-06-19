@@ -21,7 +21,7 @@ func (m *sentryMiddleware) Work(ctx context.Context, job *rivertype.JobRow, doIn
 		hub = sentry.CurrentHub().Clone()
 	}
 
-	tx := sentry.StartTransaction(ctx, "worker.job", sentry.WithTransactionName(job.Kind))
+	tx := sentry.StartTransaction(ctx, job.Kind)
 	defer tx.Finish()
 
 	ctx = sentry.SetHubOnContext(tx.Context(), hub)

@@ -63,9 +63,17 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 			}
 		}
 
-		if err := threadHandler.OnThreadMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, job.Args.ParentTS, msg.Attrs); err != nil {
+		span := sentry.StartSpan(ctx, module.Name())
+
+		err := threadHandler.OnThreadMessage(span.Context(), job.Args.ChannelID, job.Args.SlackTS, job.Args.ParentTS, msg.Attrs)
+		if err != nil {
 			slog.Info("thread module error", "module", module.Name(), "error", err)
+			span.Status = sentry.SpanStatusInternalError
 			sentry.WithScope(func(scope *sentry.Scope) {
+				scope.SetTag("module", module.Name())
+				scope.SetTag("channel_id", job.Args.ChannelID)
+				scope.SetTag("slack_ts", job.Args.SlackTS)
+				scope.SetTag("parent_ts", job.Args.ParentTS)
 				scope.AddBreadcrumb(&sentry.Breadcrumb{
 					Category: "module",
 					Message:  module.Name(),
@@ -73,7 +81,11 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 				}, 100)
 				sentry.CaptureException(err)
 			})
+		} else {
+			span.Status = sentry.SpanStatusOK
 		}
+
+		span.Finish()
 	}
 
 	return nil
@@ -97,9 +109,15 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 			}
 		}
 
-		if err := module.OnMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, msg.Attrs); err != nil {
+		span := sentry.StartSpan(ctx, module.Name())
+
+		if err := module.OnMessage(span.Context(), job.Args.ChannelID, job.Args.SlackTS, msg.Attrs); err != nil {
 			slog.Info("module error", "module", module.Name(), "error", err)
+			span.Status = sentry.SpanStatusInternalError
 			sentry.WithScope(func(scope *sentry.Scope) {
+				scope.SetTag("module", module.Name())
+				scope.SetTag("channel_id", job.Args.ChannelID)
+				scope.SetTag("slack_ts", job.Args.SlackTS)
 				scope.AddBreadcrumb(&sentry.Breadcrumb{
 					Category: "module",
 					Message:  module.Name(),
@@ -107,7 +125,11 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 				}, 100)
 				sentry.CaptureException(err)
 			})
+		} else {
+			span.Status = sentry.SpanStatusOK
 		}
+
+		span.Finish()
 	}
 
 	return nil
