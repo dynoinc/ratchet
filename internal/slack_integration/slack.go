@@ -1,5 +1,7 @@
 package slack_integration
 
+//go:generate go tool mockgen -destination=mocks/mock_integration.go -package=mocks -source=slack.go Integration
+
 import (
 	"context"
 	"fmt"

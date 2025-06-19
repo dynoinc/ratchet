@@ -1,5 +1,3 @@
-//go:generate go tool mockgen -destination=mocks/mock_llm_client.go -package=mocks -source=../../llm/client.go Client
-//go:generate go tool mockgen -destination=mocks/mock_slack_integration.go -package=mocks -source=../../slack_integration/slack.go Integration
 package channel_monitor
 
 import (
@@ -11,7 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/dynoinc/ratchet/internal/modules/channel_monitor/mocks"
+	"github.com/dynoinc/ratchet/internal/llm/mocks"
+	slackmocks "github.com/dynoinc/ratchet/internal/slack_integration/mocks"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
@@ -138,7 +137,7 @@ func TestHandleMessage(t *testing.T) {
 	ctx := t.Context()
 
 	mockLLM := mocks.NewMockClient(mockCtl)
-	mockSlack := mocks.NewMockIntegration(mockCtl)
+	mockSlack := slackmocks.NewMockIntegration(mockCtl)
 
 	e := entry{
 		ChannelID:      "C123",

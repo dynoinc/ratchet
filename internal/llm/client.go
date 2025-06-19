@@ -1,5 +1,7 @@
 package llm
 
+//go:generate go tool mockgen -destination=mocks/mock_client.go -package=mocks -source=client.go Client
+
 import (
 	"bytes"
 	"context"

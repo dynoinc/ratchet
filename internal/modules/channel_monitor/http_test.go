@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
-	"github.com/dynoinc/ratchet/internal/modules/channel_monitor/mocks"
+	"github.com/dynoinc/ratchet/internal/llm/mocks"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
 )
 
