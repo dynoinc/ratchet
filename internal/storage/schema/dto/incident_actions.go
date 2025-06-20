@@ -99,5 +99,5 @@ func (d *durationWrapper) UnmarshalJSON(b []byte) error {
 }
 
 func (d durationWrapper) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.Duration.String())
+	return json.Marshal(d.String())
 }
