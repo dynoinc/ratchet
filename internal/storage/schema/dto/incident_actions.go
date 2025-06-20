@@ -77,7 +77,7 @@ func (d durationWrapper) IsZero() bool {
 }
 
 func (d *durationWrapper) UnmarshalJSON(b []byte) error {
-	var v interface{}
+	var v any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
