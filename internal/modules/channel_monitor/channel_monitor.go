@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"text/template"
+	"time"
 
 	"github.com/qri-io/jsonschema"
 	"github.com/slack-go/slack"
@@ -163,7 +164,7 @@ func (c *channelMonitor) handleMessage(ctx context.Context, slug string, entry *
 	if err != nil {
 		return fmt.Errorf("running prompt: %w", err)
 	}
-	output, err := c.runExecutable(slug, entry, slackTS, lmmOutput, msg)
+	output, err := c.runExecutable(ctx, slug, entry, slackTS, lmmOutput, msg)
 	if err != nil {
 		return err
 	}
@@ -175,7 +176,19 @@ func (c *channelMonitor) handleMessage(ctx context.Context, slug string, entry *
 	return c.doOutputActions(ctx, outputData)
 }
 
-func (c *channelMonitor) runExecutable(slug string, entry *entry, slackTS string, lmmOutput string, msg dto.MessageAttrs) (string, error) {
+func (c *channelMonitor) runExecutable(ctx context.Context, slug string, entry *entry, slackTS string, lmmOutput string, msg dto.MessageAttrs) (string, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+	}
+
+	stdoutBuffer := &bytes.Buffer{}
+	stderrBuffer := &bytes.Buffer{}
+	cmd := exec.CommandContext(ctx, entry.Executable, entry.ExecutableArgs...)
+	cmd.Stdout = stdoutBuffer
+	cmd.Stderr = stderrBuffer
+
 	stdInData := executableStdInData{
 		Slug:      slug,
 		ChannelID: entry.ChannelID,
@@ -187,11 +200,14 @@ func (c *channelMonitor) runExecutable(slug string, entry *entry, slackTS string
 	if err != nil {
 		return "", fmt.Errorf("marshalling stdin data: %w", err)
 	}
-	var stdoutBuffer bytes.Buffer
-	cmd := exec.Command(entry.Executable, entry.ExecutableArgs...)
-	cmd.Stdout = &stdoutBuffer
 	cmd.Stdin = bytes.NewReader(stdInDataBytes)
+
 	if err := cmd.Run(); err != nil {
+		slog.Error("command execution failed", "error", err)
+		slog.Error("stderr:")
+		slog.Error(stderrBuffer.String())
+		slog.Error("stdout:")
+		slog.Error(stdoutBuffer.String())
 		return "", fmt.Errorf("command execution failed: %w", err)
 	}
 	output := stdoutBuffer.String()
