@@ -131,9 +131,14 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 				required = []string{}
 			}
 
+			properties := t.InputSchema.Properties
+			if properties == nil {
+				properties = map[string]any{}
+			}
+
 			inputSchemaMap := map[string]any{
 				"type":       t.InputSchema.Type,
-				"properties": t.InputSchema.Properties,
+				"properties": properties,
 				"required":   required,
 			}
 
