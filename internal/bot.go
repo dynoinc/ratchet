@@ -13,6 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/slack-go/slack/slackevents"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dynoinc/ratchet/internal/background"
 	"github.com/dynoinc/ratchet/internal/docs"
@@ -35,10 +39,11 @@ type Bot struct {
 	DB          *pgxpool.Pool
 	DocsConfig  *docs.Config
 	RiverClient *river.Client[pgx.Tx]
+	tracer      trace.Tracer
 }
 
 func New(db *pgxpool.Pool) *Bot {
-	return &Bot{DB: db}
+	return &Bot{DB: db, tracer: otel.Tracer("ratchet.bot")}
 }
 
 func (b *Bot) Init(riverClient *river.Client[pgx.Tx], docsConfig *docs.Config) error {
@@ -285,11 +290,20 @@ func (b *Bot) GetMessage(
 	channelID string,
 	slackTs string,
 ) (schema.GetMessageRow, error) {
+	ctx, span := b.tracer.Start(ctx, "bot.get_message",
+		trace.WithAttributes(
+			attribute.String("channel.id", channelID),
+			attribute.String("slack.ts", slackTs),
+		),
+	)
+	defer span.End()
 	msg, err := schema.New(b.DB).GetMessage(ctx, schema.GetMessageParams{
 		ChannelID: channelID,
 		Ts:        slackTs,
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		if errors.Is(err, pgx.ErrNoRows) {
 			return schema.GetMessageRow{}, fmt.Errorf("message not found (ts=%s) from channel %s: %w", slackTs, channelID, ErrMessageNotFound)
 		}

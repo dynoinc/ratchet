@@ -21,9 +21,14 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/riverqueue/river"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdkTrace "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/sync/errgroup"
+
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -136,12 +141,58 @@ func main() {
 	meterProvider := metric.NewMeterProvider(metric.WithReader(promExporter))
 	otel.SetMeterProvider(meterProvider)
 
+	// Tracing setup
+	traceExporter, err := otlptracehttp.New(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "setting up OTLP trace exporter", "error", err)
+		os.Exit(1)
+	}
+
+	baseResource, err := resource.New(ctx, resource.WithFromEnv())
+	if err != nil {
+		slog.ErrorContext(ctx, "setting up base resource", "error", err)
+		os.Exit(1)
+	}
+
+	additionalResource, err := resource.New(ctx,
+		resource.WithAttributes(
+			attribute.String("service.version", versioninfo.Short()),
+			attribute.String("deployment.environment", func() string {
+				if c.DevMode {
+					return "development"
+				}
+				return "production"
+			}()),
+		),
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "setting up additional resource attributes", "error", err)
+		os.Exit(1)
+	}
+	traceResource, err := resource.Merge(baseResource, additionalResource)
+	if err != nil {
+		slog.ErrorContext(ctx, "merging resources", "error", err)
+		os.Exit(1)
+	}
+
+	tracerProvider := sdkTrace.NewTracerProvider(
+		sdkTrace.WithBatcher(traceExporter),
+		sdkTrace.WithResource(traceResource),
+	)
+	otel.SetTracerProvider(tracerProvider)
+
+	defer func() {
+		if err := tracerProvider.Shutdown(ctx); err != nil {
+			slog.ErrorContext(ctx, "shutting down tracer provider", "error", err)
+		}
+	}()
+
 	// Sentry setup
 	if c.SentryDSN != "" {
 		env, tracesSampleRate := "development", 1.0
 		if !c.DevMode {
 			env = "production"
-			tracesSampleRate = 0.01
+			tracesSampleRate = 0.0
 		}
 
 		if err := sentry.Init(sentry.ClientOptions{

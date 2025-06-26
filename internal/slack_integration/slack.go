@@ -11,6 +11,9 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Config struct {
@@ -66,6 +69,7 @@ type integration struct {
 
 	botUserID string
 	client    *socketmode.Client
+	tracer    trace.Tracer
 }
 
 func New(ctx context.Context, c Config, h handler) (Integration, error) {
@@ -83,6 +87,7 @@ func New(ctx context.Context, c Config, h handler) (Integration, error) {
 		h:         h,
 		botUserID: authTest.UserID,
 		client:    socketClient,
+		tracer:    otel.Tracer("ratchet.slack_integration"),
 	}, nil
 }
 
@@ -247,6 +252,9 @@ func (b *integration) PostMessage(ctx context.Context, channelID string, message
 }
 
 func (b *integration) PostThreadReply(ctx context.Context, channelID, ts string, messageBlocks ...slack.Block) error {
+	ctx, span := b.tracer.Start(ctx, "slack_integration.post_thread_reply")
+	defer span.End()
+
 	msgOptions := []slack.MsgOption{slack.MsgOptionBlocks(messageBlocks...)}
 	if b.c.DevChannel != "" {
 		channelID = b.c.DevChannel
@@ -258,6 +266,8 @@ func (b *integration) PostThreadReply(ctx context.Context, channelID, ts string,
 		ctx,
 		channelID,
 		msgOptions...); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("posting thread reply: %w", err)
 	}
 

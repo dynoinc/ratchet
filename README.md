@@ -130,4 +130,21 @@ Ratchet will respond to questions without waiting for explicit requests.
 ```bash
   curl http://localhost:5001/api/channels/ratchet-test/onboard -X POST
   curl http://localhost:5001/api/commands/generate?channel_id=FAKECHANNELID\&ts=1750324493.161329
+``
+
+### View Traces in Dev
+To enable tracing, add the following to your `.envrc` file:
+```sh
+export OTEL_TRACES_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http
+export OTEL_TRACES_SAMPLER=always_on
+export OTEL_SERVICE_NAME=ratchet
+export OTEL_RESOURCE_ATTRIBUTES=\
+service.version=1.2.3,\
+deployment.environment.name=dev
 ```
+
+To view traces, run Grafana and Tempo in Docker by following instructions in https://github.com/grafana/tempo/blob/main/example/docker-compose/readme.md. 
+You can delete the `k6-tracing` load generator service from the `docker-compose.yml` file.
+Then, you can access Grafana at `http://localhost:3000`.

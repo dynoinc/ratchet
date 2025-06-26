@@ -15,6 +15,9 @@ import (
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -122,8 +125,8 @@ func New(
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
 	// Commands
-	apiMux.HandleFunc("GET /commands/generate", handlers.generateCommand)
-	apiMux.HandleFunc("POST /commands/respond", handlers.respondCommand)
+	apiMux.HandleFunc("GET /commands/generate", otelhttp.NewHandler(http.HandlerFunc(handlers.generateCommand), "commands-generate").ServeHTTP)
+	apiMux.HandleFunc("POST /commands/respond", otelhttp.NewHandler(http.HandlerFunc(handlers.respondCommand), "commands-respond").ServeHTTP)
 
 	// Documentation
 	apiMux.HandleFunc("GET /docs/status", handleJSON(handlers.docsStatus))
@@ -137,6 +140,7 @@ func New(
 	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(versioninfo.Short()))
 	}))
+
 	return mux, nil
 }
 
@@ -387,6 +391,9 @@ func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
 }
 
 func (h *httpHandlers) generateCommand(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Bool("force_trace", true))
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("ts")
 	if channelID == "" || threadTS == "" {
@@ -394,23 +401,28 @@ func (h *httpHandlers) generateCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
+	msg, err := h.bot.GetMessage(ctx, channelID, threadTS)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("getting message: %v", err), http.StatusInternalServerError)
 		return
 	}
+	span.SetAttributes(attribute.String("user", msg.Attrs.Message.User), attribute.String("channel.id", msg.ChannelID), attribute.String("slack.ts", msg.Ts))
 
-	response, err := h.commands.Generate(r.Context(), channelID, threadTS, msg.Attrs, true /* force */)
+	response, err := h.commands.Generate(ctx, channelID, threadTS, msg.Attrs, true /* force */)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
 		return
 	}
+	span.SetAttributes(attribute.Int("response.message.size", len(response)))
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(response))
 }
 
 func (h *httpHandlers) respondCommand(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Bool("force_trace", true))
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("ts")
 	if channelID == "" || threadTS == "" {
@@ -418,7 +430,7 @@ func (h *httpHandlers) respondCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := h.bot.GetMessage(r.Context(), channelID, threadTS)
+	msg, err := h.bot.GetMessage(ctx, channelID, threadTS)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "message not found", http.StatusNotFound)
@@ -428,8 +440,9 @@ func (h *httpHandlers) respondCommand(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("getting message: %v", err), http.StatusInternalServerError)
 		return
 	}
+	span.SetAttributes(attribute.String("user", msg.Attrs.Message.User), attribute.String("channel.id", msg.ChannelID), attribute.String("slack.ts", msg.Ts))
 
-	err = h.commands.Respond(r.Context(), channelID, threadTS, msg.Attrs, true /* force */)
+	err = h.commands.Respond(ctx, channelID, threadTS, msg.Attrs, true /* force */)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
 		return

@@ -102,6 +102,21 @@ func (mr *MockClientMockRecorder) Model() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Model", reflect.TypeOf((*MockClient)(nil).Model))
 }
 
+// RunChatCompletionWithTools mocks base method.
+func (m *MockClient) RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, parallelToolCalls bool) (*openai.ChatCompletion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunChatCompletionWithTools", ctx, messages, tools, parallelToolCalls)
+	ret0, _ := ret[0].(*openai.ChatCompletion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunChatCompletionWithTools indicates an expected call of RunChatCompletionWithTools.
+func (mr *MockClientMockRecorder) RunChatCompletionWithTools(ctx, messages, tools, parallelToolCalls any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunChatCompletionWithTools", reflect.TypeOf((*MockClient)(nil).RunChatCompletionWithTools), ctx, messages, tools, parallelToolCalls)
+}
+
 // RunJSONModePrompt mocks base method.
 func (m *MockClient) RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error) {
 	m.ctrl.T.Helper()
