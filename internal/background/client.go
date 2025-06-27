@@ -9,6 +9,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
+	"github.com/riverqueue/rivercontrib/otelriver"
 )
 
 type sentryMiddleware struct {
@@ -19,20 +20,19 @@ func (m *sentryMiddleware) Work(ctx context.Context, job *rivertype.JobRow, doIn
 	hub := sentry.GetHubFromContext(ctx)
 	if hub == nil {
 		hub = sentry.CurrentHub().Clone()
+		ctx = sentry.SetHubOnContext(ctx, hub)
 	}
 
-	tx := sentry.StartTransaction(ctx, job.Kind)
-	defer tx.Finish()
+	client := hub.Client()
+	scope := hub.Scope()
 
-	ctx = sentry.SetHubOnContext(tx.Context(), hub)
-	defer sentry.RecoverWithContext(ctx)
+	defer client.RecoverWithContext(ctx, nil, &sentry.EventHint{Context: ctx}, scope)
 
 	if err := doInner(ctx); err != nil {
-		sentry.CaptureException(err)
-		tx.Status = sentry.SpanStatusInternalError
+		client.CaptureException(err,
+			&sentry.EventHint{Context: ctx},
+			scope)
 		return err
-	} else {
-		tx.Status = sentry.SpanStatusOK
 	}
 
 	return nil
@@ -48,6 +48,9 @@ func New(db *pgxpool.Pool, workers *river.Workers, periodicJobs []*river.Periodi
 		PeriodicJobs: periodicJobs,
 		Workers:      workers,
 		Middleware: []rivertype.Middleware{
+			otelriver.NewMiddleware(&otelriver.MiddlewareConfig{
+				EnableWorkSpanJobKindSuffix: true,
+			}),
 			&sentryMiddleware{},
 		},
 	})

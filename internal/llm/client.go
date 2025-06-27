@@ -23,6 +23,8 @@ import (
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
 	"github.com/qri-io/jsonschema"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
@@ -51,11 +53,13 @@ type Client interface {
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
+	RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, parallelToolCalls bool) (*openai.ChatCompletion, error)
 }
 
 type client struct {
 	client openai.Client
 	cfg    Config
+	tracer trace.Tracer
 }
 
 func persistLLMUsageMiddleware(db *pgxpool.Pool) option.Middleware {
@@ -257,6 +261,7 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 	return &client{
 		client: openaiClient,
 		cfg:    cfg,
+		tracer: otel.Tracer("ratchet.llm.client"),
 	}, nil
 }
 
@@ -501,4 +506,23 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 		}
 	}
 	return respMsg, "", nil
+}
+
+func (c *client) RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, parallelToolCalls bool) (*openai.ChatCompletion, error) {
+	ctx, span := c.tracer.Start(ctx, "run_chat_completion_with_tools")
+	defer span.End()
+
+	params := openai.ChatCompletionNewParams{
+		Model:             c.cfg.Model,
+		Messages:          messages,
+		Tools:             tools,
+		ParallelToolCalls: openai.Bool(parallelToolCalls),
+	}
+
+	completion, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("processing request: %w", err)
+	}
+
+	return completion, nil
 }
