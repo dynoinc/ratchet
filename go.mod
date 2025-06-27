@@ -7,7 +7,8 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/docker/go-connections v0.5.0
-	github.com/getsentry/sentry-go v0.33.0
+	github.com/getsentry/sentry-go v0.34.0
+	github.com/getsentry/sentry-go/otel v0.34.0
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/google/go-github/v53 v53.2.0
 	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438
@@ -163,6 +164,7 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/riverqueue/river/riverdriver v0.23.1 // indirect
 	github.com/riverqueue/river/rivershared v0.23.1 // indirect
+	github.com/riverqueue/rivercontrib/otelriver v0.5.0
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/testcontainers/testcontainers-go v0.37.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect

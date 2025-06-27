@@ -8,6 +8,9 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -19,12 +22,14 @@ type Worker struct {
 
 	bot     *internal.Bot
 	modules []modules.Handler
+	tracer  trace.Tracer
 }
 
 func New(bot *internal.Bot, modules []modules.Handler) *Worker {
 	return &Worker{
 		bot:     bot,
 		modules: modules,
+		tracer:  otel.Tracer("ratchet.modules_worker"),
 	}
 }
 
@@ -51,6 +56,13 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 		return err
 	}
 
+	hub := sentry.GetHubFromContext(ctx)
+	client := hub.Client()
+	scope := hub.Scope()
+	scope.SetTag("channel_id", job.Args.ChannelID)
+	scope.SetTag("slack_ts", job.Args.SlackTS)
+	scope.SetTag("parent_ts", job.Args.ParentTS)
+
 	for _, module := range w.modules {
 		threadHandler, ok := module.(modules.ThreadHandler)
 		if !ok {
@@ -63,29 +75,20 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 			}
 		}
 
-		span := sentry.StartSpan(ctx, module.Name())
+		ctx, innerSpan := w.tracer.Start(ctx, module.Name())
+		innerScope := scope.Clone()
+		innerScope.SetTag("module", module.Name())
 
-		err := threadHandler.OnThreadMessage(span.Context(), job.Args.ChannelID, job.Args.SlackTS, job.Args.ParentTS, msg.Attrs)
+		err := threadHandler.OnThreadMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, job.Args.ParentTS, msg.Attrs)
 		if err != nil {
-			slog.Info("thread module error", "module", module.Name(), "error", err)
-			span.Status = sentry.SpanStatusInternalError
-			sentry.WithScope(func(scope *sentry.Scope) {
-				scope.SetTag("module", module.Name())
-				scope.SetTag("channel_id", job.Args.ChannelID)
-				scope.SetTag("slack_ts", job.Args.SlackTS)
-				scope.SetTag("parent_ts", job.Args.ParentTS)
-				scope.AddBreadcrumb(&sentry.Breadcrumb{
-					Category: "module",
-					Message:  module.Name(),
-					Level:    sentry.LevelInfo,
-				}, 100)
-				sentry.CaptureException(err)
-			})
+			slog.ErrorContext(ctx, "thread module error", "module", module.Name(), "error", err)
+			innerSpan.SetStatus(codes.Error, err.Error())
+			client.CaptureException(err, &sentry.EventHint{Context: ctx}, innerScope)
 		} else {
-			span.Status = sentry.SpanStatusOK
+			innerSpan.SetStatus(codes.Ok, "ok")
 		}
 
-		span.Finish()
+		innerSpan.End()
 	}
 
 	return nil
@@ -102,6 +105,12 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 		return err
 	}
 
+	hub := sentry.GetHubFromContext(ctx)
+	client := hub.Client()
+	scope := hub.Scope()
+	scope.SetTag("channel_id", job.Args.ChannelID)
+	scope.SetTag("slack_ts", job.Args.SlackTS)
+
 	for _, module := range w.modules {
 		if job.Args.IsBackfill {
 			if enabled, ok := module.(modules.OnBackfillMessage); !ok || !enabled.EnabledForBackfill() {
@@ -109,27 +118,19 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 			}
 		}
 
-		span := sentry.StartSpan(ctx, module.Name())
+		ctx, innerSpan := w.tracer.Start(ctx, module.Name())
+		innerScope := scope.Clone()
+		innerScope.SetTag("module", module.Name())
 
-		if err := module.OnMessage(span.Context(), job.Args.ChannelID, job.Args.SlackTS, msg.Attrs); err != nil {
-			slog.Info("module error", "module", module.Name(), "error", err)
-			span.Status = sentry.SpanStatusInternalError
-			sentry.WithScope(func(scope *sentry.Scope) {
-				scope.SetTag("module", module.Name())
-				scope.SetTag("channel_id", job.Args.ChannelID)
-				scope.SetTag("slack_ts", job.Args.SlackTS)
-				scope.AddBreadcrumb(&sentry.Breadcrumb{
-					Category: "module",
-					Message:  module.Name(),
-					Level:    sentry.LevelInfo,
-				}, 100)
-				sentry.CaptureException(err)
-			})
+		if err := module.OnMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, msg.Attrs); err != nil {
+			slog.ErrorContext(ctx, "module error", "module", module.Name(), "error", err)
+			innerSpan.SetStatus(codes.Error, err.Error())
+			client.CaptureException(err, &sentry.EventHint{Context: ctx}, innerScope)
 		} else {
-			span.Status = sentry.SpanStatusOK
+			innerSpan.SetStatus(codes.Ok, "ok")
 		}
 
-		span.Finish()
+		innerSpan.End()
 	}
 
 	return nil

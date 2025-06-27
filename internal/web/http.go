@@ -393,7 +393,6 @@ func (h *httpHandlers) postRefresh(r *http.Request) (any, error) {
 func (h *httpHandlers) generateCommand(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Bool("force_trace", true))
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("ts")
 	if channelID == "" || threadTS == "" {
@@ -422,7 +421,6 @@ func (h *httpHandlers) generateCommand(w http.ResponseWriter, r *http.Request) {
 func (h *httpHandlers) respondCommand(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Bool("force_trace", true))
 	channelID := r.URL.Query().Get("channel_id")
 	threadTS := r.URL.Query().Get("ts")
 	if channelID == "" || threadTS == "" {

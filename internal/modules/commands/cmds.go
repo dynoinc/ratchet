@@ -107,8 +107,11 @@ func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackT
 func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) (string, error) {
 	ctx, span := c.tracer.Start(ctx, "commands.generate",
 		trace.WithAttributes(
-			attribute.String("channel.id", channelID),
-			attribute.String("slack.ts", slackTS),
+			attribute.String("slack_user", msg.Message.User),
+			attribute.String("channel_id", channelID),
+			attribute.String("slack_ts", slackTS),
+			attribute.Bool("force", force),
+			attribute.Bool("force_trace", force),
 		),
 	)
 	defer span.End()
@@ -383,8 +386,11 @@ func (c *Commands) getThreadMessages(ctx context.Context, channelID string, slac
 func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
 	ctx, span := c.tracer.Start(ctx, "commands.respond",
 		trace.WithAttributes(
-			attribute.String("channel.id", channelID),
-			attribute.String("slack.ts", slackTS),
+			attribute.String("slack_user", msg.Message.User),
+			attribute.String("channel_id", channelID),
+			attribute.String("slack_ts", slackTS),
+			attribute.Bool("force", force),
+			attribute.Bool("force_trace", force),
 		),
 	)
 	defer span.End()
