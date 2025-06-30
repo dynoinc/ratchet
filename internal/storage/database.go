@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/amirsalarsafaei/sqlc-pgx-monitoring/dbtracer"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -18,6 +19,7 @@ import (
 	pgxvector "github.com/pgvector/pgvector-go/pgx"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"go.opentelemetry.io/otel"
 )
 
 //go:embed schema/migrations/*.sql
@@ -85,6 +87,19 @@ func New(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		return pgxvector.RegisterTypes(ctx, conn)
 	}
+	tracerProvider := otel.GetTracerProvider()
+	tracer, err := dbtracer.NewDBTracer("ratchet",
+		dbtracer.WithTraceProvider(tracerProvider),
+		dbtracer.WithShouldLog(func(err error) bool {
+			return err != nil
+		}),
+		dbtracer.WithAppendQueryNameToSpan(true),
+		dbtracer.WithOnlyChildSpans(true),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating db tracer: %w", err)
+	}
+	config.ConnConfig.Tracer = tracer
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
