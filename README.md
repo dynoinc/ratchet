@@ -131,3 +131,25 @@ Ratchet will respond to questions without waiting for explicit requests.
   curl http://localhost:5001/api/channels/ratchet-test/onboard -X POST
   curl http://localhost:5001/api/commands/generate?channel_id=FAKECHANNELID\&ts=1750324493.161329
 ```
+
+### OpenTelemetry (OTEL)
+#### Tracing
+Traces are created with the OTEL SDK but are sent to both an OTEL endpoint and Sentry.
+Currently, Sentry is not fully compatible with OTEL by design:
+- Span attributes are not copied to searchable tags; they're copied to the `otel` context
+- Span events are not copied at all
+
+#### Development Environment
+Traces are sampled at 100% in dev.
+To export traces to Sentry, add the following to your `.envrc` file:
+```sh
+export SENTRY_DSN=<Project DSN URL>
+```
+
+To export traces to a Grafana Tempo OTEL endpoint, add the following to your `.envrc` file:
+```sh
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+To view traces, run Grafana and Tempo in Docker by following instructions in https://github.com/grafana/tempo/blob/main/example/docker-compose/readme.md. 
+You can delete the `k6-tracing` load generator service from the `docker-compose.yml` file.
+Then, you can access Grafana at `http://localhost:3000`.
