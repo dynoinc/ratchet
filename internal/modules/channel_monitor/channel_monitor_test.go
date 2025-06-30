@@ -2,8 +2,11 @@ package channel_monitor
 
 import (
 	"bytes"
+	"context"
+	"strings"
 	"testing"
 	"text/template"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -169,4 +172,100 @@ func TestHandleMessage(t *testing.T) {
 
 	err = cm.OnMessage(ctx, "C123", "12345", msg)
 	assert.NoError(t, err)
+}
+
+func TestRunExecutable(t *testing.T) {
+	tests := []struct {
+		name           string
+		executable     string
+		executableArgs []string
+		expectedOutput string
+		expectedError  bool
+		timeout        bool
+	}{
+		{
+			name:           "successful execution with echo",
+			executable:     "echo",
+			executableArgs: []string{"hello world"},
+			expectedOutput: "hello world\n",
+			expectedError:  false,
+		},
+		{
+			name:          "command not found",
+			executable:    "nonexistent-command-12345",
+			expectedError: true,
+		},
+		{
+			name:           "command that fails",
+			executable:     "sh",
+			executableArgs: []string{"-c", "echo 'to stdout' && echo 'to stderr' >&2 && exit 1"},
+			expectedError:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+
+			cm := &channelMonitor{}
+
+			entry := &entry{
+				ChannelID:      "C123",
+				Executable:     tt.executable,
+				ExecutableArgs: tt.executableArgs,
+			}
+
+			msg := dto.MessageAttrs{
+				Message: dto.SlackMessage{
+					Text: "test message",
+					User: "U123",
+				},
+			}
+
+			output, err := cm.runExecutable(ctx, "test-slug", entry, "1234567890.123456", `{"test": "data"}`, msg)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expectedOutput, output)
+		})
+	}
+}
+
+func TestRunExecutableTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping timeout test in short mode")
+	}
+
+	ctx := t.Context()
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	cm := &channelMonitor{}
+
+	entry := &entry{
+		ChannelID:      "C123",
+		Executable:     "sleep",
+		ExecutableArgs: []string{"2"},
+	}
+
+	msg := dto.MessageAttrs{
+		Message: dto.SlackMessage{Text: "test"},
+	}
+
+	_, err := cm.runExecutable(ctx, "test-slug", entry, "123", `{}`, msg)
+
+	assert.Error(t, err)
+	// The timeout can manifest as either "context deadline exceeded" or "signal: killed"
+	// depending on how the context cancellation is handled
+	errMsg := err.Error()
+	assert.True(t,
+		strings.Contains(errMsg, "context deadline exceeded") ||
+			strings.Contains(errMsg, "signal: killed") ||
+			strings.Contains(errMsg, "killed"),
+		"Expected timeout-related error, got: %s", errMsg)
 }
