@@ -12,11 +12,15 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
 	"github.com/slack-go/slack"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools"
 	"github.com/dynoinc/ratchet/internal/llm"
+	rsemconv "github.com/dynoinc/ratchet/internal/otel/semconv"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
@@ -31,8 +35,8 @@ type Commands struct {
 	bot              *internal.Bot
 	slackIntegration slack_integration.Integration
 	llmClient        llm.Client
-
-	mcpClients []*client.Client
+	tracer           trace.Tracer
+	mcpClients       []*client.Client
 }
 
 func New(
@@ -74,6 +78,7 @@ func New(
 		slackIntegration: slackIntegration,
 		llmClient:        llmClient,
 		mcpClients:       mcpClients,
+		tracer:           otel.Tracer("ratchet.commands"),
 	}, nil
 }
 
@@ -100,6 +105,15 @@ func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackT
 }
 
 func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) (string, error) {
+	ctx, span := c.tracer.Start(ctx, "commands.generate",
+		trace.WithAttributes(
+			rsemconv.SlackUserKey.String(msg.Message.User),
+			rsemconv.SlackChannelIDKey.String(channelID),
+			rsemconv.SlackTimestampKey.String(slackTS),
+			rsemconv.ForceTraceKey.Bool(force),
+		),
+	)
+	defer span.End()
 	botID := c.slackIntegration.BotUserID()
 	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) && !force {
 		return "", nil
@@ -222,7 +236,6 @@ Keep responses under 3000 characters.
 Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`
 
 	conversationHistory = append(conversationHistory, openai.SystemMessage(systemPrompt))
-
 	// Add top message to conversation history
 	topMsgText := strings.TrimPrefix(topMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", botID))
 	conversationHistory = append(conversationHistory, openai.UserMessage(topMsgText))
@@ -239,17 +252,9 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 		}
 	}
 
-	params := openai.ChatCompletionNewParams{
-		Model:             c.llmClient.Model(),
-		Messages:          conversationHistory,
-		Tools:             openAITools,
-		ParallelToolCalls: openai.Bool(true),
-	}
-
 	var response string
 	for range 5 {
-		openaiClient := c.llmClient.Client()
-		completion, err := openaiClient.Chat.Completions.New(ctx, params)
+		completion, err := c.llmClient.RunChatCompletionWithTools(ctx, conversationHistory, openAITools, true)
 		if err != nil {
 			return "", fmt.Errorf("processing request: %w", err)
 		}
@@ -260,7 +265,7 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 			break
 		}
 
-		params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
+		conversationHistory = append(conversationHistory, completion.Choices[0].Message.ToParam())
 		for _, toolCall := range toolCalls {
 			client, ok := toolToClient[toolCall.Function.Name]
 			if !ok {
@@ -281,9 +286,11 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 				},
 			})
 			slog.DebugContext(ctx, "tool call result", "tool", toolCall.Function.Name, "id", toolCall.ID, "error", err)
+
 			if err != nil {
 				return "", fmt.Errorf("tool %q execution failed: %w", toolCall.Function.Name, err)
 			}
+
 			if res.IsError {
 				jsn, _ := json.Marshal(res)
 				return "", fmt.Errorf("tool %q execution failed: %s", toolCall.Function.Name, string(jsn))
@@ -299,13 +306,18 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 				}
 			}
 
-			params.Messages = append(params.Messages, openai.ChatCompletionMessageParamUnion{
+			conversationHistory = append(conversationHistory, openai.ChatCompletionMessageParamUnion{
 				OfTool: &openai.ChatCompletionToolMessageParam{
 					ToolCallID: toolCall.ID,
 					Content:    openai.ChatCompletionToolMessageParamContentUnion{OfArrayOfContentParts: parts},
 				},
 			})
 		}
+	}
+
+	span.SetAttributes(rsemconv.ResponseMessageSizeKey.Int(len(response)))
+	if response == "" {
+		span.SetStatus(codes.Error, "empty response")
 	}
 
 	return response, nil
@@ -328,6 +340,15 @@ func (c *Commands) getThreadMessages(ctx context.Context, channelID string, slac
 }
 
 func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
+	ctx, span := c.tracer.Start(ctx, "commands.respond",
+		trace.WithAttributes(
+			rsemconv.SlackUserKey.String(msg.Message.User),
+			rsemconv.SlackChannelIDKey.String(channelID),
+			rsemconv.SlackTimestampKey.String(slackTS),
+			rsemconv.ForceTraceKey.Bool(force),
+		),
+	)
+	defer span.End()
 	response, err := c.Generate(ctx, channelID, slackTS, msg, force)
 	if err != nil {
 		return err
