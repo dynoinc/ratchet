@@ -16,14 +16,20 @@ import (
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/getsentry/sentry-go"
+	sentryotel "github.com/getsentry/sentry-go/otel"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lmittmann/tint"
 	"github.com/riverqueue/river"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdkTrace "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/sync/errgroup"
+
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/dynoinc/ratchet/internal"
 	"github.com/dynoinc/ratchet/internal/background"
@@ -38,6 +44,7 @@ import (
 	"github.com/dynoinc/ratchet/internal/modules/classifier"
 	"github.com/dynoinc/ratchet/internal/modules/commands"
 	"github.com/dynoinc/ratchet/internal/modules/runbook"
+	"github.com/dynoinc/ratchet/internal/otel/trace"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
 	"github.com/dynoinc/ratchet/internal/storage"
 	"github.com/dynoinc/ratchet/internal/web"
@@ -57,6 +64,9 @@ type config struct {
 
 	// Sentry configuration
 	SentryDSN string `envconfig:"SENTRY_DSN"`
+
+	// Trace sampling rate
+	TraceSampleRate float64 `envconfig:"TRACE_SAMPLE_RATE" default:"0.01"`
 
 	// Slack configuration
 	Slack slack_integration.Config
@@ -136,23 +146,88 @@ func main() {
 	meterProvider := metric.NewMeterProvider(metric.WithReader(promExporter))
 	otel.SetMeterProvider(meterProvider)
 
+	// Tracing setup
+	var spanExporter sdkTrace.SpanExporter
+	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	tracesEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+	if otelEndpoint == "" && tracesEndpoint == "" {
+		spanExporter = trace.NewNoOpSpanExporter()
+	} else {
+		spanExporter, err = otlptracehttp.New(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "setting up OTLP trace exporter", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	env := "development"
+	if !c.DevMode {
+		env = "production"
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+	baseResource, err := resource.New(ctx,
+		resource.WithAttributes(
+			attribute.String("hostname", hostname),
+			attribute.String("service.name", "ratchet"),
+			attribute.String("service.version", versioninfo.Short()),
+			attribute.String("deployment.environment", env),
+		),
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "setting up base resource attributes", "error", err)
+		os.Exit(1)
+	}
+
+	envResource, err := resource.New(ctx, resource.WithFromEnv())
+	if err != nil {
+		slog.ErrorContext(ctx, "reading resource attributes from environment", "error", err)
+		os.Exit(1)
+	}
+
+	otelResource, err := resource.Merge(baseResource, envResource)
+	if err != nil {
+		slog.ErrorContext(ctx, "merging resources", "error", err)
+		os.Exit(1)
+	}
+
+	sampleRate := c.TraceSampleRate
+	if c.DevMode {
+		sampleRate = 1.0
+	}
+	tracerProvider := sdkTrace.NewTracerProvider(
+		sdkTrace.WithBatcher(spanExporter),
+		sdkTrace.WithResource(otelResource),
+		sdkTrace.WithSampler(sdkTrace.ParentBased(sdkTrace.TraceIDRatioBased(sampleRate))),
+	)
+	otel.SetTracerProvider(tracerProvider)
+
+	defer func() {
+		if err := tracerProvider.Shutdown(ctx); err != nil {
+			slog.ErrorContext(ctx, "shutting down tracer provider", "error", err)
+		}
+	}()
+
 	// Sentry setup
 	if c.SentryDSN != "" {
-		env, tracesSampleRate := "development", 1.0
-		if !c.DevMode {
-			env = "production"
-			tracesSampleRate = 0.01
-		}
-
 		if err := sentry.Init(sentry.ClientOptions{
-			Dsn:              c.SentryDSN,
-			Environment:      env,
-			TracesSampleRate: tracesSampleRate,
+			Dsn:         c.SentryDSN,
+			Environment: env,
+			// The real sample rate is determined by the OTEL trace sampler, so set to 100% to send
+			// all of those traces to Sentry
+			TracesSampleRate: 1.0,
 			EnableTracing:    true,
+			Release:          versioninfo.Short(),
 		}); err != nil {
 			slog.ErrorContext(ctx, "setting up Sentry", "error", err)
 			os.Exit(1)
 		}
+
+		// OTEL spans will be converted to Sentry spans and exported to Sentry
+		tracerProvider.RegisterSpanProcessor(sentryotel.NewSentrySpanProcessor())
+		otel.SetTextMapPropagator(sentryotel.NewSentryPropagator())
 
 		defer sentry.Flush(2 * time.Second)
 	}
