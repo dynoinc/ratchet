@@ -9,7 +9,7 @@ import (
 	rsemconv "github.com/dynoinc/ratchet/internal/otel/semconv"
 )
 
-// forceBasedSampler is a custom OpenTelemetry trace sampler that samples 100% of traces with force_trace=true attribute
+// forceBasedSampler samples 100% of traces with force_trace=true attribute
 // and uses default sampling rate for all other traces
 type forceBasedSampler struct {
 	defaultSampler sdkTrace.Sampler
