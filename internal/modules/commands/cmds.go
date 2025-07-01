@@ -86,22 +86,16 @@ func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS stri
 		return nil
 	}
 
-	channel, err := c.bot.GetChannel(ctx, channelID)
-	if err != nil {
-		return err
-	}
-
-	force := channel.Attrs.AgentModeEnabled
-	return c.Respond(ctx, channelID, slackTS, msg, force)
+	return c.Respond(ctx, channelID, slackTS, msg)
 }
 
 func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackTS string, parentTS string, msg dto.MessageAttrs) error {
-	return c.Respond(ctx, channelID, parentTS, msg, false)
+	return c.Respond(ctx, channelID, parentTS, msg)
 }
 
-func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) (string, error) {
+func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) (string, error) {
 	botID := c.slackIntegration.BotUserID()
-	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) && !force {
+	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) {
 		return "", nil
 	}
 
@@ -327,8 +321,8 @@ func (c *Commands) getThreadMessages(ctx context.Context, channelID string, slac
 	return threadMessages, nil
 }
 
-func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs, force bool) error {
-	response, err := c.Generate(ctx, channelID, slackTS, msg, force)
+func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
+	response, err := c.Generate(ctx, channelID, slackTS, msg)
 	if err != nil {
 		return err
 	}

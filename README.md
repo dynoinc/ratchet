@@ -60,9 +60,6 @@ Helping users use your systems/services well is a full-time job. Ratchet can int
 try to answer user questions. On top of that, depending on the source, it can also update your documentation based on 
 conversations in Slack, which ensures documentation health keeps improving.
 
-For channels where users primarily ask questions, it's probably best to use `@ratchet enable agent mode for this channel`, so
-Ratchet will respond to questions without waiting for explicit requests.
-
 ## Built with
 
 | Tool                                                  | Purpose                                                        |

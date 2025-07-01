@@ -9,7 +9,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/dynoinc/ratchet/internal/docs"
-	"github.com/dynoinc/ratchet/internal/inbuilt_tools/agent_mode"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/channel_report"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docread"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docsearch"
@@ -28,7 +27,6 @@ import (
 // Definitions returns the list of available tools for OpenAI API
 func Client(ctx context.Context, db *schema.Queries, llmClient llm.Client, slackIntegration slack_integration.Integration, docsConfig *docs.Config) (*client.Client, error) {
 	srv := server.NewMCPServer("ratchet.tools", versioninfo.Short(), server.WithToolCapabilities(true))
-	srv.AddTool(agent_mode.Tool(db))
 	srv.AddTool(channel_report.Tool(db))
 	srv.AddTool(usage_report.Tool(db, slackIntegration))
 	if docsConfig != nil {
