@@ -44,20 +44,6 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
-// Client mocks base method.
-func (m *MockClient) Client() openai.Client {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Client")
-	ret0, _ := ret[0].(openai.Client)
-	return ret0
-}
-
-// Client indicates an expected call of Client.
-func (mr *MockClientMockRecorder) Client() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Client", reflect.TypeOf((*MockClient)(nil).Client))
-}
-
 // GenerateEmbedding mocks base method.
 func (m *MockClient) GenerateEmbedding(ctx context.Context, task, text string) ([]float32, error) {
 	m.ctrl.T.Helper()
@@ -100,6 +86,21 @@ func (m *MockClient) Model() string {
 func (mr *MockClientMockRecorder) Model() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Model", reflect.TypeOf((*MockClient)(nil).Model))
+}
+
+// RunChatCompletionWithTools mocks base method.
+func (m *MockClient) RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*openai.ChatCompletion, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunChatCompletionWithTools", ctx, messages, tools)
+	ret0, _ := ret[0].(*openai.ChatCompletion)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunChatCompletionWithTools indicates an expected call of RunChatCompletionWithTools.
+func (mr *MockClientMockRecorder) RunChatCompletionWithTools(ctx, messages, tools any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunChatCompletionWithTools", reflect.TypeOf((*MockClient)(nil).RunChatCompletionWithTools), ctx, messages, tools)
 }
 
 // RunJSONModePrompt mocks base method.

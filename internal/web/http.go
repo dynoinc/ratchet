@@ -15,6 +15,7 @@ import (
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"riverqueue.com/riverui"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -121,8 +122,8 @@ func New(
 	apiMux.HandleFunc("POST /services/{service}/alerts/{alert}/post-runbook", handleJSON(handlers.postRunbook))
 
 	// Commands
-	apiMux.HandleFunc("GET /commands/generate", handlers.generateCommand)
-	apiMux.HandleFunc("POST /commands/respond", handlers.respondCommand)
+	apiMux.HandleFunc("GET /commands/generate", otelhttp.NewHandler(http.HandlerFunc(handlers.generateCommand), "commands-generate").ServeHTTP)
+	apiMux.HandleFunc("POST /commands/respond", otelhttp.NewHandler(http.HandlerFunc(handlers.respondCommand), "commands-respond").ServeHTTP)
 
 	// Documentation
 	apiMux.HandleFunc("GET /docs/status", handleJSON(handlers.docsStatus))
@@ -136,6 +137,7 @@ func New(
 	mux.Handle("GET /version", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(versioninfo.Short()))
 	}))
+
 	return mux, nil
 }
 
