@@ -45,13 +45,12 @@ func DefaultConfig() Config {
 }
 
 type Client interface {
-	Client() openai.Client
 	Model() string
 
 	GenerateEmbedding(ctx context.Context, task string, text string) ([]float32, error)
 	GenerateRunbook(ctx context.Context, service string, alert string, msgs []string) (*RunbookResponse, error)
 	RunJSONModePrompt(ctx context.Context, prompt string, schema *jsonschema.Schema) (string, string, error)
-	RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, parallelToolCalls bool) (*openai.ChatCompletion, error)
+	RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*openai.ChatCompletion, error)
 }
 
 type client struct {
@@ -504,12 +503,12 @@ func (c *client) RunJSONModePrompt(ctx context.Context, prompt string, jsonSchem
 	return respMsg, "", nil
 }
 
-func (c *client) RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, parallelToolCalls bool) (*openai.ChatCompletion, error) {
+func (c *client) RunChatCompletionWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*openai.ChatCompletion, error) {
 	params := openai.ChatCompletionNewParams{
 		Model:             c.cfg.Model,
 		Messages:          messages,
 		Tools:             tools,
-		ParallelToolCalls: openai.Bool(parallelToolCalls),
+		ParallelToolCalls: openai.Bool(true),
 	}
 
 	completion, err := c.client.Chat.Completions.New(ctx, params)

@@ -254,7 +254,7 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 
 	var response string
 	for range 5 {
-		completion, err := c.llmClient.RunChatCompletionWithTools(ctx, conversationHistory, openAITools, true)
+		completion, err := c.llmClient.RunChatCompletionWithTools(ctx, conversationHistory, openAITools)
 		if err != nil {
 			return "", fmt.Errorf("processing request: %w", err)
 		}
