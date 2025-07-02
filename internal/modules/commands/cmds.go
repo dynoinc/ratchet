@@ -108,7 +108,7 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 		),
 	)
 	defer span.End()
-botID := c.slackIntegration.BotUserID()
+	botID := c.slackIntegration.BotUserID()
 	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) {
 		return "", nil
 	}
