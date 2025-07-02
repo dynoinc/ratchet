@@ -25,17 +25,16 @@ func TestClient_ListTools(t *testing.T) {
 	// Verify that at least some tools are available
 	require.Greater(t, len(toolsResult.Tools), 0)
 
-	// Verify that the docsearch tool is present with correct properties
-	var agentModeToolFound bool
+	// Verify that the usage_report tool is present with correct properties
+	var usageReportToolFound bool
 	for _, tool := range toolsResult.Tools {
-		if tool.Name == "agent_mode" {
-			agentModeToolFound = true
-			require.Contains(t, tool.Description, "Enable or disable agent mode")
+		if tool.Name == "usage_report" {
+			usageReportToolFound = true
+			require.Contains(t, tool.Description, "Generate usage statistics")
 			require.NotNil(t, tool.InputSchema)
 			require.Equal(t, "object", tool.InputSchema.Type)
-			require.Contains(t, tool.InputSchema.Properties, "enable")
-			require.Contains(t, tool.InputSchema.Required, "enable")
+			require.Contains(t, tool.InputSchema.Properties, "days")
 		}
 	}
-	require.True(t, agentModeToolFound, "agent_mode tool should be available in the tools list")
+	require.True(t, usageReportToolFound, "usage_report tool should be available in the tools list")
 }

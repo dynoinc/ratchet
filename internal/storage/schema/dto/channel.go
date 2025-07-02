@@ -10,6 +10,4 @@ const (
 type ChannelAttrs struct {
 	OnboardingStatus onboardingStatus `json:"onboarding_status,omitzero"`
 	Name             string           `json:"name,omitzero"`
-
-	AgentModeEnabled bool `json:"agent_mode_enabled"`
 }

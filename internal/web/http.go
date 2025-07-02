@@ -113,7 +113,6 @@ func New(
 	apiMux.HandleFunc("GET /channels/{channel_name}", handleJSON(handlers.getChannel))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
-	apiMux.HandleFunc("POST /channels/{channel_name}/agent-mode", handleJSON(handlers.agentMode))
 
 	// Services
 	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
@@ -237,27 +236,6 @@ func (h *httpHandlers) onboardChannel(r *http.Request) (any, error) {
 	}
 
 	return nil, tx.Commit(r.Context())
-}
-
-func (h *httpHandlers) agentMode(r *http.Request) (any, error) {
-	channelName := r.PathValue("channel_name")
-	channel, err := schema.New(h.bot.DB).GetChannelByName(r.Context(), channelName)
-	if err != nil {
-		return nil, err
-	}
-
-	enable := r.URL.Query().Get("enable")
-	if enable == "true" {
-		if err := h.bot.EnableAgentMode(r.Context(), channel.ID); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := h.bot.DisableAgentMode(r.Context(), channel.ID); err != nil {
-			return nil, err
-		}
-	}
-
-	return nil, nil
 }
 
 func (h *httpHandlers) listServices(r *http.Request) (any, error) {
@@ -403,7 +381,7 @@ func (h *httpHandlers) generateCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := h.commands.Generate(ctx, channelID, threadTS, msg.Attrs, true /* force */)
+	response, err := h.commands.Generate(r.Context(), channelID, threadTS, msg.Attrs)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
 		return
@@ -433,7 +411,7 @@ func (h *httpHandlers) respondCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.commands.Respond(ctx, channelID, threadTS, msg.Attrs, true /* force */)
+	err = h.commands.Respond(r.Context(), channelID, threadTS, msg.Attrs)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
 		return
