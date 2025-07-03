@@ -6,11 +6,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Config struct {
@@ -69,7 +72,9 @@ type integration struct {
 }
 
 func New(ctx context.Context, c Config, h handler) (Integration, error) {
-	api := slack.New(c.BotToken, slack.OptionAppLevelToken(c.AppToken))
+	transport := otelhttp.NewTransport(http.DefaultTransport, otelhttp.WithFilter(filterRootSpans), otelhttp.WithSpanNameFormatter(spanNameFormatter))
+	client := &http.Client{Transport: transport}
+	api := slack.New(c.BotToken, slack.OptionAppLevelToken(c.AppToken), slack.OptionHTTPClient(client))
 
 	authTest, err := api.AuthTestContext(ctx)
 	if err != nil {
@@ -283,4 +288,13 @@ func timeToTs(t time.Time) string {
 
 	// Convert Unix seconds and nanoseconds to a Slack timestamp
 	return fmt.Sprintf("%d.%06d", seconds, nanoseconds/1000)
+}
+
+func spanNameFormatter(_ string, r *http.Request) string {
+	return fmt.Sprintf("%s %s", r.Method, r.URL.Path)
+}
+
+func filterRootSpans(r *http.Request) bool {
+	span := trace.SpanFromContext(r.Context())
+	return span != nil && span.SpanContext().IsValid()
 }
