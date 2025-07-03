@@ -1,0 +1,14 @@
+---
+description: 
+globs: *.go
+alwaysApply: false
+---
+# OpenTelemetry Library
+When using the OpenTelemetry library from a package in the namespace `go.opentelemetry.io/otel`, follow these guidelines
+
+When adding an attribute
+- Attribute key: create a const for the `attribute.Key`, DO NOT use a literal string for the key
+    - Standard keys: If the attribute key is already used in the OTEL semantic conventions, use the key defined in `go.opentelemetry.io/otel/semconv/v1.26.0`. Always use the latest version of `semconv` 
+    - Custom keys: otherwise, for custom keys not defined in the `semconv` library 
+        - If the key is only used in the package, keep the const in the package
+        - If the key is used across the codebase, add it to `internal/otel/semconv/attributes.go`

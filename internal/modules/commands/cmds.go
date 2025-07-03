@@ -13,7 +13,9 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.22.0"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dynoinc/ratchet/internal"
@@ -126,6 +128,7 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 
 	var openAITools []openai.ChatCompletionToolParam
 	toolToClient := make(map[string]*client.Client)
+	toolByName := make(map[string]mcp.Tool)
 	for _, mcpClient := range c.mcpClients {
 		tools, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
 		if err != nil {
@@ -160,6 +163,7 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 			})
 
 			toolToClient[t.Name] = mcpClient
+			toolByName[t.Name] = t
 		}
 	}
 
@@ -230,6 +234,7 @@ Keep responses under 3000 characters.
 Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`
 
 	conversationHistory = append(conversationHistory, openai.SystemMessage(systemPrompt))
+
 	// Add top message to conversation history
 	topMsgText := strings.TrimPrefix(topMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", botID))
 	conversationHistory = append(conversationHistory, openai.UserMessage(topMsgText))
@@ -266,24 +271,18 @@ Always be thorough in using tools to provide accurate, up-to-date information ra
 				slog.ErrorContext(ctx, "Tool not found", "tool", toolCall.Function.Name)
 				continue
 			}
-
-			var args map[string]any
-			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-				return "", fmt.Errorf("unmarshalling tool call arguments: %w", err)
+			tool, ok := toolByName[toolCall.Function.Name]
+			if !ok {
+				slog.ErrorContext(ctx, "Tool not found", "tool", toolCall.Function.Name)
+				continue
 			}
 
 			slog.DebugContext(ctx, "calling tool", "tool", toolCall.Function.Name, "id", toolCall.ID)
-			res, err := client.CallTool(ctx, mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name:      toolCall.Function.Name,
-					Arguments: args,
-				},
-			})
-			slog.DebugContext(ctx, "tool call result", "tool", toolCall.Function.Name, "id", toolCall.ID, "error", err)
-
+			res, err := c.callTool(ctx, client, tool, toolCall)
 			if err != nil {
 				return "", fmt.Errorf("tool %q execution failed: %w", toolCall.Function.Name, err)
 			}
+			slog.DebugContext(ctx, "tool call result", "tool", toolCall.Function.Name, "id", toolCall.ID, "error", err)
 
 			if res.IsError {
 				jsn, _ := json.Marshal(res)
@@ -360,4 +359,59 @@ func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string
 	}
 
 	return nil
+}
+
+// callTool wraps client.CallTool with OpenTelemetry tracing
+func (c *Commands) callTool(ctx context.Context, client *client.Client, tool mcp.Tool, toolCall openai.ChatCompletionMessageToolCall) (*mcp.CallToolResult, error) {
+	parentSpan := trace.SpanFromContext(ctx)
+	var span trace.Span
+
+	var args map[string]any
+	if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+		return nil, fmt.Errorf("unmarshalling tool call arguments: %w", err)
+	}
+
+	if parentSpan != nil && parentSpan.SpanContext().IsValid() {
+		spanName := fmt.Sprintf("%s %s", llm.OperationExecuteTool, tool.Name)
+		attributes := []attribute.KeyValue{
+			llm.GenAIOperationNameKey.String(string(llm.OperationExecuteTool)),
+			llm.GenAIToolNameKey.String(tool.Name),
+			llm.GenAIToolCallIDKey.String(toolCall.ID),
+		}
+		if tool.Description != "" {
+			attributes = append(attributes, llm.GenAIToolDescriptionKey.String(tool.Description))
+		}
+
+		ctx, span = c.tracer.Start(ctx, spanName,
+			trace.WithAttributes(attributes...),
+			trace.WithSpanKind(trace.SpanKindInternal),
+		)
+	} else {
+		// noop span
+		span = trace.SpanFromContext(context.Background())
+	}
+	defer span.End()
+
+	res, err := client.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      toolCall.Function.Name,
+			Arguments: args,
+		},
+	})
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(semconv.ErrorTypeKey.String(fmt.Sprintf("%T", err)))
+		return nil, err
+	}
+
+	if res.IsError {
+		span.SetStatus(codes.Error, "tool execution returned error")
+		span.SetAttributes(semconv.ErrorTypeKey.String("tool_execution_error"))
+	} else {
+		span.SetStatus(codes.Ok, "tool execution successful")
+	}
+
+	return res, nil
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
 	"github.com/qri-io/jsonschema"
+	"go.opentelemetry.io/otel"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
@@ -242,6 +243,8 @@ func New(ctx context.Context, cfg Config, db *pgxpool.Pool) (Client, error) {
 		option.WithBaseURL(cfg.URL),
 		option.WithAPIKey(cfg.APIKey),
 		option.WithMiddleware(persistLLMUsageMiddleware(db)),
+		// This MUST be last, otherwise it will measure other middleware
+		option.WithMiddleware(NewOtelMiddleware(otel.GetTracerProvider(), OtelMiddlewareConfig{AddEventDetails: true})),
 	)
 
 	// Check and download the main model if needed
