@@ -3,6 +3,8 @@ package channel_monitor
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -43,6 +45,13 @@ func HTTPHandler(
 		http.Redirect(w, r, prefix+"/test", http.StatusSeeOther)
 	})
 	mux.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+		nonce, errNonce := generateNonce()
+		if errNonce != nil {
+			http.Error(w, fmt.Sprintf("generating nonce: %v", errNonce), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Security-Policy", fmt.Sprintf("default-src 'self'; script-src 'self' https://unpkg.com 'nonce-%s'; style-src 'self' 'nonce-%s';", nonce, nonce))
+
 		if r.Method == "POST" {
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -73,7 +82,7 @@ func HTTPHandler(
 				http.Error(w, "Must provide either message count or example messages", http.StatusBadRequest)
 				return
 			}
-			report, err := testChannelMonitorPrompt(r.Context(), llmClient, slackIntegration, req)
+			report, err := testChannelMonitorPrompt(r.Context(), llmClient, slackIntegration, req, nonce)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -82,7 +91,7 @@ func HTTPHandler(
 			w.Write([]byte(report))
 		}
 		if r.Method == "GET" {
-			renderPage(w, prefix)
+			renderPage(w, prefix, nonce)
 		}
 	})
 	return mux
@@ -92,6 +101,7 @@ func testChannelMonitorPrompt(ctx context.Context,
 	llmClient llm.Client,
 	slackIntegration slack_integration.Integration,
 	req testChannelMonitorRequest,
+	nonce string,
 ) (string, error) {
 	entry, err := getEntryForTest(req)
 	if err != nil {
@@ -102,7 +112,7 @@ func testChannelMonitorPrompt(ctx context.Context,
 		return "", err
 	}
 	results := getTestResults(ctx, history, entry, llmClient) // Wait for all goroutines to complete
-	return renderTestReport(results), nil
+	return renderTestReport(results, nonce), nil
 }
 
 func getTestResults(ctx context.Context, history []dto.SlackMessage, entry *entry, llmClient llm.Client) []*testChannelMonitorReportData {
@@ -202,16 +212,15 @@ func getMessagesForTest(ctx context.Context, slackIntegration slack_integration.
 	return history, nil
 }
 
-func renderPage(w http.ResponseWriter, prefix string) {
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(fmt.Sprintf(`<!DOCTYPE html>
+var pageTemplate = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <html>
 <head>
+	<meta name="htmx-config" content='{"inlineScriptNonce":"{{.Nonce}}", "inlineStyleNonce":"{{.Nonce}}"}'>
 	<title>Test Channel Monitor</title>
 	<script src="https://unpkg.com/htmx.org@2.0.4"></script>
-	<style>
+	<style nonce="{{.Nonce}}">
 		body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-		textarea { width: 100%%; height: 300px; margin: 10px 0; font-family: monospace; }
+		textarea { width: 100%; height: 300px; margin: 10px 0; font-family: monospace; }
 		.spinner { display: none; }
 		.htmx-request .spinner { display: inline; }
 		.htmx-request .submit { display: none; }
@@ -239,7 +248,7 @@ func renderPage(w http.ResponseWriter, prefix string) {
 <body>
 	<div id="report-input">
 		<h1>Test Channel Monitor</h1>
-		<form hx-post="%s/test" hx-target="#result" hx-swap="innerHTML">
+		<form hx-post="{{.Prefix}}/test" hx-target="#result" hx-swap="innerHTML">
 			<div>
 				<label for="config">Config YAML:</label><br>
 				<textarea name="config_yaml" id="config"></textarea>
@@ -257,20 +266,19 @@ func renderPage(w http.ResponseWriter, prefix string) {
 		</form>
 	</div>
 	<div id="result"></div>
-	<script>
+	<script nonce="{{.Nonce}}">
 		document.body.addEventListener('htmx:responseError', function(evt) {
 			evt.detail.target.innerHTML = '<div class="error">Error: ' + evt.detail.error + '<br>Response: ' + evt.detail.xhr.responseText + '</div>';
 		});
 	</script>
 </body>
-</html>`, prefix)))
-}
+</html>`))
 
-func renderTestReport(results []*testChannelMonitorReportData) string {
-	reportHTML := `<!DOCTYPE html>
+var reportTemplate = template.Must(template.New("report").Parse(`<!DOCTYPE html>
 <html>
 <head>
-<style>
+<meta name="htmx-config" content='{"inlineScriptNonce":"{{.Nonce}}", "inlineStyleNonce":"{{.Nonce}}"}'>
+<style nonce="{{.Nonce}}">
 	body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
 	h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
 	h3 { color: #34495e; margin-top: 30px; }
@@ -295,8 +303,8 @@ func renderTestReport(results []*testChannelMonitorReportData) string {
 </head>
 <body>
 <h1>Test Channel Monitor Report</h1>
-<button id="download-btn" onclick="downloadReport()" class="download-btn">Download Report</button>
-<script>
+<button id="download-btn" class="download-btn">Download Report</button>
+<script nonce="{{.Nonce}}">
 function downloadReport() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = 'channel-report-' + timestamp + '.html';
@@ -318,36 +326,75 @@ function downloadReport() {
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
 }
-</script>`
+document.getElementById('download-btn').addEventListener('click', downloadReport);
+</script>`))
+
+func renderPage(w http.ResponseWriter, prefix string, nonce string) {
+	w.Header().Set("Content-Type", "text/html")
+
+	data := struct {
+		Prefix string
+		Nonce  string
+	}{
+		Prefix: prefix,
+		Nonce:  nonce,
+	}
+
+	if err := pageTemplate.Execute(w, data); err != nil {
+		http.Error(w, fmt.Sprintf("executing template: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+func renderTestReport(results []*testChannelMonitorReportData, nonce string) string {
+	var reportHTML bytes.Buffer
+	data := struct {
+		Nonce string
+	}{
+		Nonce: nonce,
+	}
+
+	if err := reportTemplate.Execute(&reportHTML, data); err != nil {
+		return fmt.Sprintf("Error executing template: %v", err)
+	}
 
 	for _, data := range results {
-		reportHTML += fmt.Sprintf(`
+		reportHTML.WriteString(fmt.Sprintf(`
 <h3>Message</h3>
 <p>%s</p>
 <details>
 <summary>Prompt</summary>
 <pre>%s</pre>
-</details>`, html.EscapeString(data.Message.Text), html.EscapeString(data.Prompt))
+</details>`, html.EscapeString(data.Message.Text), html.EscapeString(data.Prompt)))
 
 		if data.ValidatedOutput != "" {
-			reportHTML += fmt.Sprintf(`
+			reportHTML.WriteString(fmt.Sprintf(`
 <h3>Output</h3>
-<pre>%s</pre>`, html.EscapeString(data.ValidatedOutput))
+<pre>%s</pre>`, html.EscapeString(data.ValidatedOutput)))
 		}
 
 		if data.InvalidOutput != "" {
-			reportHTML += fmt.Sprintf(`
+			reportHTML.WriteString(fmt.Sprintf(`
 <h3>Invalid Output</h3>
-<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">%s</pre>`, html.EscapeString(data.InvalidOutput))
+<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">%s</pre>`, html.EscapeString(data.InvalidOutput)))
 		}
 
 		if data.Error != "" {
-			reportHTML += fmt.Sprintf(`
-<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">Error: %s</pre>`, html.EscapeString(data.Error))
+			reportHTML.WriteString(fmt.Sprintf(`
+<pre style="background: #ffebee; border-radius: 4px; padding: 10px; margin: 5px 0; color: #d32f2f;">Error: %s</pre>`, html.EscapeString(data.Error)))
 		}
 
-		reportHTML += "<hr>"
+		reportHTML.WriteString("<hr>")
 	}
-	reportHTML += "</body></html>"
-	return reportHTML
+	reportHTML.WriteString("</body></html>")
+	return reportHTML.String()
+}
+
+// generateNonce creates a cryptographically secure random base64 string for CSP.
+func generateNonce() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }
