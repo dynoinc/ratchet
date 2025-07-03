@@ -200,7 +200,7 @@ func main() {
 	tracerProvider := sdkTrace.NewTracerProvider(
 		sdkTrace.WithBatcher(spanExporter),
 		sdkTrace.WithResource(otelResource),
-		sdkTrace.WithSampler(sdkTrace.ParentBased(sdkTrace.TraceIDRatioBased(sampleRate))),
+		sdkTrace.WithSampler(trace.NewForceBasedSampler(sampleRate)),
 	)
 	otel.SetTracerProvider(tracerProvider)
 
