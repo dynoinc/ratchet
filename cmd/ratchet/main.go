@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"regexp"
 	"syscall"
 	"time"
 
@@ -83,6 +84,8 @@ type config struct {
 	// Channel Monitor Configuration
 	ChannelMonitor channel_monitor.Config `split_words:"true"`
 }
+
+var semverRe = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)`)
 
 func main() {
 	help := flag.Bool("help", false, "Show help")
@@ -212,6 +215,14 @@ func main() {
 
 	// Sentry setup
 	if c.SentryDSN != "" {
+		var sentryRelease string
+		matches := semverRe.FindStringSubmatch(versioninfo.Version)
+		if len(matches) == 4 {
+			major := matches[1]
+			minor := matches[2]
+			patch := matches[3]
+			sentryRelease = fmt.Sprintf("ratchet@%s.%s.%s.%s", major, minor, patch, versioninfo.Revision)
+		}
 		if err := sentry.Init(sentry.ClientOptions{
 			Dsn:         c.SentryDSN,
 			Environment: env,
@@ -219,7 +230,7 @@ func main() {
 			// all of those traces to Sentry
 			TracesSampleRate: 1.0,
 			EnableTracing:    true,
-			Release:          versioninfo.Short(),
+			Release:          sentryRelease,
 		}); err != nil {
 			slog.ErrorContext(ctx, "setting up Sentry", "error", err)
 			os.Exit(1)
