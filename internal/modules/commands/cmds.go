@@ -88,6 +88,41 @@ func (c *Commands) Name() string {
 	return "commands"
 }
 
+// startSlackSpan creates a span with standardized Slack attributes
+func (c *Commands) startSlackSpan(ctx context.Context, name, channelID, userID, slackTS string) (context.Context, trace.Span) {
+	return c.tracer.Start(ctx, name,
+		trace.WithAttributes(
+			rsemconv.SlackUserKey.String(userID),
+			rsemconv.SlackChannelIDKey.String(channelID),
+			rsemconv.SlackTimestampKey.String(slackTS),
+			rsemconv.ForceTraceKey.Bool(true),
+		),
+	)
+}
+
+// startToolSpan creates a span for tool execution with standardized attributes
+func (c *Commands) startToolSpan(ctx context.Context, tool mcp.Tool, toolCall openai.ChatCompletionMessageToolCall) (context.Context, trace.Span) {
+	parentSpan := trace.SpanFromContext(ctx)
+	if parentSpan == nil || !parentSpan.SpanContext().IsValid() {
+		return ctx, trace.SpanFromContext(context.Background())
+	}
+
+	spanName := fmt.Sprintf("%s %s", llm.OperationExecuteTool, tool.Name)
+	attrs := []attribute.KeyValue{
+		llm.GenAIOperationNameKey.String(string(llm.OperationExecuteTool)),
+		llm.GenAIToolNameKey.String(tool.Name),
+		llm.GenAIToolCallIDKey.String(toolCall.ID),
+	}
+	if tool.Description != "" {
+		attrs = append(attrs, llm.GenAIToolDescriptionKey.String(tool.Description))
+	}
+
+	return c.tracer.Start(ctx, spanName,
+		trace.WithAttributes(attrs...),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+}
+
 func (c *Commands) OnMessage(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
 	if msg.Message.BotID != "" || msg.Message.BotUsername != "" || msg.Message.SubType != "" {
 		return nil
@@ -101,14 +136,7 @@ func (c *Commands) OnThreadMessage(ctx context.Context, channelID string, slackT
 }
 
 func (c *Commands) Generate(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) (string, error) {
-	ctx, span := c.tracer.Start(ctx, "commands.generate",
-		trace.WithAttributes(
-			rsemconv.SlackUserKey.String(msg.Message.User),
-			rsemconv.SlackChannelIDKey.String(channelID),
-			rsemconv.SlackTimestampKey.String(slackTS),
-			rsemconv.ForceTraceKey.Bool(true),
-		),
-	)
+	ctx, span := c.startSlackSpan(ctx, "commands.generate", channelID, msg.Message.User, slackTS)
 	defer span.End()
 	botID := c.slackIntegration.BotUserID()
 	if !strings.HasPrefix(msg.Message.Text, fmt.Sprintf("<@%s> ", botID)) {
@@ -333,14 +361,7 @@ func (c *Commands) getThreadMessages(ctx context.Context, channelID string, slac
 }
 
 func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string, msg dto.MessageAttrs) error {
-	ctx, span := c.tracer.Start(ctx, "commands.respond",
-		trace.WithAttributes(
-			rsemconv.SlackUserKey.String(msg.Message.User),
-			rsemconv.SlackChannelIDKey.String(channelID),
-			rsemconv.SlackTimestampKey.String(slackTS),
-			rsemconv.ForceTraceKey.Bool(true),
-		),
-	)
+	ctx, span := c.startSlackSpan(ctx, "commands.respond", channelID, msg.Message.User, slackTS)
 	defer span.End()
 	response, err := c.Generate(ctx, channelID, slackTS, msg)
 	if err != nil {
@@ -363,33 +384,12 @@ func (c *Commands) Respond(ctx context.Context, channelID string, slackTS string
 
 // callTool wraps client.CallTool with OpenTelemetry tracing
 func (c *Commands) callTool(ctx context.Context, client *client.Client, tool mcp.Tool, toolCall openai.ChatCompletionMessageToolCall) (*mcp.CallToolResult, error) {
-	parentSpan := trace.SpanFromContext(ctx)
-	var span trace.Span
-
 	var args map[string]any
 	if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
 		return nil, fmt.Errorf("unmarshalling tool call arguments: %w", err)
 	}
 
-	if parentSpan != nil && parentSpan.SpanContext().IsValid() {
-		spanName := fmt.Sprintf("%s %s", llm.OperationExecuteTool, tool.Name)
-		attributes := []attribute.KeyValue{
-			llm.GenAIOperationNameKey.String(string(llm.OperationExecuteTool)),
-			llm.GenAIToolNameKey.String(tool.Name),
-			llm.GenAIToolCallIDKey.String(toolCall.ID),
-		}
-		if tool.Description != "" {
-			attributes = append(attributes, llm.GenAIToolDescriptionKey.String(tool.Description))
-		}
-
-		ctx, span = c.tracer.Start(ctx, spanName,
-			trace.WithAttributes(attributes...),
-			trace.WithSpanKind(trace.SpanKindInternal),
-		)
-	} else {
-		// noop span
-		span = trace.SpanFromContext(context.Background())
-	}
+	ctx, span := c.startToolSpan(ctx, tool, toolCall)
 	defer span.End()
 
 	res, err := client.CallTool(ctx, mcp.CallToolRequest{

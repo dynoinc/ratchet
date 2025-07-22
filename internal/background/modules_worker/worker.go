@@ -37,6 +37,24 @@ func (w *Worker) Timeout(job *river.Job[background.ModulesWorkerArgs]) time.Dura
 	return 5 * time.Minute
 }
 
+// executeModuleWithTracing executes a module operation with tracing and error handling
+func (w *Worker) executeModuleWithTracing(ctx context.Context, module modules.Handler, channelID, slackTS string, fn func(context.Context) error) {
+	ctx, span := w.tracer.Start(ctx, module.Name())
+	defer span.End()
+
+	hub := sentry.GetHubFromContext(ctx)
+	scope := hub.Scope().Clone()
+	scope.SetTag("module", module.Name())
+
+	if err := fn(ctx); err != nil {
+		slog.ErrorContext(ctx, "module error", "module", module.Name(), "error", err)
+		span.SetStatus(codes.Error, err.Error())
+		hub.Client().CaptureException(err, &sentry.EventHint{Context: ctx}, scope)
+	} else {
+		span.SetStatus(codes.Ok, "ok")
+	}
+}
+
 func (w *Worker) Work(ctx context.Context, job *river.Job[background.ModulesWorkerArgs]) error {
 	if job.Args.ParentTS == "" {
 		return w.handleMessage(ctx, job)
@@ -57,7 +75,6 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 	}
 
 	hub := sentry.GetHubFromContext(ctx)
-	client := hub.Client()
 	scope := hub.Scope()
 	scope.SetTag("channel_id", job.Args.ChannelID)
 	scope.SetTag("slack_ts", job.Args.SlackTS)
@@ -75,20 +92,9 @@ func (w *Worker) handleThreadMessage(ctx context.Context, job *river.Job[backgro
 			}
 		}
 
-		ctx, innerSpan := w.tracer.Start(ctx, module.Name())
-		innerScope := scope.Clone()
-		innerScope.SetTag("module", module.Name())
-
-		err := threadHandler.OnThreadMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, job.Args.ParentTS, msg.Attrs)
-		if err != nil {
-			slog.ErrorContext(ctx, "thread module error", "module", module.Name(), "error", err)
-			innerSpan.SetStatus(codes.Error, err.Error())
-			client.CaptureException(err, &sentry.EventHint{Context: ctx}, innerScope)
-		} else {
-			innerSpan.SetStatus(codes.Ok, "ok")
-		}
-
-		innerSpan.End()
+		w.executeModuleWithTracing(ctx, module, job.Args.ChannelID, job.Args.SlackTS, func(ctx context.Context) error {
+			return threadHandler.OnThreadMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, job.Args.ParentTS, msg.Attrs)
+		})
 	}
 
 	return nil
@@ -106,7 +112,6 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 	}
 
 	hub := sentry.GetHubFromContext(ctx)
-	client := hub.Client()
 	scope := hub.Scope()
 	scope.SetTag("channel_id", job.Args.ChannelID)
 	scope.SetTag("slack_ts", job.Args.SlackTS)
@@ -118,19 +123,9 @@ func (w *Worker) handleMessage(ctx context.Context, job *river.Job[background.Mo
 			}
 		}
 
-		ctx, innerSpan := w.tracer.Start(ctx, module.Name())
-		innerScope := scope.Clone()
-		innerScope.SetTag("module", module.Name())
-
-		if err := module.OnMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, msg.Attrs); err != nil {
-			slog.ErrorContext(ctx, "module error", "module", module.Name(), "error", err)
-			innerSpan.SetStatus(codes.Error, err.Error())
-			client.CaptureException(err, &sentry.EventHint{Context: ctx}, innerScope)
-		} else {
-			innerSpan.SetStatus(codes.Ok, "ok")
-		}
-
-		innerSpan.End()
+		w.executeModuleWithTracing(ctx, module, job.Args.ChannelID, job.Args.SlackTS, func(ctx context.Context) error {
+			return module.OnMessage(ctx, job.Args.ChannelID, job.Args.SlackTS, msg.Attrs)
+		})
 	}
 
 	return nil
