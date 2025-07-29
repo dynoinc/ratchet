@@ -51,8 +51,7 @@ IMPORTANT: When rendering an answer based on the search results, always include
 the top 3 links from the 'identifier' field of the returned documents. This helps
 users verify the information and access the source documentation.
 
-WORKFLOW: This is typically the first step for documentation questions. For comprehensive answers,
-combine this with upstream_search to get both internal documentation and code examples.
+WORKFLOW: This is typically used for documentation questions to find relevant internal documentation.
 
 Returns a list of relevant internal documents with their content and metadata. Each document
 includes an 'identifier' field containing the full document URL.`,

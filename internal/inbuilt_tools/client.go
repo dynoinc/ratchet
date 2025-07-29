@@ -13,7 +13,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docread"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docsearch"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/docupdate"
-	"github.com/dynoinc/ratchet/internal/inbuilt_tools/upstream_search"
 	"github.com/dynoinc/ratchet/internal/inbuilt_tools/usage_report"
 	"github.com/dynoinc/ratchet/internal/llm"
 	"github.com/dynoinc/ratchet/internal/slack_integration"
@@ -33,7 +32,6 @@ func Client(ctx context.Context, db *schema.Queries, llmClient llm.Client, slack
 		srv.AddTool(docread.Tool(db))
 		srv.AddTool(docsearch.Tool(db, llmClient))
 		srv.AddTool(docupdate.Tool(db, docsConfig))
-		srv.AddTool(upstream_search.Tool(docsConfig))
 	}
 
 	c, err := client.NewInProcessClient(srv)

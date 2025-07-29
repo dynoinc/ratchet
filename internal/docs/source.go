@@ -50,23 +50,6 @@ func (s Source) Get(ctx context.Context, path, revision string) (string, error) 
 	}
 }
 
-type CodeSearchResult struct {
-	Repository string `json:"repository"`
-	Path       string `json:"path"`
-	Content    string `json:"content"`
-	URL        string `json:"url"`
-	Language   string `json:"language"`
-}
-
-func (s Source) Search(ctx context.Context, query string, limit int) ([]CodeSearchResult, error) {
-	switch s.Type {
-	case "github":
-		return s.GitHub.Search(ctx, query, limit)
-	default:
-		panic("unsupported source type")
-	}
-}
-
 func (s Source) Suggest(ctx context.Context, path, revision, content string) (string, error) {
 	switch s.Type {
 	case "github":

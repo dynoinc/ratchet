@@ -233,14 +233,9 @@ When answering documentation questions, use BOTH search tools strategically:
 - This searches through existing documentation that has been indexed
 - Use limit=10 for comprehensive answers, limit=1 for finding specific docs to update
 
-**For Code Examples and Implementation Questions:**
-- Use upstream_search to find code snippets and implementation patterns from upstream repositories
-- This searches across GitHub repositories and other external sources for actual code examples
-
 **For Comprehensive Documentation Answers:**
-- Start with docsearch to find relevant internal documentation
-- Then use upstream_search to find code examples and implementation patterns
-- Combine both sources to provide complete answers with both documentation and code examples
+- Use docsearch to find relevant internal documentation
+- This searches through existing documentation that has been indexed
 
 DOCUMENTATION UPDATE WORKFLOW:
 When a user requests documentation updates, follow this 2-step process:
