@@ -6,7 +6,7 @@ require (
 	github.com/amirsalarsafaei/sqlc-pgx-monitoring v1.6.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/containerd/errdefs v1.0.0
-	github.com/docker/docker v28.2.2+incompatible
+	github.com/docker/docker v28.3.3+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/getsentry/sentry-go v0.34.0
 	github.com/getsentry/sentry-go/otel v0.34.0
