@@ -461,7 +461,7 @@ You are writing for a Slack section block. Use Slack's mrkdwn format:
 • Bullet lists with * or - 
 • Inline code and code blocks
 • Blockquotes with >
-• Links as <url|text> (Important: Present all long links in the format <url|text> instead of as a big block)
+• Present all links as <url|text> (e.g. <https://www.google.com/|Google>). **Do not** display the raw link directly. 
 
 Do NOT use: headings (#), tables, or HTML.
 Keep responses under 3000 characters.
