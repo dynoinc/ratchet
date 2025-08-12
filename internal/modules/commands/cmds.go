@@ -204,7 +204,13 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 	systemPrompt := c.GetSystemPrompt(ctx, channelID, topMsg.Attrs.IncidentAction)
 	conversationHistory = append(conversationHistory, openai.SystemMessage(systemPrompt))
 
-	// Add thread history first (chronological order)
+	// Add the top message
+	topMsgText := strings.TrimPrefix(topMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", botID))
+	timestamp := slackTsToRFC3339(ctx, topMsg.Ts)
+	msgWithTimestamp := fmt.Sprintf("[%s] %s", timestamp, topMsgText)
+	conversationHistory = append(conversationHistory, openai.UserMessage(msgWithTimestamp))
+
+	// Add thread history
 	for _, threadMsg := range threadMessages {
 		if threadMsg.Attrs.Message.User == c.slackIntegration.BotUserID() {
 			// Assistant message
@@ -219,12 +225,6 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 			conversationHistory = append(conversationHistory, openai.UserMessage(msgWithTimestamp))
 		}
 	}
-
-	// Add the current top message last (most recent)
-	topMsgText := strings.TrimPrefix(topMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", botID))
-	timestamp := slackTsToRFC3339(ctx, topMsg.Ts)
-	msgWithTimestamp := fmt.Sprintf("[%s] %s", timestamp, topMsgText)
-	conversationHistory = append(conversationHistory, openai.UserMessage(msgWithTimestamp))
 
 	var response string
 	for range 5 {
@@ -461,7 +461,7 @@ You are writing for a Slack section block. Use Slack's mrkdwn format:
 • Bullet lists with * or - 
 • Inline code and code blocks
 • Blockquotes with >
-• Links as <url|text> (Important: Present all long links in this format instead of as a big block of text)
+• Links as <url|text> (Important: Present all long links in the format <url|text> instead of as a big block)
 
 Do NOT use: headings (#), tables, or HTML.
 Keep responses under 3000 characters.
