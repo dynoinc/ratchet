@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -199,78 +201,28 @@ func (c *Commands) Generate(ctx context.Context, channelID string, slackTS strin
 	var conversationHistory []openai.ChatCompletionMessageParamUnion
 
 	// Build system message with context
-	systemPrompt := fmt.Sprintf(`You are a helpful assistant that manages Slack channels and provides various utilities.
-
-CURRENT CONTEXT:
-- Channel ID: %s
-- Use this channel_id when tools require it`, channelID)
-
-	// Add alert firing context if topMsg is an alert firing
-	if topMsg.Attrs.IncidentAction.Action == dto.ActionOpenIncident {
-		systemPrompt += fmt.Sprintf(`
-- Alert Context: Service "%s" - Alert "%s" (Priority: %s)`,
-			topMsg.Attrs.IncidentAction.Service,
-			topMsg.Attrs.IncidentAction.Alert,
-			topMsg.Attrs.IncidentAction.Priority)
-	}
-
-	systemPrompt += `
-
-IMPORTANT INSTRUCTIONS:
-1. **PRIMARY FOCUS**: Always prioritize and focus on the latest user request. Use conversation history primarily for context and understanding, not as the main topic.
-2. **ALWAYS use the available tools** when they can help answer the user's request or perform actions
-3. **DO NOT** try to answer questions about data, reports, documentation, or channel information without using the appropriate tools first
-4. If unsure which tools to use, try relevant ones to explore what data is available
-5. **ONLY offer capabilities that are available through your tools** - do not suggest checking external systems like GitHub status, deployment status, or other services unless you have specific tools for them
-6. If a user asks about something you cannot do with available tools, politely explain what you can help with instead
-7. **RESPOND TO THE CURRENT REQUEST**: Even if the conversation history contains previous topics or requests, always address the most recent user message first
-
-DOCUMENTATION SEARCH STRATEGY:
-When answering documentation questions, use BOTH search tools strategically:
-
-**For Internal Documentation Questions:**
-- Use docsearch to find relevant internal documentation from the database
-- This searches through existing documentation that has been indexed
-- Use limit=10 for comprehensive answers, limit=1 for finding specific docs to update
-
-**For Comprehensive Documentation Answers:**
-- Use docsearch to find relevant internal documentation
-- This searches through existing documentation that has been indexed
-
-DOCUMENTATION UPDATE WORKFLOW:
-When a user requests documentation updates, follow this 2-step process:
-1. **STEP 1 - Find and Review**: Use docsearch to find relevant documents, then use docread to get the full content of the most relevant document
-2. **STEP 2 - Update**: After reviewing the current content, use docupdate to create a pull request with the proposed changes
-Always explain what you're doing at each step and get user approval before proceeding to step 2.
-
-RESPONSE FORMAT:
-You are writing for a Slack section block. Use Slack's mrkdwn format:
-• *bold*, _italic_, ~strike~
-• Bullet lists with * or - 
-• Inline code and code blocks
-• Blockquotes with >
-• Links as <url|text>
-
-Do NOT use: headings (#), tables, or HTML.
-Keep responses under 3000 characters.
-
-Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.`
-
+	systemPrompt := c.GetSystemPrompt(ctx, channelID, topMsg.Attrs.IncidentAction)
 	conversationHistory = append(conversationHistory, openai.SystemMessage(systemPrompt))
 
-	// Add top message to conversation history
+	// Add the top message
 	topMsgText := strings.TrimPrefix(topMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", botID))
-	conversationHistory = append(conversationHistory, openai.UserMessage(topMsgText))
+	timestamp := slackTsToRFC3339(ctx, topMsg.Ts)
+	msgWithTimestamp := fmt.Sprintf("[%s] %s", timestamp, topMsgText)
+	conversationHistory = append(conversationHistory, openai.UserMessage(msgWithTimestamp))
 
 	// Add thread history
 	for _, threadMsg := range threadMessages {
 		if threadMsg.Attrs.Message.User == c.slackIntegration.BotUserID() {
 			// Assistant message
-			conversationHistory = append(conversationHistory, openai.AssistantMessage(threadMsg.Attrs.Message.Text))
+			timestamp := slackTsToRFC3339(ctx, threadMsg.Ts)
+			msgWithTimestamp := fmt.Sprintf("[%s] %s", timestamp, threadMsg.Attrs.Message.Text)
+			conversationHistory = append(conversationHistory, openai.AssistantMessage(msgWithTimestamp))
 		} else {
 			// User message
 			threadMsgText := strings.TrimPrefix(threadMsg.Attrs.Message.Text, fmt.Sprintf("<@%s> ", c.slackIntegration.BotUserID()))
-			conversationHistory = append(conversationHistory, openai.UserMessage(threadMsgText))
+			timestamp := slackTsToRFC3339(ctx, threadMsg.Ts)
+			msgWithTimestamp := fmt.Sprintf("[%s] %s", timestamp, threadMsgText)
+			conversationHistory = append(conversationHistory, openai.UserMessage(msgWithTimestamp))
 		}
 	}
 
@@ -409,4 +361,113 @@ func (c *Commands) callTool(ctx context.Context, client *client.Client, tool mcp
 	}
 
 	return res, nil
+}
+
+// slackTsToRFC3339 converts a Slack timestamp to RFC3339 format or returns original if conversion fails
+func slackTsToRFC3339(ctx context.Context, slackTs string) string {
+	// Parse Slack timestamp (format: "1355517523.000005")
+	parts := strings.Split(slackTs, ".")
+	if len(parts) != 2 {
+		slog.WarnContext(ctx, "unable to parse slack timestamp: invalid format", "ts", slackTs)
+		return slackTs
+	}
+
+	seconds, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		slog.WarnContext(ctx, "unable to parse slack timestamp: invalid seconds", "ts", slackTs, "error", err)
+		return slackTs
+	}
+
+	microseconds, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		slog.WarnContext(ctx, "unable to parse slack timestamp: invalid microseconds", "ts", slackTs, "error", err)
+		return slackTs
+	}
+
+	t := time.Unix(seconds, microseconds*1000)
+	return t.UTC().Format(time.RFC3339)
+}
+
+// GetSystemPrompt builds the complete system prompt with context and MCP instructions
+func (c *Commands) GetSystemPrompt(ctx context.Context, channelID string, incidentAction dto.IncidentAction) string {
+	systemPrompt := fmt.Sprintf(`You are a helpful assistant that manages Slack channels and provides various utilities.
+
+CURRENT CONTEXT:
+- Channel ID: %s
+- Use this channel_id when tools require it`, channelID)
+
+	// Add alert firing context if an incident is open
+	if incidentAction.Action == dto.ActionOpenIncident {
+		systemPrompt += fmt.Sprintf(`
+- Alert Context: Service "%s" - Alert "%s" (Priority: %s)`,
+			incidentAction.Service,
+			incidentAction.Alert,
+			incidentAction.Priority)
+	}
+
+	systemPrompt += `
+
+IMPORTANT INSTRUCTIONS:
+1. **PRIMARY FOCUS**: Always prioritize and focus on the latest user request. Use conversation history primarily for context and understanding, not as the main topic.
+2. **ALWAYS use the available tools** when they can help answer the user's request or perform actions
+3. **DO NOT** try to answer questions about data, reports, documentation, or channel information without using the appropriate tools first
+4. If unsure which tools to use, try relevant ones to explore what data is available
+5. **ONLY offer capabilities that are available through your tools** - do not suggest checking external systems like GitHub status, deployment status, or other services unless you have specific tools for them
+6. If a user asks about something you cannot do with available tools, politely explain what you can help with instead
+7. **RESPOND TO THE CURRENT REQUEST**: Even if the conversation history contains previous topics or requests, always address the most recent user message first
+
+DOCUMENTATION SEARCH STRATEGY:
+When answering documentation questions, use BOTH search tools strategically:
+
+**For Internal Documentation Questions:**
+- Use docsearch to find relevant internal documentation from the database
+- This searches through existing documentation that has been indexed
+- Use limit=10 for comprehensive answers, limit=1 for finding specific docs to update
+
+**For Comprehensive Documentation Answers:**
+- Use docsearch to find relevant internal documentation
+- This searches through existing documentation that has been indexed
+
+DOCUMENTATION UPDATE WORKFLOW:
+When a user requests documentation updates, follow this 2-step process:
+1. **STEP 1 - Find and Review**: Use docsearch to find relevant documents, then use docread to get the full content of the most relevant document
+2. **STEP 2 - Update**: After reviewing the current content, use docupdate to create a pull request with the proposed changes
+Always explain what you're doing at each step and get user approval before proceeding to step 2.`
+
+	// Add MCP server instructions if available
+	for _, mcpClient := range c.mcpClients {
+		// Try to get the "instructions" prompt and skip silently if not found
+		promptResult, err := mcpClient.GetPrompt(ctx, mcp.GetPromptRequest{
+			Params: mcp.GetPromptParams{
+				Name: "instructions",
+			},
+		})
+		if err != nil {
+			continue
+		}
+		for _, msg := range promptResult.Messages {
+			if textContent, ok := mcp.AsTextContent(msg.Content); ok {
+				systemPrompt += "\n\n---\n\n" + textContent.Text
+			}
+		}
+	}
+	systemPrompt += `
+
+---
+
+RESPONSE FORMAT:
+You are writing for a Slack section block. Use Slack's mrkdwn format:
+• *bold*, _italic_, ~strike~
+• Bullet lists with * or - 
+• Inline code and code blocks
+• Blockquotes with >
+• Present all links as <url|text> (e.g. <https://www.google.com/|Google>). **Do not** display the raw link directly. 
+
+Do NOT use: headings (#), tables, or HTML.
+Keep responses under 3000 characters.
+
+Always be thorough in using tools to provide accurate, up-to-date information rather than making assumptions.
+`
+
+	return systemPrompt
 }
