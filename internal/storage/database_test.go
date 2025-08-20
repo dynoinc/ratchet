@@ -175,3 +175,230 @@ func TestInsertDocWithEmbeddings(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
+
+func TestSearchMessagesHybrid(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := t.Context()
+
+	// Add a channel
+	_, err := schema.New(db).AddChannel(ctx, "C0706000000")
+	require.NoError(t, err)
+
+	// Create a vector with 768 dimensions for embedding
+	embedVector := make([]float32, 768)
+	for i := 0; i < 768; i++ {
+		embedVector[i] = float32(i % 10)
+	}
+	newVec := pgvector.NewVector(embedVector)
+
+	// Add messages with text
+	_, err = schema.New(db).AddMessage(ctx, schema.AddMessageParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358400.000000",
+		Attrs: dto.MessageAttrs{
+			Message: dto.SlackMessage{
+				Text: "This is a test message about errors",
+				User: "U12345",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Add embedding to first message
+	err = schema.New(db).UpdateMessageAttrs(ctx, schema.UpdateMessageAttrsParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358400.000000",
+		Attrs:     dto.MessageAttrs{},
+		Embedding: &newVec,
+	})
+	require.NoError(t, err)
+
+	_, err = schema.New(db).AddMessage(ctx, schema.AddMessageParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358401.000000",
+		Attrs: dto.MessageAttrs{
+			Message: dto.SlackMessage{
+				Text: "Another message about debugging issues",
+				User: "U12345",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Add embedding to second message
+	err = schema.New(db).UpdateMessageAttrs(ctx, schema.UpdateMessageAttrsParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358401.000000",
+		Attrs:     dto.MessageAttrs{},
+		Embedding: &newVec,
+	})
+	require.NoError(t, err)
+
+	// Add a bot message that should be filtered out
+	_, err = schema.New(db).AddMessage(ctx, schema.AddMessageParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358402.000000",
+		Attrs: dto.MessageAttrs{
+			Message: dto.SlackMessage{
+				Text: "Bot response about errors",
+				User: "BOTUSER123",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Add embedding to bot message
+	err = schema.New(db).UpdateMessageAttrs(ctx, schema.UpdateMessageAttrsParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358402.000000",
+		Attrs:     dto.MessageAttrs{},
+		Embedding: &newVec,
+	})
+	require.NoError(t, err)
+
+	// Add a thread reply that should also be searchable
+	_, err = schema.New(db).AddThreadMessage(ctx, schema.AddThreadMessageParams{
+		ChannelID: "C0706000000",
+		ParentTs:  "1714358400.000000", // Reply to first message
+		Ts:        "1714358403.000000",
+		Attrs: dto.MessageAttrs{
+			Message: dto.SlackMessage{
+				Text: "Thread reply discussing error handling",
+				User: "U67890",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Add embedding to thread reply
+	err = schema.New(db).UpdateMessageAttrs(ctx, schema.UpdateMessageAttrsParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358403.000000",
+		Attrs:     dto.MessageAttrs{},
+		Embedding: &newVec,
+	})
+	require.NoError(t, err)
+
+	// Test hybrid search - should now include both parent messages and thread replies
+	results, err := schema.New(db).SearchMessagesHybrid(ctx, schema.SearchMessagesHybridParams{
+		QueryText:      "errors",
+		QueryEmbedding: &newVec,
+		ChannelNames:   nil, // Search all channels
+		BotID:          "BOTUSER123",
+		LimitVal:       10,
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 3) // Should exclude bot message but include parent messages + thread reply
+
+	// Verify that we can identify thread vs parent messages
+	var parentMessages, threadReplies int
+	for _, result := range results {
+		if result.ParentTs == nil {
+			parentMessages++
+		} else {
+			threadReplies++
+		}
+	}
+	require.Equal(t, 2, parentMessages) // Two parent messages
+	require.Equal(t, 1, threadReplies)  // One thread reply
+
+	// Test with channel filter
+	results, err = schema.New(db).SearchMessagesHybrid(ctx, schema.SearchMessagesHybridParams{
+		QueryText:      "errors",
+		QueryEmbedding: &newVec,
+		ChannelNames:   []string{"nonexistent-channel"},
+		BotID:          "BOTUSER123",
+		LimitVal:       10,
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 0) // Should find no results in nonexistent channel
+}
+
+func TestGetThreadMessages(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := t.Context()
+
+	// Add a channel
+	_, err := schema.New(db).AddChannel(ctx, "C0706000000")
+	require.NoError(t, err)
+
+	// Add parent message
+	_, err = schema.New(db).AddMessage(ctx, schema.AddMessageParams{
+		ChannelID: "C0706000000",
+		Ts:        "1714358400.000000",
+		Attrs: dto.MessageAttrs{
+			Message: dto.SlackMessage{
+				Text: "Parent message",
+				User: "U12345",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Add thread replies
+	_, err = schema.New(db).AddThreadMessage(ctx, schema.AddThreadMessageParams{
+		ChannelID: "C0706000000",
+		ParentTs:  "1714358400.000000",
+		Ts:        "1714358401.000000",
+		Attrs: dto.MessageAttrs{
+			Message: dto.SlackMessage{
+				Text: "First reply",
+				User: "U12345",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = schema.New(db).AddThreadMessage(ctx, schema.AddThreadMessageParams{
+		ChannelID: "C0706000000",
+		ParentTs:  "1714358400.000000",
+		Ts:        "1714358402.000000",
+		Attrs: dto.MessageAttrs{
+			Message: dto.SlackMessage{
+				Text: "Bot reply",
+				User: "BOTUSER123",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Test getting all thread messages (including bot) - now includes parent + replies
+	results, err := schema.New(db).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+		ChannelID: "C0706000000",
+		ParentTs:  "1714358400.000000",
+		BotID:     "", // Empty string includes all messages
+		LimitVal:  100,
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 3) // Parent + 2 replies
+
+	// Verify the first message is the parent (should have parent_ts = nil)
+	require.Nil(t, results[0].ParentTs, "First message should be the parent")
+	require.Equal(t, "1714358400.000000", results[0].Ts)
+
+	// Verify the remaining messages are replies (should have parent_ts set)
+	for i := 1; i < len(results); i++ {
+		require.NotNil(t, results[i].ParentTs, "Reply messages should have parent_ts set")
+		require.Equal(t, "1714358400.000000", *results[i].ParentTs)
+	}
+
+	// Test excluding bot messages
+	results, err = schema.New(db).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+		ChannelID: "C0706000000",
+		ParentTs:  "1714358400.000000",
+		BotID:     "BOTUSER123", // Exclude bot messages
+		LimitVal:  100,
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 2) // Parent + 1 reply (bot excluded)
+
+	// Test with nonexistent thread
+	results, err = schema.New(db).GetThreadMessages(ctx, schema.GetThreadMessagesParams{
+		ChannelID: "C0706000000",
+		ParentTs:  "9999999999.000000",
+		BotID:     "",
+		LimitVal:  100,
+	})
+	require.NoError(t, err)
+	require.Len(t, results, 0) // No messages in nonexistent thread
+}

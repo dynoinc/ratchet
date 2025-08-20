@@ -14,6 +14,7 @@ import (
 
 	"github.com/earthboundkid/versioninfo/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/pgvector/pgvector-go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"riverqueue.com/riverui"
@@ -113,6 +114,12 @@ func New(
 	apiMux.HandleFunc("GET /channels/{channel_name}", handleJSON(handlers.getChannel))
 	apiMux.HandleFunc("GET /channels/{channel_name}/messages", handleJSON(handlers.listMessages))
 	apiMux.HandleFunc("POST /channels/{channel_name}/onboard", handleJSON(handlers.onboardChannel))
+
+	// Search
+	apiMux.HandleFunc("GET /search", handleJSON(handlers.searchMessages))
+
+	// Messages
+	apiMux.HandleFunc("GET /channels/{channel_id}/messages/{ts}/thread", handleJSON(handlers.getThreadMessages))
 
 	// Services
 	apiMux.HandleFunc("GET /services", handleJSON(handlers.listServices))
@@ -414,4 +421,75 @@ func (h *httpHandlers) respondCommand(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("generating command: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *httpHandlers) searchMessages(r *http.Request) (any, error) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		return nil, fmt.Errorf("query parameter 'q' is required")
+	}
+
+	// Parse comma-separated channel names
+	var channelNames []string
+	if channels := r.URL.Query().Get("channels"); channels != "" {
+		channelNames = strings.Split(channels, ",")
+		var validChannels []string
+		for _, name := range channelNames {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				validChannels = append(validChannels, name)
+			}
+		}
+		channelNames = validChannels
+	}
+
+	limit := cmp.Or(r.URL.Query().Get("limit"), "20")
+	limitInt, err := strconv.ParseInt(limit, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid limit: %w", err)
+	}
+	if limitInt <= 0 || limitInt > 1000 {
+		return nil, fmt.Errorf("limit must be between 1 and 1000, got %d", limitInt)
+	}
+
+	// Generate embedding for semantic search
+	embedding, err := h.llmClient.GenerateEmbedding(r.Context(), "search", query)
+	if err != nil {
+		return nil, fmt.Errorf("generating embedding: %w", err)
+	}
+
+	// Convert to pgvector.Vector
+	vec := pgvector.NewVector(embedding)
+
+	botID := h.slackIntegration.BotUserID()
+
+	return schema.New(h.bot.DB).SearchMessagesHybrid(r.Context(), schema.SearchMessagesHybridParams{
+		QueryText:      query,
+		QueryEmbedding: &vec,
+		ChannelNames:   channelNames,
+		BotID:          botID,
+		LimitVal:       int32(limitInt),
+	})
+}
+
+func (h *httpHandlers) getThreadMessages(r *http.Request) (any, error) {
+	channelID := r.PathValue("channel_id")
+	ts := r.PathValue("ts")
+
+	if channelID == "" || ts == "" {
+		return nil, fmt.Errorf("channel_id and ts are required")
+	}
+
+	excludeBot := r.URL.Query().Get("exclude_bot") == "true"
+	botID := ""
+	if excludeBot {
+		botID = h.slackIntegration.BotUserID()
+	}
+
+	return schema.New(h.bot.DB).GetThreadMessages(r.Context(), schema.GetThreadMessagesParams{
+		ChannelID: channelID,
+		ParentTs:  ts,
+		LimitVal:  1000,
+		BotID:     botID,
+	})
 }
