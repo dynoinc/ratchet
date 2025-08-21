@@ -668,6 +668,211 @@ func (q *Queries) GetThreadMessagesByServiceAndAlert(ctx context.Context, arg Ge
 	return items, nil
 }
 
+const getThreadMessagesWithParent = `-- name: GetThreadMessagesWithParent :many
+WITH parent_message AS (
+    -- Get the parent message
+    SELECT m.channel_id,
+           m.parent_ts,
+           m.ts,
+           m.attrs
+    FROM messages_v3 m
+    WHERE m.channel_id = $1
+      AND m.ts = $2 :: text
+      AND ($3 :: text = '' OR m.attrs -> 'message' ->> 'user' != $3 :: text)
+),
+thread_replies AS (
+    -- Get the thread replies
+    SELECT m.channel_id,
+           m.parent_ts,
+           m.ts,
+           m.attrs
+    FROM messages_v3 m
+    WHERE m.channel_id = $1
+      AND m.parent_ts = $2 :: text
+      AND ($3 :: text = '' OR m.attrs -> 'message' ->> 'user' != $3 :: text)
+    ORDER BY (m.ts::float) DESC
+    LIMIT $4
+)
+SELECT channel_id,
+       parent_ts,
+       ts,
+       attrs
+FROM (
+    SELECT channel_id, parent_ts, ts, attrs FROM parent_message
+    UNION ALL
+    SELECT channel_id, parent_ts, ts, attrs FROM thread_replies
+) combined
+ORDER BY (ts::float) ASC
+`
+
+type GetThreadMessagesWithParentParams struct {
+	ChannelID string
+	ParentTs  string
+	BotID     string
+	LimitVal  int32
+}
+
+type GetThreadMessagesWithParentRow struct {
+	ChannelID string
+	ParentTs  *string
+	Ts        string
+	Attrs     []byte
+}
+
+func (q *Queries) GetThreadMessagesWithParent(ctx context.Context, arg GetThreadMessagesWithParentParams) ([]GetThreadMessagesWithParentRow, error) {
+	rows, err := q.db.Query(ctx, getThreadMessagesWithParent,
+		arg.ChannelID,
+		arg.ParentTs,
+		arg.BotID,
+		arg.LimitVal,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetThreadMessagesWithParentRow
+	for rows.Next() {
+		var i GetThreadMessagesWithParentRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.ParentTs,
+			&i.Ts,
+			&i.Attrs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchMessagesHybrid = `-- name: SearchMessagesHybrid :many
+WITH channel_filter AS (
+    SELECT id FROM channels_v2 
+    WHERE ($2::text[] IS NULL 
+           OR attrs ->> 'name' = ANY($2::text[]))
+),
+valid_messages AS (
+    SELECT m.channel_id,
+           m.ts,
+           m.parent_ts,
+           m.attrs,
+           m.embedding,
+           c.attrs ->> 'name' as channel_name,
+           CASE
+               WHEN m.attrs -> 'message' ->> 'text' = '' OR m.attrs -> 'message' ->> 'text' IS NULL
+                   THEN -1
+               ELSE ts_rank(m.tsvec, plainto_tsquery('english', $3 :: text))
+               END as lexical_score
+    FROM messages_v3 m
+    JOIN channels_v2 c ON m.channel_id = c.id
+    LEFT JOIN channel_filter cf ON m.channel_id = cf.id
+    WHERE ($2::text[] IS NULL OR cf.id IS NOT NULL)
+      AND ($4 :: text = '' OR m.attrs -> 'message' ->> 'user' != $4 :: text)
+      AND m.attrs -> 'incident_action' ->> 'action' IS NULL
+),
+semantic_matches AS (
+    SELECT channel_id,
+           ts,
+           ROW_NUMBER() OVER (
+               ORDER BY
+                   embedding <=> $5
+               ) as semantic_rank
+    FROM valid_messages
+    WHERE embedding IS NOT NULL
+),
+lexical_matches AS (
+    SELECT channel_id,
+           ts,
+           ROW_NUMBER() OVER (
+               ORDER BY
+                   lexical_score DESC
+               ) as lexical_rank
+    FROM valid_messages
+    WHERE lexical_score > 0
+),
+combined_scores AS (
+    SELECT s.channel_id :: text                       as channel_id,
+           s.ts :: text                               as ts,
+           COALESCE(s.semantic_rank, 1000)            as semantic_rank,
+           COALESCE(l.lexical_rank, 1000)             as lexical_rank,
+           -- Reciprocal Rank Fusion with k=1 for small result sets
+           1.0 / (1 + COALESCE(s.semantic_rank, 1000)) +
+           1.0 / (1 + COALESCE(l.lexical_rank, 1000)) as rrf_score
+    FROM semantic_matches s
+             FULL OUTER JOIN lexical_matches l ON s.channel_id = l.channel_id AND s.ts = l.ts
+)
+SELECT m.channel_id,
+       m.ts,
+       m.parent_ts,
+       m.attrs,
+       m.channel_name,
+       c.semantic_rank,
+       c.lexical_rank,
+       c.rrf_score :: float
+FROM valid_messages m
+         INNER JOIN combined_scores c ON m.channel_id = c.channel_id AND m.ts = c.ts
+ORDER BY c.rrf_score DESC
+LIMIT $1
+`
+
+type SearchMessagesHybridParams struct {
+	LimitVal       int32
+	ChannelNames   []string
+	QueryText      string
+	BotID          string
+	QueryEmbedding *pgvector.Vector
+}
+
+type SearchMessagesHybridRow struct {
+	ChannelID    string
+	Ts           string
+	ParentTs     *string
+	Attrs        []byte
+	ChannelName  interface{}
+	SemanticRank int64
+	LexicalRank  int64
+	CRrfScore    float64
+}
+
+func (q *Queries) SearchMessagesHybrid(ctx context.Context, arg SearchMessagesHybridParams) ([]SearchMessagesHybridRow, error) {
+	rows, err := q.db.Query(ctx, searchMessagesHybrid,
+		arg.LimitVal,
+		arg.ChannelNames,
+		arg.QueryText,
+		arg.BotID,
+		arg.QueryEmbedding,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchMessagesHybridRow
+	for rows.Next() {
+		var i SearchMessagesHybridRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.Ts,
+			&i.ParentTs,
+			&i.Attrs,
+			&i.ChannelName,
+			&i.SemanticRank,
+			&i.LexicalRank,
+			&i.CRrfScore,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateMessageAttrs = `-- name: UpdateMessageAttrs :exec
 UPDATE
     messages_v3
