@@ -583,7 +583,7 @@ type GetThreadMessagesRow struct {
 	ChannelID string
 	ParentTs  *string
 	Ts        string
-	Attrs     []byte
+	Attrs     dto.MessageAttrs
 }
 
 func (q *Queries) GetThreadMessages(ctx context.Context, arg GetThreadMessagesParams) ([]GetThreadMessagesRow, error) {
