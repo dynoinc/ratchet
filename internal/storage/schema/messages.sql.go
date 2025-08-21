@@ -553,39 +553,22 @@ func (q *Queries) GetServices(ctx context.Context) ([]string, error) {
 }
 
 const getThreadMessages = `-- name: GetThreadMessages :many
-WITH parent_message AS (
-    -- Get the parent message
-    SELECT m.channel_id,
-           m.parent_ts,
-           m.ts,
-           m.attrs
-    FROM messages_v3 m
-    WHERE m.channel_id = $1
-      AND m.ts = $2 :: text
-      AND ($3 :: text = '' OR m.attrs -> 'message' ->> 'user' != $3 :: text)
-),
-thread_replies AS (
-    -- Get the thread replies
-    SELECT m.channel_id,
-           m.parent_ts,
-           m.ts,
-           m.attrs
-    FROM messages_v3 m
-    WHERE m.channel_id = $1
-      AND m.parent_ts = $2 :: text
-      AND ($3 :: text = '' OR m.attrs -> 'message' ->> 'user' != $3 :: text)
-    ORDER BY (m.ts::float) DESC
-    LIMIT $4
-)
 SELECT channel_id,
        parent_ts,
        ts,
        attrs
 FROM (
-    SELECT channel_id, parent_ts, ts, attrs FROM parent_message
-    UNION ALL
-    SELECT channel_id, parent_ts, ts, attrs FROM thread_replies
-) combined
+    SELECT channel_id,
+           parent_ts,
+           ts,
+           attrs
+    FROM messages_v3
+    WHERE channel_id = $1
+      AND parent_ts = $2 :: text
+      AND ($3 :: text = '' OR attrs -> 'message' ->> 'user' != $3 :: text)
+    ORDER BY (ts::float) DESC
+    LIMIT $4
+) subquery
 ORDER BY (ts::float) ASC
 `
 
@@ -669,6 +652,87 @@ func (q *Queries) GetThreadMessagesByServiceAndAlert(ctx context.Context, arg Ge
 	var items []GetThreadMessagesByServiceAndAlertRow
 	for rows.Next() {
 		var i GetThreadMessagesByServiceAndAlertRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.ParentTs,
+			&i.Ts,
+			&i.Attrs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getThreadMessagesWithParent = `-- name: GetThreadMessagesWithParent :many
+WITH parent_message AS (
+    -- Get the parent message
+    SELECT m.channel_id,
+           m.parent_ts,
+           m.ts,
+           m.attrs
+    FROM messages_v3 m
+    WHERE m.channel_id = $1
+      AND m.ts = $2 :: text
+      AND ($3 :: text = '' OR m.attrs -> 'message' ->> 'user' != $3 :: text)
+),
+thread_replies AS (
+    -- Get the thread replies
+    SELECT m.channel_id,
+           m.parent_ts,
+           m.ts,
+           m.attrs
+    FROM messages_v3 m
+    WHERE m.channel_id = $1
+      AND m.parent_ts = $2 :: text
+      AND ($3 :: text = '' OR m.attrs -> 'message' ->> 'user' != $3 :: text)
+    ORDER BY (m.ts::float) DESC
+    LIMIT $4
+)
+SELECT channel_id,
+       parent_ts,
+       ts,
+       attrs
+FROM (
+    SELECT channel_id, parent_ts, ts, attrs FROM parent_message
+    UNION ALL
+    SELECT channel_id, parent_ts, ts, attrs FROM thread_replies
+) combined
+ORDER BY (ts::float) ASC
+`
+
+type GetThreadMessagesWithParentParams struct {
+	ChannelID string
+	ParentTs  string
+	BotID     string
+	LimitVal  int32
+}
+
+type GetThreadMessagesWithParentRow struct {
+	ChannelID string
+	ParentTs  *string
+	Ts        string
+	Attrs     []byte
+}
+
+func (q *Queries) GetThreadMessagesWithParent(ctx context.Context, arg GetThreadMessagesWithParentParams) ([]GetThreadMessagesWithParentRow, error) {
+	rows, err := q.db.Query(ctx, getThreadMessagesWithParent,
+		arg.ChannelID,
+		arg.ParentTs,
+		arg.BotID,
+		arg.LimitVal,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetThreadMessagesWithParentRow
+	for rows.Next() {
+		var i GetThreadMessagesWithParentRow
 		if err := rows.Scan(
 			&i.ChannelID,
 			&i.ParentTs,

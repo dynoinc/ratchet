@@ -115,6 +115,25 @@ SELECT service :: text                as service,
 FROM alert_counts;
 
 -- name: GetThreadMessages :many
+SELECT channel_id,
+       parent_ts,
+       ts,
+       attrs
+FROM (
+    SELECT channel_id,
+           parent_ts,
+           ts,
+           attrs
+    FROM messages_v3
+    WHERE channel_id = @channel_id
+      AND parent_ts = @parent_ts :: text
+      AND (@bot_id :: text = '' OR attrs -> 'message' ->> 'user' != @bot_id :: text)
+    ORDER BY (ts::float) DESC
+    LIMIT @limit_val
+) subquery
+ORDER BY (ts::float) ASC;
+
+-- name: GetThreadMessagesWithParent :many
 WITH parent_message AS (
     -- Get the parent message
     SELECT m.channel_id,

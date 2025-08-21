@@ -486,7 +486,7 @@ func (h *httpHandlers) getThreadMessages(r *http.Request) (any, error) {
 		botID = h.slackIntegration.BotUserID()
 	}
 
-	return schema.New(h.bot.DB).GetThreadMessages(r.Context(), schema.GetThreadMessagesParams{
+	return schema.New(h.bot.DB).GetThreadMessagesWithParent(r.Context(), schema.GetThreadMessagesWithParentParams{
 		ChannelID: channelID,
 		ParentTs:  ts,
 		LimitVal:  1000,
