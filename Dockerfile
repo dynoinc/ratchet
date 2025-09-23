@@ -23,5 +23,10 @@ RUN apt-get update && \
         --only-upgrade libpam-modules-bin=1.5.3-5ubuntu5.5 \
         --only-upgrade libpam-modules=1.5.3-5ubuntu5.5 \
         --only-upgrade libc6=2.39-0ubuntu8.6 && \
+        apt-get install -y --no-install-recommends --allow-downgrades ca-certificates && \
+        update-ca-certificates && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/ratchet .
 ENTRYPOINT ["./ratchet"]
