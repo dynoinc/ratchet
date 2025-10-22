@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
@@ -83,6 +84,9 @@ type config struct {
 
 	// Channel Monitor Configuration
 	ChannelMonitor channel_monitor.Config `split_words:"true"`
+
+	// Log level
+	LogLevel string `split_words:"true" default:"info"`
 }
 
 var semverRe = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)`)
@@ -125,9 +129,25 @@ func main() {
 		return a
 	}
 
+	var logLevel slog.Level
+	switch strings.ToLower(c.LogLevel) {
+	case "", "info":
+		logLevel = slog.LevelInfo
+	case "debug":
+		logLevel = slog.LevelDebug
+	case "warn", "warning":
+		logLevel = slog.LevelWarn
+	case "error":
+		logLevel = slog.LevelError
+	default:
+		slog.ErrorContext(ctx, "unknown log level", "level", c.LogLevel)
+		os.Exit(1)
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		AddSource:   true,
 		ReplaceAttr: shortfile,
+		Level:       logLevel,
 	}))
 	if c.DevMode {
 		logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{
