@@ -83,7 +83,7 @@ jobs:
       - name: Scan Docker Image with Trivy
         id: trivy_scan
         if: steps.check_commits.outputs.NEW_COMMITS == 'true'
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ratchet:latest
           format: "sarif"
