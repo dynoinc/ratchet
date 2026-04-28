@@ -2,13 +2,15 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"testing"
 
-	"github.com/docker/docker/client"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/dynoinc/ratchet/internal/storage/schema"
 	"github.com/dynoinc/ratchet/internal/storage/schema/dto"
@@ -16,11 +18,7 @@ import (
 
 func requireDocker(t *testing.T) {
 	t.Helper()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		t.Skipf("docker not available: %v", err)
-	}
-	if _, err := cli.Ping(t.Context()); err != nil {
+	if err := runDocker(t.Context(), "info"); err != nil {
 		t.Skipf("docker not available: %v", err)
 	}
 }
@@ -29,14 +27,50 @@ func setupTestDB(t *testing.T) *pgxpool.Pool {
 	requireDocker(t)
 
 	ctx := t.Context()
-	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	postgresContainer, err := postgres.Run(ctx, postgresImage, postgres.BasicWaitStrategies())
+	containerName := testContainerName(t)
+	_ = runDocker(context.Background(), "rm", "--force", containerName)
+	_, err := dockerOutput(ctx,
+		"run",
+		"--rm",
+		"--detach",
+		"--name", containerName,
+		"--env", "POSTGRES_USER=postgres",
+		"--env", "POSTGRES_PASSWORD=password",
+		"--env", "POSTGRES_DB=ratchet",
+		"--publish", "127.0.0.1::5432",
+		postgresImage,
+	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = postgresContainer.Terminate(context.Background()) })
+	t.Cleanup(func() { _ = runDocker(context.Background(), "rm", "--force", containerName) })
 
-	pool, err := New(ctx, postgresContainer.MustConnectionString(ctx, "sslmode=disable"))
+	endpoint, err := dockerOutput(ctx, "port", containerName, "5432/tcp")
+	require.NoError(t, err)
+	host, portString, err := net.SplitHostPort(strings.Split(endpoint, "\n")[0])
+	require.NoError(t, err)
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	port, err := strconv.Atoi(portString)
+	require.NoError(t, err)
+
+	config := DatabaseConfig{
+		Host:       host,
+		Port:       port,
+		User:       "postgres",
+		Pass:       "password",
+		Name:       "ratchet",
+		DisableTLS: true,
+	}
+	require.NoError(t, checkPostgresReady(ctx, config, 10))
+
+	pool, err := New(ctx, config.URL())
 	require.NoError(t, err)
 	return pool
+}
+
+func testContainerName(t *testing.T) string {
+	name := strings.NewReplacer("/", "-", "_", "-").Replace(strings.ToLower(t.Name()))
+	return fmt.Sprintf("ratchet-test-%s", name)
 }
 
 func TestUpdateReaction(t *testing.T) {

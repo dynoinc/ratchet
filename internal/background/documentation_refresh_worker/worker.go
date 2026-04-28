@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -21,8 +22,6 @@ import (
 	"github.com/dynoinc/ratchet/internal/docs"
 	"github.com/dynoinc/ratchet/internal/llm"
 	dbschema "github.com/dynoinc/ratchet/internal/storage/schema"
-
-	"github.com/tmc/langchaingo/textsplitter"
 )
 
 type documentRefreshWorker struct {
@@ -129,35 +128,113 @@ func stripFrontMatter(s string) (body string, metadata map[string]string) {
 }
 
 // chunkContent splits the given content into slices small enough for
-// text-embedding-3-small.  If the file is Markdown (.md), front‑matter is
-// stripped and a Markdown‑aware splitter is used.  Returns the slices
+// text-embedding-3-small.  If the file is Markdown (.md), front matter is
+// stripped before paragraph-aware splitting. Returns the slices
 // plus any parsed front‑matter metadata (empty for non‑.md).
 func chunkContent(path, content string) ([]string, map[string]string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
-	var splitter textsplitter.TextSplitter
 	meta := make(map[string]string)
 	text := content
 
-	switch ext {
-	case ".md":
+	if ext == ".md" {
 		text, meta = stripFrontMatter(content)
-		splitter = textsplitter.NewMarkdownTextSplitter(
-			textsplitter.WithChunkSize(chunkSize),
-			textsplitter.WithChunkOverlap(chunkOverlap),
-		)
-	default:
-		splitter = textsplitter.NewRecursiveCharacter(
-			textsplitter.WithChunkSize(chunkSize),
-			textsplitter.WithChunkOverlap(chunkOverlap),
-		)
+		return splitMarkdownText(text, chunkSize, chunkOverlap), meta, nil
 	}
 
-	chunks, err := splitter.SplitText(text)
-	if err != nil {
-		return nil, meta, err
+	return splitText(text, chunkSize, chunkOverlap), meta, nil
+}
+
+func splitMarkdownText(text string, size, overlap int) []string {
+	sections := markdownSections(text)
+	chunks := make([]string, 0, len(sections))
+	for _, section := range sections {
+		chunks = append(chunks, splitText(section, size, overlap)...)
+	}
+	return chunks
+}
+
+func markdownSections(text string) []string {
+	lines := strings.Split(text, "\n")
+	sections := make([]string, 0, 1)
+	current := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		if isMarkdownHeading(line) {
+			if section := strings.TrimSpace(strings.Join(current, "\n")); section != "" {
+				sections = append(sections, section)
+			}
+			current = current[:0]
+		}
+		current = append(current, line)
 	}
 
-	return chunks, meta, nil
+	if section := strings.TrimSpace(strings.Join(current, "\n")); section != "" {
+		sections = append(sections, section)
+	}
+	return sections
+}
+
+func isMarkdownHeading(line string) bool {
+	line = strings.TrimLeft(line, " \t")
+	if !strings.HasPrefix(line, "#") {
+		return false
+	}
+	level := 0
+	for level < len(line) && line[level] == '#' {
+		level++
+	}
+	return level <= 6 && level < len(line) && line[level] == ' '
+}
+
+func splitText(text string, size, overlap int) []string {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	if size <= 0 {
+		return []string{text}
+	}
+	if overlap < 0 {
+		overlap = 0
+	}
+	if overlap >= size {
+		overlap = size / 2
+	}
+
+	runes := []rune(text)
+	chunks := make([]string, 0, len(runes)/size+1)
+	for start := 0; start < len(runes); {
+		end := min(start+size, len(runes))
+		if end < len(runes) {
+			if split := splitBoundary(string(runes[start:end]), size/2); split > 0 {
+				end = start + split
+			}
+		}
+
+		if chunk := strings.TrimSpace(string(runes[start:end])); chunk != "" {
+			chunks = append(chunks, chunk)
+		}
+		if end == len(runes) {
+			break
+		}
+		next := end - overlap
+		if next <= start {
+			next = end
+		}
+		start = next
+	}
+
+	return chunks
+}
+
+func splitBoundary(text string, minRunes int) int {
+	for _, separator := range []string{"\n\n", "\n", ". ", " "} {
+		idx := strings.LastIndex(text, separator)
+		if idx < 0 || utf8.RuneCountInString(text[:idx]) < minRunes {
+			continue
+		}
+		return utf8.RuneCountInString(text[:idx+len(separator)])
+	}
+	return 0
 }
 
 func processUpdate(ctx context.Context, bot *internal.Bot, llmClient llm.Client, source docs.Source, update docs.Update) error {
