@@ -5,16 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"os"
+	"os/exec"
+	"strings"
 	"time"
 
-	cerrdefs "github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
-	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -31,86 +25,32 @@ func StartPostgresContainer(ctx context.Context, c DatabaseConfig) error {
 		return nil
 	}
 
-	// Set up Docker client
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return fmt.Errorf("creating Docker client: %w", err)
-	}
-
 	// Check if PostgreSQL image already exists
-	_, err = cli.ImageInspect(ctx, postgresImage)
-	if err != nil {
-		if !cerrdefs.IsNotFound(err) {
-			return fmt.Errorf("checking for Docker image: %w", err)
-		}
-
-		// Pull PostgreSQL image if not available
-		reader, err := cli.ImagePull(ctx, postgresImage, image.PullOptions{})
-		if err != nil {
+	if err := runDocker(ctx, "image", "inspect", postgresImage); err != nil {
+		if err := runDocker(ctx, "pull", postgresImage); err != nil {
 			return fmt.Errorf("pulling Docker image: %w", err)
-		}
-		defer reader.Close()
-
-		// Wait for image pull to complete and display progress
-		termFd := os.Stdout.Fd()
-		if err := jsonmessage.DisplayJSONMessagesStream(reader, os.Stdout, termFd, true, nil); err != nil {
-			return fmt.Errorf("displaying pull progress: %w", err)
 		}
 	} else {
 		slog.Info("PostgreSQL image already exists, skipping pull", "image", postgresImage)
 	}
 
-	// Define container configurations
-	containerConfig := &container.Config{
-		Image: postgresImage,
-		Env: []string{
-			"POSTGRES_USER=" + c.User,
-			"POSTGRES_PASSWORD=" + c.Pass,
-			"POSTGRES_DB=" + c.Name,
-		},
-		ExposedPorts: nat.PortSet{
-			"5432/tcp": struct{}{},
-		},
-	}
-
-	// Define host configuration with port mapping and volume mount for persistence
-	hostConfig := &container.HostConfig{
-		PortBindings: nat.PortMap{
-			"5432/tcp": []nat.PortBinding{
-				{
-					HostIP:   "127.0.0.1",
-					HostPort: "5432",
-				},
-			},
-		},
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeVolume,
-				Source: "postgres_data",
-				Target: "/var/lib/postgresql/data",
-			},
-		},
-	}
-
 	// Create and start the PostgreSQL container
-	var containerID string
-	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
-	if err != nil {
-		if !cerrdefs.IsConflict(err) {
+	if err := runDocker(ctx, "container", "inspect", containerName); err != nil {
+		if err := runDocker(ctx,
+			"create",
+			"--name", containerName,
+			"--env", "POSTGRES_USER="+c.User,
+			"--env", "POSTGRES_PASSWORD="+c.Pass,
+			"--env", "POSTGRES_DB="+c.Name,
+			"--publish", "127.0.0.1:5432:5432",
+			"--mount", "type=volume,src=postgres_data,dst=/var/lib/postgresql/data",
+			postgresImage,
+		); err != nil {
 			return fmt.Errorf("creating container: %w", err)
 		}
-
-		resp, err := cli.ContainerInspect(ctx, containerName)
-		if err != nil {
-			return fmt.Errorf("inspecting container: %w", err)
-		}
-
-		containerID = resp.ID
-	} else {
-		containerID = resp.ID
 	}
 
-	if err := cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
+	if err := runDocker(ctx, "start", containerName); err != nil {
 		return fmt.Errorf("starting container: %w", err)
 	}
 
@@ -144,4 +84,18 @@ func checkPostgresReady(ctx context.Context, c DatabaseConfig, attempts int) err
 	}
 
 	return fmt.Errorf("PostgreSQL is not ready after multiple attempts")
+}
+
+func runDocker(ctx context.Context, args ...string) error {
+	_, err := dockerOutput(ctx, args...)
+	return err
+}
+
+func dockerOutput(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("docker %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return strings.TrimSpace(string(output)), nil
 }

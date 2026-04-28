@@ -1,5 +1,5 @@
 # Stage 1: Build the Go application
-FROM golang:1.24 AS builder
+FROM golang:1.26 AS builder
 
 ENV GOTOOLCHAIN=auto
 ENV CGO_ENABLED=0
