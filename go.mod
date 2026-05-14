@@ -21,7 +21,7 @@ require (
 	github.com/riverqueue/river v0.23.1
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.23.1
 	github.com/riverqueue/river/rivertype v0.23.1
-	github.com/slack-go/slack v0.17.1
+	github.com/slack-go/slack v0.23.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.58.0
